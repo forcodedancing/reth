@@ -471,6 +471,100 @@ pub static BASE_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     .into()
 });
 
+/// The opBNB mainnet spec
+#[cfg(feature = "optimism")]
+pub static OPBNB_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
+    ChainSpec {
+        chain: Chain::opbnb_mainnet(),
+        genesis: serde_json::from_str(include_str!("../../res/genesis/opbnb_mainnet.json"))
+            .expect("Can't deserialize opBNB mainent genesis json"),
+        genesis_hash: Some(b256!(
+            "4dd61178c8b0f01670c231597e7bcb368e84545acd46d940a896d6a791dd6df4"
+        )),
+        fork_timestamps: ForkTimestamps::default().regolith(0),
+        paris_block_and_final_difficulty: Some((0, U256::from(0))),
+        hardforks: BTreeMap::from([
+            (Hardfork::Frontier, ForkCondition::Block(0)),
+            (Hardfork::Homestead, ForkCondition::Block(0)),
+            (Hardfork::Tangerine, ForkCondition::Block(0)),
+            (Hardfork::SpuriousDragon, ForkCondition::Block(0)),
+            (Hardfork::Byzantium, ForkCondition::Block(0)),
+            (Hardfork::Constantinople, ForkCondition::Block(0)),
+            (Hardfork::Petersburg, ForkCondition::Block(0)),
+            (Hardfork::Istanbul, ForkCondition::Block(0)),
+            (Hardfork::MuirGlacier, ForkCondition::Block(0)),
+            (Hardfork::Berlin, ForkCondition::Block(0)),
+            (Hardfork::London, ForkCondition::Block(0)),
+            (Hardfork::ArrowGlacier, ForkCondition::Block(0)),
+            (Hardfork::GrayGlacier, ForkCondition::Block(0)),
+            (
+                Hardfork::Paris,
+                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::from(0) },
+            ),
+            (Hardfork::Bedrock, ForkCondition::Block(0)),
+            (Hardfork::Regolith, ForkCondition::Timestamp(0)),
+            (Hardfork::Fermat, ForkCondition::Block(9397477)),
+            
+        ]),
+        base_fee_params: BaseFeeParamsKind::Variable(
+            vec![
+                (Hardfork::London, BaseFeeParams::ethereum()),
+            ]
+            .into(),
+        ),
+        prune_delete_limit: 0,
+        ..Default::default()
+    }
+    .into()
+});
+
+/// The opBNB testnet spec
+#[cfg(feature = "optimism")]
+pub static OPBNB_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
+    ChainSpec {
+        chain: Chain::opbnb_testnet(),
+        genesis: serde_json::from_str(include_str!("../../res/genesis/opbnb_testnet.json"))
+            .expect("Can't deserialize opBNB testnet genesis json"),
+        genesis_hash: Some(b256!(
+            "51fa57729dfb1c27542c21b06cb72a0459c57440ceb43a465dae1307cd04fe80"
+        )),
+        fork_timestamps: ForkTimestamps::default().regolith(0),
+        paris_block_and_final_difficulty: Some((0, U256::from(0))),
+        hardforks: BTreeMap::from([
+            (Hardfork::Frontier, ForkCondition::Block(0)),
+            (Hardfork::Homestead, ForkCondition::Block(0)),
+            (Hardfork::Tangerine, ForkCondition::Block(0)),
+            (Hardfork::SpuriousDragon, ForkCondition::Block(0)),
+            (Hardfork::Byzantium, ForkCondition::Block(0)),
+            (Hardfork::Constantinople, ForkCondition::Block(0)),
+            (Hardfork::Petersburg, ForkCondition::Block(0)),
+            (Hardfork::Istanbul, ForkCondition::Block(0)),
+            (Hardfork::MuirGlacier, ForkCondition::Block(0)),
+            (Hardfork::Berlin, ForkCondition::Block(0)),
+            (Hardfork::London, ForkCondition::Block(0)),
+            (Hardfork::ArrowGlacier, ForkCondition::Block(0)),
+            (Hardfork::GrayGlacier, ForkCondition::Block(0)),
+            (
+                Hardfork::Paris,
+                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::from(0) },
+            ),
+            (Hardfork::Bedrock, ForkCondition::Block(0)),
+            (Hardfork::Regolith, ForkCondition::Timestamp(0)),
+            (Hardfork::PreContractForkBlock, ForkCondition::Block(5805494)),
+            (Hardfork::Fermat, ForkCondition::Block(12113000)),
+        ]),
+        base_fee_params: BaseFeeParamsKind::Variable(
+            vec![
+                (Hardfork::London, BaseFeeParams::ethereum()),
+            ]
+            .into(),
+        ),
+        prune_delete_limit: 0,
+        ..Default::default()
+    }
+    .into()
+});
+
 /// A wrapper around [BaseFeeParams] that allows for specifying constant or dynamic EIP-1559
 /// parameters based on the active [Hardfork].
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

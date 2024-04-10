@@ -68,11 +68,18 @@ pub enum Hardfork {
     /// Ecotone: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#ecotone>.
     #[cfg(feature = "optimism")]
     Ecotone,
+    /// PreContractForkBlock
+    #[cfg(feature = "optimism")]
+    PreContractForkBlock,
+    /// Fermat
+    #[cfg(feature = "optimism")]
+    Fermat,
     // ArbOS20Atlas,
 
     // Upcoming
     /// Prague: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/prague.md>
     Prague,
+
 }
 
 impl Hardfork {

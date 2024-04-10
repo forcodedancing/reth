@@ -32,6 +32,37 @@ use crate::{
     stack::{InspectorStack, InspectorStackConfig},
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
 };
+use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
+use reth_node_api::ConfigureEvm;
+use reth_primitives::{
+    Address, Block, BlockNumber, BlockWithSenders, Bloom, ChainSpec, GotExpected, Hardfork, Header, PruneMode, PruneModes, PruneSegmentError, Receipt, ReceiptWithBloom, Receipts, TransactionSigned, Withdrawals, B256, MINIMUM_PRUNING_DISTANCE, U256,
+};
+use reth_provider::{
+    BlockExecutor, BlockExecutorStats, ProviderError, PrunableBlockExecutor, StateProvider,
+};
+use revm::{
+    db::{states::bundle_state::BundleRetention, EmptyDBTyped, StateDBBox},
+    inspector_handle_register,
+    interpreter::Host,
+    primitives::{CfgEnvWithHandlerCfg, ResultAndState},
+    Evm, State, StateBuilder,
+};
+
+use revm::{db::states::plain_account::PlainStorage, primitives::AccountInfo};
+
+use std::{str::FromStr, sync::Arc, time::Instant};
+
+#[cfg(feature = "optimism")]
+use reth_primitives::revm::env::fill_op_tx_env;
+#[cfg(not(feature = "optimism"))]
+use reth_primitives::revm::env::fill_tx_env;
+
+#[cfg(not(feature = "optimism"))]
+use reth_provider::BundleStateWithReceipts;
+#[cfg(not(feature = "optimism"))]
+use revm::DatabaseCommit;
+#[cfg(not(feature = "optimism"))]
+use tracing::{debug, trace};
 
 /// EVMProcessor is a block executor that uses revm to execute blocks or multiple blocks.
 ///
@@ -199,6 +230,37 @@ where
             // return balance to DAO beneficiary.
             *balance_increments.entry(DAO_HARDFORK_BENEFICIARY).or_default() += drained_balance;
         }
+
+        if self.chain_spec.fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
+            // WBNBContract WBNB preDeploy contract address
+            let w_bnb_contract_address = Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
+            let mut w_bnb_storage = PlainStorage::new();
+            // insert storage for wBNB contract
+            // nameSlot { Name: "Wrapped BNB" }
+            w_bnb_storage.insert(
+                U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(),
+            );
+            // symbolSlot { Symbol: "wBNB" }
+            w_bnb_storage.insert(
+                U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
+                U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(),
+            );
+            // insert wBNB contract with storage
+            self
+                .db_mut()
+                .insert_account_with_storage(
+                    w_bnb_contract_address,
+                    AccountInfo::default(),
+                    w_bnb_storage,
+                );
+            
+            // GovernanceToken contract address
+            let governance_token_contract_address = Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+            // destruct the governance token contract
+            self.evm.selfdestruct(governance_token_contract_address, governance_token_contract_address);
+        }   
+
         // increment balances
         self.db_mut()
             .increment_balances(balance_increments)
