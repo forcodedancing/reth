@@ -204,6 +204,7 @@ where
             .increment_balances(balance_increments)
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
+
         Ok(())
     }
 
