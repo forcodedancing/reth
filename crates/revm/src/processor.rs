@@ -1,15 +1,19 @@
 #[cfg(not(feature = "optimism"))]
 use revm::DatabaseCommit;
+use reth_primitives::system_contracts;
 use revm::{
     db::StateDBBox,
     inspector_handle_register,
-    interpreter::Host,
-    primitives::{CfgEnvWithHandlerCfg, ResultAndState},
+    interpreter::{instructions::system, Host},
+    primitives::{AccountInfo, CfgEnvWithHandlerCfg, ResultAndState},
     Evm, State,
 };
 use std::{sync::Arc, time::Instant};
 #[cfg(not(feature = "optimism"))]
 use tracing::{debug, trace};
+
+#[cfg(feature = "bsc")]
+use reth_primitives::system_contract;
 
 use reth_evm::ConfigureEvm;
 use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
@@ -204,7 +208,6 @@ where
             .increment_balances(balance_increments)
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
-
         Ok(())
     }
 
@@ -271,7 +274,7 @@ where
                 gas: GotExpected { got: cumulative_gas_used, expected: block.gas_used },
                 gas_spent_by_tx: receipts.gas_spent_by_tx()?,
             }
-            .into())
+            .into());
         }
         let time = Instant::now();
         self.apply_post_execution_state_change(block, total_difficulty)?;
@@ -302,6 +305,7 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
+        parent_block_timestamp: u64,
     ) -> Result<(), BlockExecutionError> {
         // execute block
         let receipts = self.execute_inner(block, total_difficulty)?;
@@ -316,10 +320,25 @@ where
                 verify_receipt(block.header.receipts_root, block.header.logs_bloom, receipts.iter())
             {
                 debug!(target: "evm", %error, ?receipts, "receipts verification failed");
-                return Err(error)
+                return Err(error);
             };
             self.stats.receipt_root_duration += time.elapsed();
         }
+
+        match system_contracts::get_upgrade_system_contracts(
+            &self.chain_spec,
+            block.number,
+            parent_block_timestamp,
+            block.header.timestamp,
+        ) {
+            Ok(contracts) => {
+                contracts.iter().for_each(|(k, v)| {
+                    let account = AccountInfo { code: v.clone(), ..Default::default() };
+                    self.db_mut().insert_account(*k, account);
+                });
+            }
+            Err(e) => return Err(BlockExecutionError::CanonicalCommit { inner: e.to_string() }),
+        };
 
         self.batch_record.save_receipts(receipts)?;
         Ok(())
@@ -334,7 +353,7 @@ where
 
         // perf: do not execute empty blocks
         if block.body.is_empty() {
-            return Ok((Vec::new(), 0))
+            return Ok((Vec::new(), 0));
         }
 
         let mut cumulative_gas_used = 0;
@@ -349,7 +368,7 @@ where
                     transaction_gas_limit: transaction.gas_limit(),
                     block_available_gas,
                 }
-                .into())
+                .into());
             }
             // Execute transaction.
             let ResultAndState { result, state } = self.transact(transaction, *sender)?;
@@ -446,14 +465,14 @@ pub fn compare_receipts_root_and_logs_bloom(
         return Err(BlockValidationError::ReceiptRootDiff(
             GotExpected { got: calculated_receipts_root, expected: expected_receipts_root }.into(),
         )
-        .into())
+        .into());
     }
 
     if calculated_logs_bloom != expected_logs_bloom {
         return Err(BlockValidationError::BloomLogDiff(
             GotExpected { got: calculated_logs_bloom, expected: expected_logs_bloom }.into(),
         )
-        .into())
+        .into());
     }
 
     Ok(())
@@ -527,6 +546,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0,
             )
             .expect_err(
                 "Executing cancun block without parent beacon block root field should fail",
@@ -623,6 +643,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0,
             )
             .expect(
                 "Executing a block with no transactions while cancun is active should not fail",
@@ -679,6 +700,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0,
             )
             .expect(
                 "Executing a block with no transactions while cancun is active should not fail",
@@ -724,6 +746,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0,
             )
             .expect_err(
                 "Executing genesis cancun block with non-zero parent beacon block root field should fail",

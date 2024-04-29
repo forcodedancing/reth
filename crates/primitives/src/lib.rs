@@ -48,8 +48,8 @@ pub mod transaction;
 pub mod trie;
 mod withdrawal;
 
-#[cfg(feature = "bsc")]
-mod system_contracts;
+/// #[cfg(feature = "bsc")]
+pub mod system_contracts;
 
 pub use account::{Account, Bytecode};
 #[cfg(any(test, feature = "arbitrary"))]

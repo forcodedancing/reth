@@ -17,6 +17,7 @@ impl BlockExecutor for TestExecutor {
         &mut self,
         _block: &BlockWithSenders,
         _total_difficulty: U256,
+        _parent_block_timestamper: u64,
     ) -> Result<(), BlockExecutionError> {
         if self.0.is_none() {
             return Err(BlockExecutionError::UnavailableForTest)

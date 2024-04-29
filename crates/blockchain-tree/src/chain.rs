@@ -206,7 +206,7 @@ impl AppendableChain {
         let mut executor = externals.executor_factory.with_state(&provider);
         let block_hash = block.hash();
         let block = block.unseal();
-        executor.execute_and_verify_receipt(&block, U256::MAX)?;
+        executor.execute_and_verify_receipt(&block, U256::MAX, parent_block.timestamp)?;
         let bundle_state = executor.take_output_state();
 
         // check state root if the block extends the canonical chain __and__ if state root

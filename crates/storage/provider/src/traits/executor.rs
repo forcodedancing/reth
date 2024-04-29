@@ -30,6 +30,7 @@ pub trait BlockExecutor {
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
+        parent_block_timestamp: u64,
     ) -> Result<(), Self::Error>;
 
     /// Runs the provided transactions and commits their state to the run-time database.

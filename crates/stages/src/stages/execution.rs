@@ -191,6 +191,30 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
         let mut cumulative_gas = 0;
         let batch_start = Instant::now();
 
+        let mut parent_block_timestamp = 0u64;
+
+        // get parent block timestamp for execution
+        if start_block > 0 {
+            let parent_block_number = start_block - 1 as u64;
+            let parent_header = match static_file_provider.header_by_number(parent_block_number) {
+                Ok(Some(header)) => header,
+                _ => return Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.into()))),
+            };
+            parent_block_timestamp = parent_header.timestamp;
+        }
+
+        let mut parent_block_timestamp = 0u64;
+        // get parent block timestamp for execution
+        if start_block > 0 {
+            let parent_block_number = start_block - 1 as u64;
+            let parent_header = match static_file_provider.header_by_number(parent_block_number) {
+                Ok(Some(header)) => header,
+                _ => return Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.into()))),
+            };
+            parent_block_timestamp = parent_header.timestamp;
+        }
+
+
         let mut blocks = Vec::new();
         for block_number in start_block..=max_block {
             // Fetch the block
@@ -214,7 +238,7 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
 
             // Execute the block
             let execute_start = Instant::now();
-            executor.execute_and_verify_receipt(&block, td).map_err(|error| StageError::Block {
+            executor.execute_and_verify_receipt(&block, td, parent_block_timestamp).map_err(|error| StageError::Block {
                 block: Box::new(block.header.clone().seal_slow()),
                 error: BlockErrorKind::Execution(error),
             })?;
@@ -244,6 +268,9 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
             ) {
                 break
             }
+
+            // Update parent block timestamp for next block
+            parent_block_timestamp = block.header.timestamp;
         }
         let time = Instant::now();
         let state = executor.take_output_state();
