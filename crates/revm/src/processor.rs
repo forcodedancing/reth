@@ -7,7 +7,7 @@ use revm::{
     primitives::{CfgEnvWithHandlerCfg, ResultAndState},
     Evm, State,
 };
-use std::{sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant, str::FromStr};
 #[cfg(not(feature = "optimism"))]
 use tracing::{debug, trace};
 
@@ -32,37 +32,7 @@ use crate::{
     stack::{InspectorStack, InspectorStackConfig},
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
 };
-use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
-use reth_node_api::ConfigureEvm;
-use reth_primitives::{
-    Address, Block, BlockNumber, BlockWithSenders, Bloom, ChainSpec, GotExpected, Hardfork, Header, PruneMode, PruneModes, PruneSegmentError, Receipt, ReceiptWithBloom, Receipts, TransactionSigned, Withdrawals, B256, MINIMUM_PRUNING_DISTANCE, U256,
-};
-use reth_provider::{
-    BlockExecutor, BlockExecutorStats, ProviderError, PrunableBlockExecutor, StateProvider,
-};
-use revm::{
-    db::{states::bundle_state::BundleRetention, EmptyDBTyped, StateDBBox},
-    inspector_handle_register,
-    interpreter::Host,
-    primitives::{CfgEnvWithHandlerCfg, ResultAndState},
-    Evm, State, StateBuilder,
-};
-
 use revm::{db::states::plain_account::PlainStorage, primitives::AccountInfo};
-
-use std::{str::FromStr, sync::Arc, time::Instant};
-
-#[cfg(feature = "optimism")]
-use reth_primitives::revm::env::fill_op_tx_env;
-#[cfg(not(feature = "optimism"))]
-use reth_primitives::revm::env::fill_tx_env;
-
-#[cfg(not(feature = "optimism"))]
-use reth_provider::BundleStateWithReceipts;
-#[cfg(not(feature = "optimism"))]
-use revm::DatabaseCommit;
-#[cfg(not(feature = "optimism"))]
-use tracing::{debug, trace};
 
 /// EVMProcessor is a block executor that uses revm to execute blocks or multiple blocks.
 ///
