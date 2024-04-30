@@ -7,7 +7,7 @@ use revm::{
     primitives::{CfgEnvWithHandlerCfg, ResultAndState},
     Evm, State,
 };
-use std::{str::FromStr, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 #[cfg(not(feature = "optimism"))]
 use tracing::{debug, trace};
 
@@ -32,7 +32,11 @@ use crate::{
     stack::{InspectorStack, InspectorStackConfig},
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
 };
+
+#[cfg(all(feature = "optimism", feature = "opbnb"))]
 use revm::{db::states::plain_account::PlainStorage, primitives::AccountInfo};
+#[cfg(all(feature = "optimism", feature = "opbnb"))]
+use std::str::FromStr;
 
 /// EVMProcessor is a block executor that uses revm to execute blocks or multiple blocks.
 ///
@@ -201,6 +205,7 @@ where
             *balance_increments.entry(DAO_HARDFORK_BENEFICIARY).or_default() += drained_balance;
         }
 
+        #[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec.fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             // WBNBContract WBNB preDeploy contract address
             let w_bnb_contract_address =

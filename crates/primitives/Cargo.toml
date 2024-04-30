@@ -121,6 +121,8 @@ optimism = [
 ]
 opbnb = [
     "revm/opbnb",
+    "reth-ethereum-forks/opbnb",
+    "revm-primitives/opbnb",
 ]
 test-utils = ["dep:plain_hasher", "dep:hash-db"]
 

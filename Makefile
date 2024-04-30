@@ -53,7 +53,7 @@ install: ## Build and install the reth binary under `~/.cargo/bin`.
 .PHONY: install-op
 install-op: ## Build and install the op-reth binary under `~/.cargo/bin`.
 	cargo install --path bin/reth --bin op-reth --force --locked \
-		--features "optimism,opbnb,$(FEATURES)" \
+		--features "optimism opbnb $(FEATURES)" \
 		--profile "$(PROFILE)" \
 		$(CARGO_INSTALL_EXTRA_FLAGS)
 

@@ -144,7 +144,9 @@ optimism = [
 ]
 
 opbnb = [
+    "reth-primitives/opbnb",
     "reth-revm/opbnb",
+    "reth-node-core/opbnb",
 ]
 
 # no-op feature flag for switching between the `optimism` and default functionality in CI matrices

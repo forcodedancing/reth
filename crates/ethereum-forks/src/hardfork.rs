@@ -69,10 +69,10 @@ pub enum Hardfork {
     #[cfg(feature = "optimism")]
     Ecotone,
     /// PreContractForkBlock
-    #[cfg(feature = "optimism")]
+    #[cfg(all(feature = "optimism", feature = "opbnb"))]
     PreContractForkBlock,
     /// Fermat
-    #[cfg(feature = "optimism")]
+    #[cfg(all(feature = "optimism", feature = "opbnb"))]
     Fermat,
     // ArbOS20Atlas,
 
@@ -557,6 +557,10 @@ impl FromStr for Hardfork {
             "bedrock" => Hardfork::Bedrock,
             #[cfg(feature = "optimism")]
             "regolith" => Hardfork::Regolith,
+            #[cfg(all(feature = "optimism", feature = "opbnb"))]
+            "precontractforkblock" => Hardfork::PreContractForkBlock,
+            #[cfg(all(feature = "optimism", feature = "opbnb"))]
+            "fermat" => Hardfork::Fermat,
             #[cfg(feature = "optimism")]
             "canyon" => Hardfork::Canyon,
             #[cfg(feature = "optimism")]

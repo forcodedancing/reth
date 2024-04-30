@@ -69,8 +69,10 @@ jobs:
         include:
           - binary: reth
             network: ethereum
+            extra-features: ""
           - binary: op-reth
             network: optimism
+            extra-features: "opbnb"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -79,7 +81,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo build --bin "${{ matrix.binary }}" --workspace --features "${{ matrix.network }}"
+      - run: cargo build --bin "${{ matrix.binary }}" --workspace --features "${{ matrix.network }} ${{ matrix.extra-features }}"
         env:
           RUSTFLAGS: -D warnings
 

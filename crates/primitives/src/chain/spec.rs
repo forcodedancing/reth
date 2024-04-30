@@ -472,7 +472,7 @@ pub static BASE_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
 });
 
 /// The opBNB mainnet spec
-#[cfg(feature = "optimism")]
+#[cfg(all(feature = "optimism", feature = "opbnb"))]
 pub static OPBNB_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     ChainSpec {
         chain: Chain::opbnb_mainnet(),
@@ -515,7 +515,7 @@ pub static OPBNB_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
 });
 
 /// The opBNB testnet spec
-#[cfg(feature = "optimism")]
+#[cfg(all(feature = "optimism", feature = "opbnb"))]
 pub static OPBNB_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     ChainSpec {
         chain: Chain::opbnb_testnet(),
