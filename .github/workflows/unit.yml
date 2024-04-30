@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         partition: [1, 2]
-        network: ["ethereum", "optimism"]
+        network: [ethereum, optimism]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -34,10 +34,19 @@ jobs:
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@nextest
-      - name: Run tests
+      - if: matrix.network == 'ethereum'
+        name: Run tests
         run: |
           cargo nextest run \
             --locked --features "asm-keccak ${{ matrix.network }}" \
+            --workspace --exclude examples --exclude ef-tests \
+            --partition hash:${{ matrix.partition }}/2 \
+            -E "!kind(test)"
+      - if: matrix.network == 'optimism'
+        name: Run tests
+        run: |
+          cargo nextest run \
+            --locked --features "asm-keccak ${{ matrix.network }} opbnb" \
             --workspace --exclude examples --exclude ef-tests \
             --partition hash:${{ matrix.partition }}/2 \
             -E "!kind(test)"
@@ -73,7 +82,11 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        network: ["ethereum", "optimism"]
+        include:
+          - network: ethereum
+            extra-features: ""
+          - network: optimism
+            extra-features: "opbnb"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -81,7 +94,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Run doctests
-        run: cargo test --doc --workspace --features "${{ matrix.network }}"
+        run: cargo test --doc --workspace --features "${{ matrix.network }} ${{ matrix.extra-features }}"
 
   unit-success:
     name: unit success
