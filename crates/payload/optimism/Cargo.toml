@@ -40,3 +40,6 @@ optimism = [
     "reth-provider/optimism",
     "reth-rpc-types-compat/optimism",
 ]
+opbnb = [
+    "reth-revm/opbnb",
+]

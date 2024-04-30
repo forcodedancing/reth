@@ -143,6 +143,10 @@ optimism = [
     "reth-node-core/optimism",
 ]
 
+opbnb = [
+    "reth-revm/opbnb",
+]
+
 # no-op feature flag for switching between the `optimism` and default functionality in CI matrices
 ethereum = []
 

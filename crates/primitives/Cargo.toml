@@ -119,6 +119,9 @@ optimism = [
     "reth-ethereum-forks/optimism",
     "revm/optimism",
 ]
+opbnb = [
+    "revm/opbnb",
+]
 test-utils = ["dep:plain_hasher", "dep:hash-db"]
 
 [[bench]]
