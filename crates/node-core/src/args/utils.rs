@@ -12,14 +12,17 @@ use std::{
 use reth_primitives::DEV;
 
 #[cfg(feature = "optimism")]
-use reth_primitives::{BASE_MAINNET, BASE_SEPOLIA, OP_MAINNET, OP_SEPOLIA, OPBNB_MAINNET, OPBNB_TESTNET};
+use reth_primitives::{
+    BASE_MAINNET, BASE_SEPOLIA, OPBNB_MAINNET, OPBNB_TESTNET, OP_MAINNET, OP_SEPOLIA,
+};
 
 #[cfg(not(feature = "optimism"))]
 use reth_primitives::{GOERLI, HOLESKY, MAINNET, SEPOLIA};
 
 #[cfg(feature = "optimism")]
 /// Chains supported by op-reth. First value should be used as the default.
-pub const SUPPORTED_CHAINS: &[&str] = &["base", "base-sepolia", "optimism", "optimism-sepolia", "opbnb-mainnet", "opbnb-testnet"];
+pub const SUPPORTED_CHAINS: &[&str] =
+    &["base", "base-sepolia", "optimism", "optimism-sepolia", "opbnb-mainnet", "opbnb-testnet"];
 #[cfg(not(feature = "optimism"))]
 /// Chains supported by reth. First value should be used as the default.
 pub const SUPPORTED_CHAINS: &[&str] = &["mainnet", "sepolia", "goerli", "holesky", "dev"];

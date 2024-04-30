@@ -7,7 +7,7 @@ use revm::{
     primitives::{CfgEnvWithHandlerCfg, ResultAndState},
     Evm, State,
 };
-use std::{sync::Arc, time::Instant, str::FromStr};
+use std::{str::FromStr, sync::Arc, time::Instant};
 #[cfg(not(feature = "optimism"))]
 use tracing::{debug, trace};
 
@@ -203,33 +203,45 @@ where
 
         if self.chain_spec.fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             // WBNBContract WBNB preDeploy contract address
-            let w_bnb_contract_address = Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
+            let w_bnb_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
             let mut w_bnb_storage = PlainStorage::new();
             // insert storage for wBNB contract
             // nameSlot { Name: "Wrapped BNB" }
             w_bnb_storage.insert(
-                U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
-                U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(),
+                U256::from_str(
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                )
+                .unwrap(),
+                U256::from_str(
+                    "0x5772617070656420424e42000000000000000000000000000000000000000016",
+                )
+                .unwrap(),
             );
             // symbolSlot { Symbol: "wBNB" }
             w_bnb_storage.insert(
-                U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
-                U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(),
+                U256::from_str(
+                    "0x0000000000000000000000000000000000000000000000000000000000000001",
+                )
+                .unwrap(),
+                U256::from_str(
+                    "0x57424e4200000000000000000000000000000000000000000000000000000008",
+                )
+                .unwrap(),
             );
             // insert wBNB contract with storage
-            self
-                .db_mut()
-                .insert_account_with_storage(
-                    w_bnb_contract_address,
-                    AccountInfo::default(),
-                    w_bnb_storage,
-                );
-            
+            self.db_mut().insert_account_with_storage(
+                w_bnb_contract_address,
+                AccountInfo::default(),
+                w_bnb_storage,
+            );
             // GovernanceToken contract address
-            let governance_token_contract_address = Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+            let governance_token_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
             // destruct the governance token contract
-            self.evm.selfdestruct(governance_token_contract_address, governance_token_contract_address);
-        }   
+            self.evm
+                .selfdestruct(governance_token_contract_address, governance_token_contract_address);
+        }
 
         // increment balances
         self.db_mut()

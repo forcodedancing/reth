@@ -504,13 +504,9 @@ pub static OPBNB_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Bedrock, ForkCondition::Block(0)),
             (Hardfork::Regolith, ForkCondition::Timestamp(0)),
             (Hardfork::Fermat, ForkCondition::Block(9397477)),
-            
         ]),
         base_fee_params: BaseFeeParamsKind::Variable(
-            vec![
-                (Hardfork::London, BaseFeeParams::ethereum()),
-            ]
-            .into(),
+            vec![(Hardfork::London, BaseFeeParams::ethereum())].into(),
         ),
         prune_delete_limit: 0,
         ..Default::default()
@@ -554,10 +550,7 @@ pub static OPBNB_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Fermat, ForkCondition::Block(12113000)),
         ]),
         base_fee_params: BaseFeeParamsKind::Variable(
-            vec![
-                (Hardfork::London, BaseFeeParams::ethereum()),
-            ]
-            .into(),
+            vec![(Hardfork::London, BaseFeeParams::ethereum())].into(),
         ),
         prune_delete_limit: 0,
         ..Default::default()
