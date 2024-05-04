@@ -4,6 +4,7 @@ use reth_db::{
     cursor::DbCursorRO, database::Database, static_file::HeaderMask, tables, transaction::DbTx,
 };
 use reth_exex::ExExManagerHandle;
+use reth_parlia_consensus::Parlia;
 use reth_primitives::{
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, ExecutionCheckpoint, StageCheckpoint, StageId,
@@ -177,6 +178,8 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
         ));
         executor.set_prune_modes(prune_modes);
         executor.set_tip(max_block);
+        #[cfg(feature = "bsc")]
+        executor.set_provider_for_parlia(provider);
 
         // Progress tracking
         let mut stage_progress = start_block;

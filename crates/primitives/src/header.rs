@@ -12,7 +12,7 @@ use crate::{
     ChainSpec, GotExpected, GotExpectedBoxed, Hardfork, B256, B64, U256,
 };
 use alloy_rlp::{length_of_length, Decodable, Encodable};
-use bytes::BufMut;
+use bytes::{BufMut, BytesMut};
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest::prelude::*;
 use reth_codecs::{add_arbitrary_tests, derive_arbitrary, main_codec, Compact};
@@ -208,6 +208,36 @@ impl Header {
     /// Use [`Header::seal`], [`SealedHeader`] and unlock if you need hash to be persistent.
     pub fn hash_slow(&self) -> B256 {
         keccak256(alloy_rlp::encode(self))
+    }
+
+    /// hash_with_chain_id
+    /// It’s a dedicated method for bsc’s header rlp encode.
+    /// add chain_id in header encode make more security.
+    /// ignore baseFee encode in bsc rlp encode.
+    pub fn hash_with_chain_id(&self, chain_id: u64) -> B256 {
+        let mut out = BytesMut::new();
+        self.encode_with_chain_id(&mut out, chain_id);
+        keccak256(&out[..])
+    }
+
+    fn encode_with_chain_id(&self, out: &mut dyn BufMut, chain_id: u64) {
+        self.rlp_header_with_chain_id(chain_id).encode(out);
+        Encodable::encode(&chain_id, out);
+        Encodable::encode(&self.parent_hash, out);
+        Encodable::encode(&self.ommers_hash, out);
+        Encodable::encode(&self.beneficiary, out);
+        Encodable::encode(&self.state_root, out);
+        Encodable::encode(&self.transactions_root, out);
+        Encodable::encode(&self.receipts_root, out);
+        Encodable::encode(&self.logs_bloom, out);
+        Encodable::encode(&self.difficulty, out);
+        Encodable::encode(&self.number, out);
+        Encodable::encode(&self.gas_limit, out);
+        Encodable::encode(&self.gas_used, out);
+        Encodable::encode(&self.timestamp, out);
+        Encodable::encode(&self.extra_data, out);
+        Encodable::encode(&self.mix_hash, out);
+        Encodable::encode(&self.nonce, out);
     }
 
     /// Checks if the header is empty - has no transactions and no ommers

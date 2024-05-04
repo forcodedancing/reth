@@ -8,6 +8,7 @@ members = [
     "crates/consensus/beacon/",
     "crates/consensus/beacon-core/",
     "crates/consensus/common/",
+    "crates/consensus/parlia/",
     "crates/ethereum-forks/",
     "crates/e2e-test-utils/",
     "crates/etl/",
@@ -203,6 +204,7 @@ reth-auto-seal-consensus = { path = "crates/consensus/auto-seal" }
 reth-basic-payload-builder = { path = "crates/payload/basic" }
 reth-beacon-consensus = { path = "crates/consensus/beacon" }
 reth-beacon-consensus-core = { path = "crates/consensus/beacon-core" }
+reth-parlia-consensus = { path = "crates/consensus/parlia" }
 reth-blockchain-tree = { path = "crates/blockchain-tree" }
 reth-cli-runner = { path = "crates/cli/runner" }
 reth-codecs = { path = "crates/storage/codecs" }
@@ -280,6 +282,7 @@ revm-inspectors = { git = "https://github.com/paradigmxyz/evm-inspectors", rev =
 alloy-chains = "0.1.15"
 alloy-primitives = "0.7.0"
 alloy-dyn-abi = "0.7.0"
+alloy-json-abi = "0.7.0"
 alloy-sol-types = "0.7.0"
 alloy-rlp = "0.3.4"
 alloy-trie = "0.3.1"

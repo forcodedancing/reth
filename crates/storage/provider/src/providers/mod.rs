@@ -2,9 +2,10 @@ use crate::{
     AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
     BlockSource, BlockchainTreePendingStateProvider, BundleStateDataProvider, CanonChainTracker,
     CanonStateNotifications, CanonStateSubscriptions, ChainSpecProvider, ChangeSetReader,
-    DatabaseProviderFactory, EvmEnvProvider, HeaderProvider, ProviderError, PruneCheckpointReader,
-    ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader, StateProviderBox,
-    StateProviderFactory, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
+    DatabaseProviderFactory, EvmEnvProvider, HeaderProvider, ParliaSnapshotReader, ProviderError,
+    PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader,
+    StateProviderBox, StateProviderFactory, TransactionVariant, TransactionsProvider,
+    WithdrawalsProvider,
 };
 use reth_db::{
     database::Database,
@@ -22,6 +23,7 @@ use reth_interfaces::{
     RethResult,
 };
 use reth_primitives::{
+    parlia::Snapshot,
     stage::{StageCheckpoint, StageId},
     Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumber,
     BlockNumberOrTag, BlockWithSenders, ChainInfo, ChainSpec, Header, PruneCheckpoint,
@@ -903,5 +905,15 @@ where
     /// Get basic account information.
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
         self.database.provider()?.basic_account(address)
+    }
+}
+
+impl<DB, Tree> ParliaSnapshotReader for BlockchainProvider<DB, Tree>
+where
+    DB: Database,
+    Tree: Sync + Send,
+{
+    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        self.database.provider()?.get_parlia_snapshot(block_hash)
     }
 }

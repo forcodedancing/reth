@@ -8,9 +8,10 @@ use crate::{
     AccountReader, BlockExecutionWriter, BlockHashReader, BlockNumReader, BlockReader, BlockWriter,
     Chain, EvmEnvProvider, HashingWriter, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider,
     HeaderSyncMode, HistoricalStateProvider, HistoryWriter, LatestStateProvider,
-    OriginalValuesKnown, ProviderError, PruneCheckpointReader, PruneCheckpointWriter,
-    StageCheckpointReader, StateProviderBox, StatsReader, StorageReader, TransactionVariant,
-    TransactionsProvider, TransactionsProviderExt, WithdrawalsProvider,
+    OriginalValuesKnown, ParliaSnapshotReader, ParliaSnapshotWriter, ProviderError,
+    PruneCheckpointReader, PruneCheckpointWriter, StageCheckpointReader, StateProviderBox,
+    StatsReader, StorageReader, TransactionVariant, TransactionsProvider, TransactionsProviderExt,
+    WithdrawalsProvider,
 };
 use itertools::{izip, Itertools};
 use reth_db::{
@@ -34,6 +35,7 @@ use reth_interfaces::{
 };
 use reth_primitives::{
     keccak256,
+    parlia::Snapshot,
     revm::{config::revm_spec, env::fill_block_env},
     stage::{StageCheckpoint, StageId},
     trie::Nibbles,
@@ -2681,6 +2683,18 @@ impl<TX: DbTx> StatsReader for DatabaseProvider<TX> {
         };
 
         Ok(db_entries + static_file_entries)
+    }
+}
+
+impl<TX: DbTx> ParliaSnapshotReader for DatabaseProvider<TX> {
+    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        Ok(self.tx.get::<tables::ParliaSnapshot>(block_hash)?)
+    }
+}
+
+impl<TX: DbTxMut> ParliaSnapshotWriter for DatabaseProvider<TX> {
+    fn save_parlia_snapshot(&self, block_hash: B256, snapshot: Snapshot) -> ProviderResult<()> {
+        Ok(self.tx.put::<tables::ParliaSnapshot>(block_hash, snapshot)?)
     }
 }
 

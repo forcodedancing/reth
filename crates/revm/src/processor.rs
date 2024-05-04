@@ -1,3 +1,27 @@
+use reth_db::database;
+use reth_evm::ConfigureEvm;
+use reth_interfaces::executor::{
+    BlockExecutionError, BlockValidationError, BscBlockExecutionError,
+};
+use reth_parlia_consensus::{
+    get_top_validators_by_voting_power, is_breathe_block, is_system_transaction, Parlia,
+    DIFF_INTURN, MAX_SYSTEM_REWARD, SYSTEM_REWARD_CONTRACT, SYSTEM_REWARD_PERCENT,
+};
+#[cfg(feature = "optimism")]
+use reth_primitives::revm::env::fill_op_tx_env;
+#[cfg(not(feature = "optimism"))]
+use reth_primitives::revm::env::fill_tx_env;
+use reth_primitives::{
+    constants::SYSTEM_ADDRESS, Address, Block, BlockNumber, BlockWithSenders, Bloom, Bytes,
+    ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, ReceiptWithBloom, Receipts,
+    SealedHeader, Transaction, TransactionSigned, Withdrawals, B256, U256,
+};
+#[cfg(not(feature = "optimism"))]
+use reth_provider::BundleStateWithReceipts;
+use reth_provider::{
+    BlockExecutor, DatabaseProviderRW, ProviderError, PrunableBlockExecutor, StateProvider,
+};
+use reth_rpc_types::beacon::BlsPublicKey;
 #[cfg(not(feature = "optimism"))]
 use revm::DatabaseCommit;
 use revm::{
@@ -7,30 +31,18 @@ use revm::{
     primitives::{CfgEnvWithHandlerCfg, ResultAndState},
     Evm, State,
 };
-use std::{sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 #[cfg(not(feature = "optimism"))]
 use tracing::{debug, trace};
-
-use reth_evm::ConfigureEvm;
-use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
-#[cfg(feature = "optimism")]
-use reth_primitives::revm::env::fill_op_tx_env;
-#[cfg(not(feature = "optimism"))]
-use reth_primitives::revm::env::fill_tx_env;
-use reth_primitives::{
-    Address, Block, BlockNumber, BlockWithSenders, Bloom, ChainSpec, GotExpected, Hardfork, Header,
-    PruneModes, Receipt, ReceiptWithBloom, Receipts, TransactionSigned, Withdrawals, B256, U256,
-};
-#[cfg(not(feature = "optimism"))]
-use reth_provider::BundleStateWithReceipts;
-use reth_provider::{BlockExecutor, ProviderError, PrunableBlockExecutor, StateProvider};
 
 use crate::{
     batch::{BlockBatchRecord, BlockExecutorStats},
     database::StateProviderDatabase,
     eth_dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS},
+    primitives::{Env, TransactTo, TxEnv},
     stack::{InspectorStack, InspectorStackConfig},
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
+    Database,
 };
 
 /// EVMProcessor is a block executor that uses revm to execute blocks or multiple blocks.
@@ -49,7 +61,7 @@ use crate::{
 /// InspectorStack are used for optional inspecting execution. And it contains
 /// various duration of parts of execution.
 #[allow(missing_debug_implementations)]
-pub struct EVMProcessor<'a, EvmConfig> {
+pub struct EVMProcessor<'a, EvmConfig, P> {
     /// The configured chain-spec
     pub(crate) chain_spec: Arc<ChainSpec>,
     /// revm instance that contains database and env environment.
@@ -60,9 +72,11 @@ pub struct EVMProcessor<'a, EvmConfig> {
     pub(crate) stats: BlockExecutorStats,
     /// The type that is able to configure the EVM environment.
     _evm_config: EvmConfig,
+
+    parlia_consensus: Option<Arc<Parlia<P>>>,
 }
 
-impl<'a, EvmConfig> EVMProcessor<'a, EvmConfig>
+impl<'a, EvmConfig, P> EVMProcessor<'a, EvmConfig, P>
 where
     EvmConfig: ConfigureEvm,
 {
@@ -99,6 +113,7 @@ where
             batch_record: BlockBatchRecord::default(),
             stats: BlockExecutorStats::default(),
             _evm_config: evm_config,
+            parlia_consensus: None,
         }
     }
 
@@ -110,6 +125,11 @@ where
     /// Configure the executor with the given block.
     pub fn set_first_block(&mut self, num: BlockNumber) {
         self.batch_record.set_first_block(num);
+    }
+
+    #[cfg(feature = "bsc")]
+    pub fn set_parlia(&mut self, parlia_consensus: Arc<Parlia<P>>) {
+        self.parlia_consensus = Some(parlia_consensus);
     }
 
     /// Saves the receipts to the batch record.
@@ -254,6 +274,7 @@ where
     }
 
     /// Execute the block, verify gas usage and apply post-block state changes.
+    #[cfg(not(feature = "bsc"))]
     pub(crate) fn execute_inner(
         &mut self,
         block: &BlockWithSenders,
@@ -287,11 +308,385 @@ where
 
         Ok(receipts)
     }
+
+    #[cfg(feature = "bsc")]
+    pub(crate) fn execute_inner(
+        &mut self,
+        block: &BlockWithSenders,
+        total_difficulty: U256,
+    ) -> Result<Vec<Receipt>, BlockExecutionError> {
+        self.init_env(&block.header, total_difficulty);
+        self.apply_beacon_root_contract_call(block)?;
+        let (mut system_tx, mut receipts, mut cumulative_gas_used) =
+            self.execute_transactions(block, total_difficulty)?;
+
+        self.finalize(&block.header, &mut system_tx, &mut receipts, &mut cumulative_gas_used)?;
+        // Check if gas used matches the value set in header.
+        if block.gas_used != cumulative_gas_used {
+            let receipts = Receipts::from_block_receipt(receipts);
+            return Err(BlockValidationError::BlockGasUsed {
+                gas: GotExpected { got: cumulative_gas_used, expected: block.gas_used },
+                gas_spent_by_tx: receipts.gas_spent_by_tx()?,
+            }
+            .into())
+        }
+
+        let time = Instant::now();
+        let retention = self.batch_record.bundle_retention(block.number);
+        self.db_mut().merge_transitions(retention);
+        self.stats.merge_transitions_duration += time.elapsed();
+
+        if self.batch_record.first_block().is_none() {
+            self.batch_record.set_first_block(block.number);
+        }
+
+        Ok(receipts)
+    }
+
+    #[cfg(feature = "bsc")]
+    pub fn finalize(
+        &mut self,
+        header: &Header,
+        system_txs: &mut Vec<&TransactionSigned>,
+        receipts: &mut Vec<Receipt>,
+        cumulative_gas_used: &mut u64,
+    ) -> Result<(), BlockExecutionError> {
+        let parlia_consensus = self.parlia_consensus.as_ref().ok_or(
+            BlockExecutionError::Validation(BscBlockExecutionError::NoParliaConsensus.into()),
+        )?;
+
+        let number = header.number;
+        let validator = header.beneficiary;
+        let parent = parlia_consensus.get_header_by_hash(header.number, header.parent_hash)?;
+
+        // The snapshot should be ready after the header stage
+        let snap = parlia_consensus
+            .get_snapshot_from_cache(&header.parent_hash)
+            .ok_or(BscBlockExecutionError::NoParliaConsensus.into())?;
+
+        //TODO: isMajorityFork ?
+
+        // verify validators
+        {
+            let (validators, mut vote_addrs_map) =
+                if parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+                    let (to, data) = parlia_consensus.get_current_validators_before_luban(number);
+                    let output = self.eth_call(to, data)?;
+
+                    (
+                        parlia_consensus
+                            .unpack_data_into_validator_set_before_luban(output.as_ref()),
+                        Vec::new(),
+                    )
+                } else {
+                    let (to, data) = parlia_consensus.get_current_validators();
+                    let output = self.eth_call(to, data)?;
+
+                    parlia_consensus.unpack_data_into_validator_set(output.as_ref())
+                };
+
+            validator.sort();
+            let validator_num = validator.len();
+            let validator_bytes =
+                if parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+                    let mut validator_bytes = Vec::new();
+                    for v in validators {
+                        validator_bytes.extend_from_slice(v.as_ref());
+                    }
+
+                    validator_bytes.as_slice()
+                } else {
+                    if parlia_consensus.is_on_luban(number) {
+                        vote_addrs_map = Vec::with_capacity(validator_num);
+                        for _ in 0..validator_num {
+                            vote_addrs_map.push(BlsPublicKey::default());
+                        }
+                    }
+
+                    let mut validator_bytes = Vec::new();
+                    for i in 0..validator_num {
+                        validator_bytes.extend_from_slice(validators[i].as_ref());
+                        validator_bytes.extend_from_slice(vote_addrs_map[i].as_ref());
+                    }
+
+                    validator_bytes.as_slice()
+                };
+
+            if !validator_bytes
+                .eq(parlia_consensus.get_validator_bytes_from_header(header).unwrap())
+            {
+                return Err(BlockExecutionError::Validation(
+                    BscBlockExecutionError::InvalidValidators.into(),
+                ))
+            }
+        }
+
+        if number == 1 {
+            let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+            parlia_consensus.init_genesis_contracts(nonce).iter().for_each(|tx| {
+                self.transact_system_tx(tx, validator, system_txs, receipts, cumulative_gas_used)?;
+            });
+        }
+
+        if parlia_consensus
+            .chain_spec()
+            .fork(Hardfork::Feynman)
+            .active_at_timestamp(header.timestamp)
+        {
+            // apply system contract upgrade
+            todo!()
+        }
+
+        if parlia_consensus.is_on_feynman(header.timestamp, parent.timestamp) {
+            let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+            parlia_consensus.init_feynman_contracts(nonce).iter().for_each(|tx| {
+                self.transact_system_tx(tx, validator, system_txs, receipts, cumulative_gas_used)?;
+            });
+        }
+
+        if header.difficulty != DIFF_INTURN {
+            let spoiled_val = snap.inturn_validator();
+            let signed_recently: bool;
+            if parlia_consensus.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+                signed_recently = snap.sign_recently(spoiled_val);
+            } else {
+                signed_recently = snap
+                    .recent_proposers
+                    .iter()
+                    .find(|(_, v)| **v == spoiled_val)
+                    .map(|_| true)
+                    .unwrap_or(false);
+            }
+
+            if !signed_recently {
+                let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+                self.transact_system_tx(
+                    &parlia_consensus.slash(nonce, spoiled_val),
+                    validator,
+                    system_txs,
+                    receipts,
+                    cumulative_gas_used,
+                )?;
+            }
+        }
+
+        let mut block_reward = *self.db_mut().drain_balances([SYSTEM_ADDRESS])?.first().unwrap();
+        let mut balance_increment = HashMap::new();
+        balance_increment.insert(validator, block_reward);
+        self.db_mut()
+            .increment_balances(balance_increment)
+            .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
+
+        if !parlia_consensus
+            .chain_spec()
+            .fork(Hardfork::Kepler)
+            .active_at_timestamp(header.timestamp)
+        {
+            let system_reward_balance =
+                self.db_mut().basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap().balance;
+            if system_reward_balance.try_into().unwrap() < MAX_SYSTEM_REWARD {
+                let reward_to_system = block_reward >> SYSTEM_REWARD_PERCENT;
+                if reward_to_system > 0 {
+                    let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+                    self.transact_system_tx(
+                        &parlia_consensus.distribute_to_system(nonce, reward_to_system),
+                        validator,
+                        system_txs,
+                        receipts,
+                        cumulative_gas_used,
+                    )?;
+                }
+
+                block_reward -= reward_to_system;
+            }
+        }
+
+        let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+        parlia_consensus.distribute_to_validator(nonce, validator, block_reward)?;
+
+        if parlia_consensus.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+            if number % parlia_consensus.epoch() == 0 {
+                let (validators, weights) = parlia_consensus.get_finality_weights(header)?;
+                let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+                self.transact_system_tx(
+                    &parlia_consensus.distribute_finality_reward(nonce, validators, weights),
+                    validator,
+                    system_txs,
+                    receipts,
+                    cumulative_gas_used,
+                )?;
+            }
+        }
+
+        if parlia_consensus
+            .chain_spec()
+            .fork(Hardfork::Feynman)
+            .active_at_timestamp(header.timestamp) &&
+            is_breathe_block(parent.timestamp, header.timestamp)
+        {
+            if !parlia_consensus.is_on_feynman(header.timestamp, parent.timestamp) {
+                let (to, data) = parlia_consensus.get_max_elected_validators();
+                let output = self.eth_call(to, data)?;
+                let max_elected_validators =
+                    parlia_consensus.unpack_data_into_max_elected_validators(output.as_ref());
+
+                let (to, data) = parlia_consensus.get_validator_election_info();
+                let output = self.eth_call(to, data)?;
+                let (consensus_addrs, voting_powers, vote_addrs, total_length) =
+                    parlia_consensus.unpack_data_into_validator_election_info(output.as_ref());
+
+                let (e_validators, e_voting_powers, e_vote_addrs) =
+                    get_top_validators_by_voting_power(
+                        consensus_addrs,
+                        voting_powers,
+                        vote_addrs,
+                        total_length,
+                        max_elected_validators,
+                    )
+                    .ok_or(Err(BscBlockExecutionError::GetTopValidatorsFailed.into()))?;
+                let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
+                self.transact_system_tx(
+                    &parlia_consensus.update_validator_set_v2(
+                        nonce,
+                        e_validators,
+                        e_voting_powers,
+                        e_vote_addrs,
+                    ),
+                    validator,
+                    system_txs,
+                    receipts,
+                    cumulative_gas_used,
+                )?;
+            }
+        }
+
+        if !system_txs.is_empty() {
+            return Err(BlockExecutionError::Validation(
+                BscBlockExecutionError::UnexpectedSystemTx.into(),
+            ))
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "bsc")]
+    pub fn transact_system_tx(
+        &mut self,
+        transaction: &Transaction,
+        sender: Address,
+        system_txs: &mut Vec<&TransactionSigned>,
+        receipts: &mut Vec<Receipt>,
+        cumulative_gas_used: &mut u64,
+    ) -> Result<ResultAndState, BlockExecutionError> {
+        if transaction.signature_hash() != system_txs[0].signature_hash() {
+            return Err(BlockExecutionError::Validation(
+                BscBlockExecutionError::UnexpectedSystemTx.into(),
+            ));
+        }
+        system_txs.remove(0);
+
+        let tx_env = self.evm.tx_mut();
+        tx_env.caller = sender;
+        tx_env.transact_to = TransactTo::Call(transaction.to().unwrap());
+        tx_env.nonce = Some(transaction.nonce());
+        tx_env.gas_limit = u64::MAX / 2;
+        tx_env.value = transaction.value();
+        tx_env.data = transaction.input().clone();
+        //TODO: zero gas price will cause the gas used not be counted
+        tx_env.gas_price = U256::ZERO;
+        tx_env.chain_id = transaction.chain_id();
+        // Setting the gas priority fee to None ensures the effective gas price is derived from
+        // the `gas_price` field, which we need to be zero
+        tx_env.gas_priority_fee = None;
+        tx_env.access_list = Vec::new();
+        tx_env.blob_hashes = Vec::new();
+        tx_env.max_fee_per_blob_gas = None;
+
+        // disable the base fee check for this call by setting the base fee to zero
+        let block_env = self.evm.block_mut();
+        block_env.basefee = U256::ZERO;
+
+        // Execute transaction.
+        let time = Instant::now();
+        let ResultAndState { result, state } = self.evm.transact().map_err(move |e| {
+            // Ensure hash is calculated for error log, if not already done
+            BlockValidationError::EVM { hash: transaction.recalculate_hash(), error: e.into() }
+                .into()
+        })?;
+        self.stats.execution_duration += time.elapsed();
+
+        let time = Instant::now();
+        self.db_mut().commit(state);
+        self.stats.apply_state_duration += time.elapsed();
+
+        // append gas used
+        *cumulative_gas_used += result.gas_used();
+
+        // Push transaction changeset and calculate header bloom filter for receipt.
+        receipts.push(Receipt {
+            tx_type: transaction.tx_type(),
+            // Success flag was added in `EIP-658: Embedding transaction status code in
+            // receipts`.
+            success: result.is_success(),
+            cumulative_gas_used,
+            // convert to reth log
+            logs: result.into_logs().into_iter().map(Into::into).collect(),
+        });
+    }
+
+    #[cfg(feature = "bsc")]
+    pub fn eth_call(&mut self, to: Address, data: Bytes) -> Result<&Bytes, BlockExecutionError> {
+        let tx_env = self.evm.tx_mut();
+        tx_env.caller = Address::default();
+        tx_env.transact_to = TransactTo::Call(to);
+        tx_env.nonce = None;
+        tx_env.gas_limit = u64::MAX / 2;
+        tx_env.value = U256::ZERO;
+        tx_env.data = data;
+        tx_env.gas_price = U256::ZERO;
+        // The chain ID check is not relevant here and is disabled if set to None
+        tx_env.chain_id = None;
+        // Setting the gas priority fee to None ensures the effective gas price is derived from
+        // the `gas_price` field, which we need to be zero
+        tx_env.gas_priority_fee = None;
+        tx_env.access_list = Vec::new();
+        tx_env.blob_hashes = Vec::new();
+        tx_env.max_fee_per_blob_gas = None;
+
+        // disable the base fee check for this call by setting the base fee to zero
+        let block_env = self.evm.block_mut();
+        block_env.basefee = U256::ZERO;
+
+        // Execute call.
+        let ResultAndState { result, .. } = self.evm.transact().map_err(move |e| {
+            // Ensure hash is calculated for error log, if not already done
+            BlockValidationError::EVM { hash: B256::default(), error: e.into() }.into()
+        })?;
+
+        if !result.is_success() {
+            return Err(BlockExecutionError::Validation(
+                BscBlockExecutionError::EthCallFailed.into(),
+            ))
+        }
+
+        result
+            .output()
+            .ok_or(BlockExecutionError::Validation(BscBlockExecutionError::EthCallFailed.into()))
+    }
+
+    #[cfg(feature = "bsc")]
+    pub fn get_current_validators(&mut self, block_number: BlockNumber) {
+        let parlia_consensus = self.parlia_consensus.as_ref().ok_or(
+            BlockExecutionError::Validation(BscBlockExecutionError::NoParliaConsensus.into()),
+        )?;
+
+        if parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(block_number) {}
+    }
 }
 
 /// Default Ethereum implementation of the [BlockExecutor] trait for the [EVMProcessor].
 #[cfg(not(feature = "optimism"))]
-impl<'a, EvmConfig> BlockExecutor for EVMProcessor<'a, EvmConfig>
+impl<'a, EvmConfig, P> BlockExecutor for EVMProcessor<'a, EvmConfig, P>
 where
     EvmConfig: ConfigureEvm,
 {
@@ -324,6 +719,7 @@ where
         Ok(())
     }
 
+    #[cfg(not(feature = "bsc"))]
     fn execute_transactions(
         &mut self,
         block: &BlockWithSenders,
@@ -382,6 +778,99 @@ where
         Ok((receipts, cumulative_gas_used))
     }
 
+    #[cfg(feature = "bsc")]
+    fn execute_transactions(
+        &mut self,
+        block: &BlockWithSenders,
+        total_difficulty: U256,
+    ) -> Result<(Vec<&TransactionSigned>, Vec<Receipt>, u64), BlockExecutionError> {
+        let parlia_consensus;
+        if let Some(parlia) = &self.parlia_consensus {
+            parlia_consensus = parlia;
+        } else {
+            return Err(BlockExecutionError::Validation(
+                BscBlockExecutionError::NoParliaConsensus.into(),
+            ))
+        }
+
+        self.init_env(&block.header, total_difficulty);
+
+        if !parlia_consensus
+            .chain_spec()
+            .fork(Hardfork::Feynman)
+            .active_at_timestamp(block.timestamp)
+        {
+            let _parent =
+                parlia_consensus.get_header_by_hash(block.number - 1, block.parent_hash)?;
+            // apply system contract upgrade
+            todo!()
+        }
+
+        // perf: do not execute empty blocks
+        if block.body.is_empty() {
+            return Ok((Vec::new(), Vec::new(), 0))
+        }
+
+        let mut cumulative_gas_used = 0;
+        let mut system_txs = Vec::with_capacity(2);
+        let mut receipts = Vec::with_capacity(block.body.len());
+        for (sender, transaction) in block.transactions_with_sender() {
+            if is_system_transaction(transaction, &block.header) {
+                system_txs.push(transaction);
+                continue
+            }
+            // systemTxs should be always at the end of block.
+            if parlia_consensus.chain_spec().is_cancun_active_at_timestamp(block.timestamp) {
+                if system_txs.len() > 0 {
+                    return Err(BlockExecutionError::Validation(
+                        BscBlockExecutionError::UnexpectedNormalTx.into(),
+                    ))
+                }
+            }
+
+            let time = Instant::now();
+            // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
+            // must be no greater than the block’s gasLimit.
+            let block_available_gas = block.header.gas_limit - cumulative_gas_used;
+            if transaction.gas_limit() > block_available_gas {
+                return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
+                    transaction_gas_limit: transaction.gas_limit(),
+                    block_available_gas,
+                }
+                .into())
+            }
+            // Execute transaction.
+            let ResultAndState { result, state } = self.transact(transaction, *sender)?;
+            trace!(
+                target: "evm",
+                ?transaction, ?result, ?state,
+                "Executed transaction"
+            );
+            self.stats.execution_duration += time.elapsed();
+            let time = Instant::now();
+
+            self.db_mut().commit(state);
+
+            self.stats.apply_state_duration += time.elapsed();
+
+            // append gas used
+            cumulative_gas_used += result.gas_used();
+
+            // Push transaction changeset and calculate header bloom filter for receipt.
+            receipts.push(Receipt {
+                tx_type: transaction.tx_type(),
+                // Success flag was added in `EIP-658: Embedding transaction status code in
+                // receipts`.
+                success: result.is_success(),
+                cumulative_gas_used,
+                // convert to reth log
+                logs: result.into_logs().into_iter().map(Into::into).collect(),
+            });
+        }
+
+        Ok((system_txs, receipts, cumulative_gas_used))
+    }
+
     fn take_output_state(&mut self) -> BundleStateWithReceipts {
         self.stats.log_debug();
         BundleStateWithReceipts::new(
@@ -396,7 +885,7 @@ where
     }
 }
 
-impl<'a, EvmConfig> PrunableBlockExecutor for EVMProcessor<'a, EvmConfig>
+impl<'a, EvmConfig, P> PrunableBlockExecutor for EVMProcessor<'a, EvmConfig, P>
 where
     EvmConfig: ConfigureEvm,
 {
@@ -406,6 +895,16 @@ where
 
     fn set_prune_modes(&mut self, prune_modes: PruneModes) {
         self.batch_record.set_prune_modes(prune_modes);
+    }
+
+    #[cfg(feature = "bsc")]
+    fn set_provider_for_parlia<DB: database::Database>(
+        &mut self,
+        provider: &DatabaseProviderRW<DB>,
+    ) {
+        if let Some(parlia) = &mut self.parlia_consensus {
+            parlia.set_provider(provider);
+        }
     }
 }
 

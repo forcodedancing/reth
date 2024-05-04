@@ -119,6 +119,11 @@ pub enum BlockExecutionError {
     #[error(transparent)]
     LatestBlock(#[from] ProviderError),
 
+    /// Bsc Block Executor Errors
+    #[cfg(feature = "bsc")]
+    #[error(transparent)]
+    BscBlockExecution(#[from] BscBlockExecutionError),
+
     /// Optimism Block Executor Errors
     #[cfg(feature = "optimism")]
     #[error(transparent)]
@@ -144,6 +149,39 @@ pub enum OptimismBlockExecutionError {
     /// Thrown when a database account could not be loaded.
     #[error("failed to load account {0}")]
     AccountLoadFailed(reth_primitives::Address),
+}
+
+/// Bsc Block Executor Errors
+#[cfg(feature = "bsc")]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum BscBlockExecutionError {
+    /// Error when there is no Parlia consensus
+    #[error("no Parlia consensus found")]
+    NoParliaConsensus,
+
+    /// Error when the system txs are more than expected
+    #[error("unexpected system tx")]
+    UnexpectedSystemTx,
+
+    /// Error when there are normal tx after system tx
+    #[error("unexpected normal tx after system tx")]
+    UnexpectedNormalTx,
+
+    /// Error when there is no snapshot found
+    #[error("no snapshot found")]
+    SnapNotFound,
+
+    /// Error when eth call failed
+    #[error("eth call failed")]
+    EthCallFailed,
+
+    /// Error when the validators in header are invalid
+    #[error("invalid validators in header")]
+    InvalidValidators,
+
+    /// Error when get top validators failed
+    #[error("get top validators failed")]
+    GetTopValidatorsFailed,
 }
 
 impl BlockExecutionError {

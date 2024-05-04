@@ -1,4 +1,6 @@
 use futures_util::StreamExt;
+use lru::LruCache;
+use parking_lot::RwLock;
 use reth_codecs::Compact;
 use reth_config::config::EtlConfig;
 use reth_db::{
@@ -10,25 +12,28 @@ use reth_db::{
 };
 use reth_etl::Collector;
 use reth_interfaces::{
-    consensus::Consensus,
+    consensus::{Consensus, ConsensusError, ParliaConsensusError},
     p2p::headers::{downloader::HeaderDownloader, error::HeadersDownloaderError},
     provider::ProviderError,
 };
+use reth_parlia_consensus::Parlia;
 use reth_primitives::{
+    parlia::{Snapshot, CHECKPOINT_INTERVAL},
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, HeadersCheckpoint, StageCheckpoint, StageId,
     },
-    BlockHash, BlockNumber, SealedHeader, StaticFileSegment,
+    Address, BlockHash, BlockNumber, SealedHeader, StaticFileSegment, B256,
 };
 use reth_provider::{
     providers::{StaticFileProvider, StaticFileWriter},
     BlockHashReader, DatabaseProviderRW, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider,
-    HeaderSyncMode,
+    HeaderSyncMode, ParliaSnapshotReader,
 };
 use reth_stages_api::{
     BlockErrorKind, ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput,
 };
 use std::{
+    num::NonZeroUsize,
     sync::Arc,
     task::{ready, Context, Poll},
 };
@@ -63,6 +68,9 @@ pub struct HeaderStage<Provider, Downloader: HeaderDownloader> {
     header_collector: Collector<BlockNumber, SealedHeader>,
     /// Returns true if the ETL collector has all necessary headers to fill the gap.
     is_etl_ready: bool,
+
+    #[cfg(feature = "bsc")]
+    parlia_consensus: Arc<Parlia<Provider>>,
 }
 
 // === impl HeaderStage ===
@@ -79,6 +87,24 @@ where
         consensus: Arc<dyn Consensus>,
         etl_config: EtlConfig,
     ) -> Self {
+        #[cfg(feature = "bsc")]
+        if let Ok(parlia_consensus) = Arc::downcast::<Parlia<Provider>>(consensus.clone()) {
+            Self {
+                provider: database,
+                downloader,
+                mode,
+                consensus,
+                sync_gap: None,
+                hash_collector: Collector::new(etl_config.file_size / 2, etl_config.dir.clone()),
+                header_collector: Collector::new(etl_config.file_size / 2, etl_config.dir),
+                is_etl_ready: false,
+                parlia_consensus,
+            }
+        } else {
+            panic!("Parlia consensus is required for BSC");
+        }
+
+        #[cfg(not(feature = "bsc"))]
         Self {
             provider: database,
             downloader,
@@ -98,8 +124,9 @@ where
     fn write_headers<DB: Database>(
         &mut self,
         tx: &<DB as Database>::TXMut,
-        static_file_provider: StaticFileProvider,
+        provider: &DatabaseProviderRW<DB>,
     ) -> Result<BlockNumber, StageError> {
+        let static_file_provider = provider.static_file_provider().clone();
         let total_headers = self.header_collector.len();
 
         info!(target: "sync::stages::headers", total = total_headers, "Writing headers");
@@ -115,6 +142,10 @@ where
             .header_td_by_number(last_header_number)?
             .ok_or(ProviderError::TotalDifficultyNotFound(last_header_number))?;
 
+        // The parent of the first header must be the last header in the static files
+        #[cfg(feature = "bsc")]
+        let mut parent = static_file_provider.sealed_header(last_header_number)?.as_ref();
+
         // Although headers were downloaded in reverse order, the collector iterates it in ascending
         // order
         let mut writer = static_file_provider.latest_writer(StaticFileSegment::Headers)?;
@@ -127,7 +158,7 @@ where
             }
 
             let (sealed_header, _) = SealedHeader::from_compact(&header_buf, header_buf.len());
-            let (header, header_hash) = sealed_header.split();
+            let (header, header_hash) = sealed_header.clone().split();
             if header.number == 0 {
                 continue
             }
@@ -143,6 +174,21 @@ where
                     error: BlockErrorKind::Validation(error),
                 }
             })?;
+
+            // Header validation for BSC
+            #[cfg(feature = "bsc")]
+            {
+                let ref snap = self.parlia_consensus.snapshot(&sealed_header, parent)?;
+
+                self.parlia_consensus
+                    .verify_cascading_fields(snap, &sealed_header, parent)
+                    .map_err(|error| StageError::Block {
+                        block: Box::new(sealed_header.clone()),
+                        error: BlockErrorKind::Validation(error),
+                    })?;
+
+                parent = Some(&sealed_header);
+            }
 
             // Append to Headers segment
             writer.append_header(header, td, header_hash)?;
@@ -287,8 +333,7 @@ where
 
         // Write the headers and related tables to DB from ETL space
         let to_be_processed = self.hash_collector.len() as u64;
-        let last_header_number =
-            self.write_headers::<DB>(provider.tx_ref(), provider.static_file_provider().clone())?;
+        let last_header_number = self.write_headers::<DB>(provider.tx_ref(), provider)?;
 
         // Clear ETL collectors
         self.hash_collector.clear();

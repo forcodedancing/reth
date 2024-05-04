@@ -80,3 +80,6 @@ pub use stats::StatsReader;
 
 mod full;
 pub use full::FullProvider;
+
+mod parlia_snapshot;
+pub use parlia_snapshot::{ParliaSnapshotReader, ParliaSnapshotWriter};

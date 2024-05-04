@@ -38,6 +38,7 @@ use crate::{
     },
 };
 use reth_primitives::{
+    parlia::Snapshot,
     stage::StageCheckpoint,
     trie::{StorageTrieEntry, StoredBranchNode, StoredNibbles, StoredNibblesSubKey},
     Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, PruneCheckpoint,
@@ -376,6 +377,9 @@ tables! {
 
     /// Stores the history of client versions that have accessed the database with write privileges by unix timestamp in seconds.
     table VersionHistory<Key = u64, Value = ClientVersion>;
+
+    /// Stores the parlia snapshot data by block hash.
+    table ParliaSnapshot<Key = BlockHash, Value = Snapshot>;
 }
 
 // Alias types.

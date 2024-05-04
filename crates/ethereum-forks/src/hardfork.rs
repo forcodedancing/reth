@@ -73,6 +73,24 @@ pub enum Hardfork {
     // Upcoming
     /// Prague: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/prague.md>
     Prague,
+
+    // BSC hardfork
+    Ramanujan,
+    Niels,
+    MirrorSync,
+    Bruno,
+    Euler,
+    Gibbs,
+    Nano,
+    Moran,
+    Planck,
+    Luban,
+    Plato,
+    Hertz,
+    HertzFix,
+    Kepler,
+    Feynman,
+    FeynmanFix,
 }
 
 impl Hardfork {

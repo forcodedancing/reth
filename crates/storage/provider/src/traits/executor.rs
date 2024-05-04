@@ -1,8 +1,9 @@
 //! Executor Factory
 
-use crate::{bundle_state::BundleStateWithReceipts, StateProvider};
+use crate::{bundle_state::BundleStateWithReceipts, DatabaseProviderRW, StateProvider};
+use reth_db::database::Database;
 use reth_interfaces::executor::BlockExecutionError;
-use reth_primitives::{BlockNumber, BlockWithSenders, PruneModes, Receipt, U256};
+use reth_primitives::{BlockNumber, BlockWithSenders, PruneModes, Receipt, SealedHeader, U256};
 
 /// A factory capable of creating an executor with the given state provider.
 pub trait ExecutorFactory: Send + Sync + 'static {
@@ -65,4 +66,8 @@ pub trait PrunableBlockExecutor: BlockExecutor {
 
     /// Set prune modes.
     fn set_prune_modes(&mut self, prune_modes: PruneModes);
+
+    #[cfg(feature = "bsc")]
+    /// Set parlia consensus provider
+    fn set_provider_for_parlia<DB: Database>(&mut self, provider: &DatabaseProviderRW<DB>);
 }

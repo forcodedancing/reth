@@ -23,6 +23,7 @@ reth-trie = { workspace = true, features = ["metrics"] }
 reth-etl.workspace = true
 reth-config.workspace = true
 reth-stages-api = { workspace = true, features = ["test-utils"] }
+reth-parlia-consensus.workspace = true
 
 # async
 tokio = { workspace = true, features = ["sync"] }
@@ -35,6 +36,8 @@ tracing.workspace = true
 thiserror.workspace = true
 itertools.workspace = true
 rayon.workspace = true
+parking_lot.workspace = true
+lru = "0.12"
 num-traits = "0.2.15"
 tempfile = { workspace = true, optional = true }
 
@@ -72,6 +75,7 @@ pprof = { workspace = true, features = [
 ] }
 
 [features]
+bsc = []
 test-utils = [
     "reth-interfaces/test-utils",
     "reth-db/test-utils",

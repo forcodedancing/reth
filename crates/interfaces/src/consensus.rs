@@ -1,15 +1,15 @@
 use reth_primitives::{
-    BlockHash, BlockNumber, GotExpected, GotExpectedBoxed, Header, HeaderValidationError,
+    Address, BlockHash, BlockNumber, GotExpected, GotExpectedBoxed, Header, HeaderValidationError,
     InvalidTransactionError, SealedBlock, SealedHeader, B256, U256,
 };
-use std::fmt::Debug;
+use std::{any::Any, fmt::Debug};
 
 /// Re-export fork choice state
 pub use reth_rpc_types::engine::ForkchoiceState;
 
 /// Consensus is a protocol that chooses canonical chain.
 #[auto_impl::auto_impl(&, Arc)]
-pub trait Consensus: Debug + Send + Sync {
+pub trait Consensus: Any + Debug + Send + Sync {
     /// Validate if header is correct and follows consensus specification.
     ///
     /// This is called on standalone header to check if all hashes are correct.
@@ -246,9 +246,123 @@ pub enum ConsensusError {
     /// Error type transparently wrapping HeaderValidationError.
     #[error(transparent)]
     HeaderValidationError(#[from] HeaderValidationError),
+
+    /// Error type transparently wrapping ParliaConsensusError.
+    #[error(transparent)]
+    ParliaConsensusError(#[from] ParliaConsensusError),
 }
 
 /// `HeaderConsensusError` combines a `ConsensusError` with the `SealedHeader` it relates to.
 #[derive(thiserror::Error, Debug)]
 #[error("Consensus error: {0}, Invalid header: {1:?}")]
 pub struct HeaderConsensusError(ConsensusError, SealedHeader);
+
+/// Parlia consensus error.
+#[derive(thiserror::Error, Debug, PartialEq, Eq, Clone)]
+pub enum ParliaConsensusError {
+    /// Error when the consensus is not parlia
+    #[error("consensus is not parlia")]
+    NotParlia,
+
+    /// Error when the provider is not set
+    #[error("provider not set")]
+    ProviderNotSet,
+
+    /// Error for invalid block difficulty
+    #[error("invalid block difficulty: {difficulty}")]
+    InvalidDifficulty {
+        /// The block difficulty
+        difficulty: U256,
+    },
+
+    /// Error for invalid mix hash
+    #[error("invalid mix digest")]
+    InvalidMixHash,
+
+    /// Error when header extra vanity is missing
+    #[error("missing header extra vanity")]
+    ExtraVanityMissing,
+
+    /// Error when header extra signature is missing
+    #[error("missing header extra signature")]
+    ExtraSignatureMissing,
+
+    /// Error when header extra length is invalid
+    #[error("header extra length {header_extra_len} is invalid")]
+    InvalidHeaderExtraLen {
+        /// The validator bytes length
+        header_extra_len: u64,
+    },
+
+    /// Error when header extra validator bytes length is invalid
+    #[error("header extra validator bytes length {validator_bytes_len} is invalid")]
+    InvalidHeaderExtraValidatorBytesLen {
+        /// Is epoch
+        is_epoch: bool,
+        /// The validator bytes length
+        validator_bytes_len: usize,
+    },
+
+    /// Error when try to snapshot a future block
+    #[error("snapshot number mismatch: {0}")]
+    SnapFutureBlock(GotExpected<u64>),
+
+    /// Error when the block signer is not authorized
+    #[error("proposer {} at height {} is not authorized")]
+    SignerUnauthorized { block_number: BlockNumber, proposer: Address },
+
+    /// Error when the block signer is over limit
+    #[error("proposer {} is over limit")]
+    SignerOverLimit { proposer: Address },
+
+    /// Error when the header is unknown
+    #[error("unknown header [number={BlockNumber}, hash={hash}]")]
+    UnknownHeader { block_number: BlockNumber, hash: B256 },
+
+    /// Error when the header is not in epoch
+    #[error("{BlockNumber} is not in epoch")]
+    NotInEpoch { block_number: BlockNumber },
+
+    /// Error when apply snapshot failed
+    #[error("apply snapshot failed")]
+    ApplySnapshotFailed,
+
+    /// Error when the block proposer is in the backoff period
+    #[error("block [number={BlockNumber}, hash={hash}] proposer is in the backoff period")]
+    FutureBlock { block_number: BlockNumber, hash: B256 },
+
+    /// Error when the block's parent is unknown
+    #[error("unknown ancestor of block [number={BlockNumber}, hash={hash}]")]
+    UnknownAncestor { block_number: BlockNumber, hash: B256 },
+
+    /// Error when the vote's signature is invalid
+    #[error("invalid vote signature")]
+    InvalidVoteSignature,
+
+    /// Error when the attestation's extra length is too large
+    #[error("attestation extra length {extra_len} is too large")]
+    TooLargeAttestationExtraLen { extra_len: usize },
+
+    /// Error when the attestation's target is invalid
+    #[error("invalid attestation target: number {block_number}, hash {block_hash}")]
+    InvalidAttestationTarget { block_number: GotExpected<u64>, block_hash: GotExpectedBoxed<B256> },
+
+    /// Error when the attestation's source is invalid
+    #[error("invalid attestation source: number {block_number}, hash {block_hash}")]
+    InvalidAttestationSource { block_number: GotExpected<u64>, block_hash: GotExpectedBoxed<B256> },
+
+    /// Error when the attestation's vote count is invalid
+    #[error("invalid attestation vote count: {0}")]
+    InvalidAttestationVoteCount(GotExpected<u64>),
+
+    /// Error when the vote address is not found
+    #[error("vote address not found: {address}")]
+    SnapNotFoundVoteAddr { address: Address },
+
+    /// Error when the block's header signer is invalid
+    #[error("wrong header signer: block number {block_number}, expected {expected}, got {got}")]
+    WrongHeaderSigner { block_number: BlockNumber, expected: Address, got: Address },
+
+    /// Error when the system transaction is unexpected
+    UnexpectedSystemTx,
+}

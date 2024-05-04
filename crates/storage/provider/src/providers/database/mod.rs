@@ -4,8 +4,8 @@ use crate::{
     traits::{BlockSource, ReceiptProvider},
     BlockHashReader, BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory,
     EvmEnvProvider, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider, HeaderSyncMode,
-    ProviderError, PruneCheckpointReader, StageCheckpointReader, StateProviderBox,
-    TransactionVariant, TransactionsProvider, WithdrawalsProvider,
+    ParliaSnapshotReader, ProviderError, PruneCheckpointReader, StageCheckpointReader,
+    StateProviderBox, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
 };
 use reth_db::{database::Database, init_db, models::StoredBlockBodyIndices, DatabaseEnv};
 use reth_evm::ConfigureEvmEnv;
@@ -30,6 +30,7 @@ mod provider;
 
 pub use provider::{DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW};
 use reth_db::mdbx::DatabaseArguments;
+use reth_primitives::parlia::Snapshot;
 
 /// A common provider that fetches data from a database or static file.
 ///
@@ -553,6 +554,12 @@ impl<DB: Database> PruneCheckpointReader for ProviderFactory<DB> {
         segment: PruneSegment,
     ) -> ProviderResult<Option<PruneCheckpoint>> {
         self.provider()?.get_prune_checkpoint(segment)
+    }
+}
+
+impl<DB: Database> ParliaSnapshotReader for ProviderFactory<DB> {
+    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        self.provider()?.get_parlia_snapshot(block_hash)
     }
 }
 
