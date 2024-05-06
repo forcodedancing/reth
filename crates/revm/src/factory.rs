@@ -31,7 +31,7 @@ impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
             stack: None,
             evm_config,
             #[cfg(feature = "bsc")]
-            parlia_consensus: Arc::new(Parlia::<P>::default()),
+            parlia_consensus: Arc::new(Parlia::default()),
         }
     }
 

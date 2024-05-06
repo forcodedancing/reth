@@ -77,13 +77,13 @@ pub struct Parlia<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWrite
     provider: Option<P>,
 }
 
-impl<P> Default for Parlia<P> {
+impl Default for Parlia<_> {
     fn default() -> Self {
         Self::new(Arc::new(ChainSpec::default()), 200, 3)
     }
 }
 
-impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> {
+impl Parlia<_> {
     pub fn new(chain_spec: Arc<ChainSpec>, epoch: u64, period: u64) -> Self {
         let validator_abi = load_abi_from_file("./abi/validator_set.json").unwrap();
         let validator_abi_before_luban =
@@ -392,7 +392,7 @@ impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> 
     }
 }
 
-impl<P> Parlia<P> {
+impl Parlia<_> {
     pub fn init_genesis_contracts(&self, nonce: u64) -> Vec<Transaction> {
         let function = self.validator_abi.function("init").unwrap().first().unwrap();
         let input = function.abi_encode_input(&[]).unwrap();
@@ -559,7 +559,7 @@ impl<P> Parlia<P> {
     }
 }
 
-impl<P> Parlia<P> {
+impl Parlia<_> {
     pub fn get_current_validators_before_luban(
         &self,
         block_number: BlockNumber,
@@ -671,7 +671,7 @@ impl<P> Parlia<P> {
     }
 }
 
-impl<P> Parlia<P> {
+impl Parlia<_> {
     pub fn chain_spec(&self) -> &ChainSpec {
         &self.chain_spec
     }
@@ -1006,7 +1006,7 @@ impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> 
     }
 }
 
-impl<P> Debug for Parlia<P> {
+impl Debug for Parlia<_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Parlia")
             .field("chain_spec", &self.chain_spec)
@@ -1016,7 +1016,7 @@ impl<P> Debug for Parlia<P> {
     }
 }
 
-impl<P> Consensus for Parlia<P> {
+impl Consensus for Parlia<_> {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
         // Don't waste time checking blocks from the future
         let present_timestamp =

@@ -115,7 +115,7 @@ where
             stats: BlockExecutorStats::default(),
             _evm_config: evm_config,
             #[cfg(feature = "bsc")]
-            parlia_consensus: Arc::new(Parlia::<P>::default()),
+            parlia_consensus: Arc::new(Parlia::default()),
         }
     }
 

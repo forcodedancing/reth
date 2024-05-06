@@ -625,7 +625,7 @@ mod tests {
     use reth_revm::EvmProcessorFactory;
     use std::collections::BTreeMap;
 
-    fn stage() -> ExecutionStage<EvmProcessorFactory<EthEvmConfig>> {
+    fn stage<P>() -> ExecutionStage<EvmProcessorFactory<EthEvmConfig, P>> {
         let executor_factory = EvmProcessorFactory::new(
             Arc::new(ChainSpecBuilder::mainnet().berlin_activated().build()),
             EthEvmConfig::default(),
@@ -866,7 +866,7 @@ mod tests {
                 mode.receipts_log_filter = random_filter.clone();
             }
 
-            let mut execution_stage: ExecutionStage<EvmProcessorFactory<EthEvmConfig>> = stage();
+            let mut execution_stage: ExecutionStage<EvmProcessorFactory<EthEvmConfig, _>> = stage();
             execution_stage.prune_modes = mode.clone().unwrap_or_default();
 
             let output = execution_stage.execute(&provider, input).unwrap();
