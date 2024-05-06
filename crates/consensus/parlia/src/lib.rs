@@ -77,6 +77,12 @@ pub struct Parlia<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWrite
     provider: Option<P>,
 }
 
+impl<P> Default for Parlia<P> {
+    fn default() -> Self {
+        Self::new(Arc::new(ChainSpec::default()), 200, 3)
+    }
+}
+
 impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> {
     pub fn new(chain_spec: Arc<ChainSpec>, epoch: u64, period: u64) -> Self {
         let validator_abi = load_abi_from_file("./abi/validator_set.json").unwrap();

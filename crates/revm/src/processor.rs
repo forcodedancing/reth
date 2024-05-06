@@ -73,7 +73,8 @@ pub struct EVMProcessor<'a, EvmConfig, P> {
     /// The type that is able to configure the EVM environment.
     _evm_config: EvmConfig,
 
-    parlia_consensus: Option<Arc<Parlia<P>>>,
+    #[cfg(feature = "bsc")]
+    parlia_consensus: Arc<Parlia<P>>,
 }
 
 impl<'a, EvmConfig, P> EVMProcessor<'a, EvmConfig, P>
@@ -113,7 +114,8 @@ where
             batch_record: BlockBatchRecord::default(),
             stats: BlockExecutorStats::default(),
             _evm_config: evm_config,
-            parlia_consensus: None,
+            #[cfg(feature = "bsc")]
+            parlia_consensus: Arc::new(Parlia::<P>::default()),
         }
     }
 
@@ -129,7 +131,7 @@ where
 
     #[cfg(feature = "bsc")]
     pub fn set_parlia(&mut self, parlia_consensus: Arc<Parlia<P>>) {
-        self.parlia_consensus = Some(parlia_consensus);
+        self.parlia_consensus = parlia_consensus;
     }
 
     /// Saves the receipts to the batch record.
@@ -351,16 +353,13 @@ where
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
     ) -> Result<(), BlockExecutionError> {
-        let parlia_consensus = self.parlia_consensus.as_ref().ok_or(
-            BlockExecutionError::Validation(BscBlockExecutionError::NoParliaConsensus.into()),
-        )?;
-
         let number = header.number;
         let validator = header.beneficiary;
-        let parent = parlia_consensus.get_header_by_hash(header.number, header.parent_hash)?;
+        let parent = self.parlia_consensus.get_header_by_hash(header.number, header.parent_hash)?;
 
         // The snapshot should be ready after the header stage
-        let snap = parlia_consensus
+        let snap = self
+            .parlia_consensus
             .get_snapshot_from_cache(&header.parent_hash)
             .ok_or(BscBlockExecutionError::NoParliaConsensus.into())?;
 
@@ -369,26 +368,29 @@ where
         // verify validators
         {
             let (validators, mut vote_addrs_map) =
-                if parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
-                    let (to, data) = parlia_consensus.get_current_validators_before_luban(number);
+                if self.parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(number)
+                {
+                    let (to, data) =
+                        self.parlia_consensus.get_current_validators_before_luban(number);
                     let output = self.eth_call(to, data)?;
 
                     (
-                        parlia_consensus
+                        self.parlia_consensus
                             .unpack_data_into_validator_set_before_luban(output.as_ref()),
                         Vec::new(),
                     )
                 } else {
-                    let (to, data) = parlia_consensus.get_current_validators();
+                    let (to, data) = self.parlia_consensus.get_current_validators();
                     let output = self.eth_call(to, data)?;
 
-                    parlia_consensus.unpack_data_into_validator_set(output.as_ref())
+                    self.parlia_consensus.unpack_data_into_validator_set(output.as_ref())
                 };
 
             validator.sort();
             let validator_num = validator.len();
             let validator_bytes =
-                if parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+                if self.parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(number)
+                {
                     let mut validator_bytes = Vec::new();
                     for v in validators {
                         validator_bytes.extend_from_slice(v.as_ref());
@@ -396,7 +398,7 @@ where
 
                     validator_bytes.as_slice()
                 } else {
-                    if parlia_consensus.is_on_luban(number) {
+                    if self.parlia_consensus.is_on_luban(number) {
                         vote_addrs_map = Vec::with_capacity(validator_num);
                         for _ in 0..validator_num {
                             vote_addrs_map.push(BlsPublicKey::default());
@@ -413,7 +415,7 @@ where
                 };
 
             if !validator_bytes
-                .eq(parlia_consensus.get_validator_bytes_from_header(header).unwrap())
+                .eq(self.parlia_consensus.get_validator_bytes_from_header(header).unwrap())
             {
                 return Err(BlockExecutionError::Validation(
                     BscBlockExecutionError::InvalidValidators.into(),
@@ -423,12 +425,13 @@ where
 
         if number == 1 {
             let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
-            parlia_consensus.init_genesis_contracts(nonce).iter().for_each(|tx| {
+            self.parlia_consensus.init_genesis_contracts(nonce).iter().for_each(|tx| {
                 self.transact_system_tx(tx, validator, system_txs, receipts, cumulative_gas_used)?;
             });
         }
 
-        if parlia_consensus
+        if self
+            .parlia_consensus
             .chain_spec()
             .fork(Hardfork::Feynman)
             .active_at_timestamp(header.timestamp)
@@ -437,9 +440,9 @@ where
             todo!()
         }
 
-        if parlia_consensus.is_on_feynman(header.timestamp, parent.timestamp) {
+        if self.parlia_consensus.is_on_feynman(header.timestamp, parent.timestamp) {
             let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
-            parlia_consensus.init_feynman_contracts(nonce).iter().for_each(|tx| {
+            self.parlia_consensus.init_feynman_contracts(nonce).iter().for_each(|tx| {
                 self.transact_system_tx(tx, validator, system_txs, receipts, cumulative_gas_used)?;
             });
         }
@@ -447,7 +450,7 @@ where
         if header.difficulty != DIFF_INTURN {
             let spoiled_val = snap.inturn_validator();
             let signed_recently: bool;
-            if parlia_consensus.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+            if self.parlia_consensus.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
                 signed_recently = snap.sign_recently(spoiled_val);
             } else {
                 signed_recently = snap
@@ -461,7 +464,7 @@ where
             if !signed_recently {
                 let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
                 self.transact_system_tx(
-                    &parlia_consensus.slash(nonce, spoiled_val),
+                    &self.parlia_consensus.slash(nonce, spoiled_val),
                     validator,
                     system_txs,
                     receipts,
@@ -477,7 +480,8 @@ where
             .increment_balances(balance_increment)
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
-        if !parlia_consensus
+        if !self
+            .parlia_consensus
             .chain_spec()
             .fork(Hardfork::Kepler)
             .active_at_timestamp(header.timestamp)
@@ -489,7 +493,7 @@ where
                 if reward_to_system > 0 {
                     let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
                     self.transact_system_tx(
-                        &parlia_consensus.distribute_to_system(nonce, reward_to_system),
+                        &self.parlia_consensus.distribute_to_system(nonce, reward_to_system),
                         validator,
                         system_txs,
                         receipts,
@@ -502,14 +506,14 @@ where
         }
 
         let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
-        parlia_consensus.distribute_to_validator(nonce, validator, block_reward)?;
+        self.parlia_consensus.distribute_to_validator(nonce, validator, block_reward)?;
 
-        if parlia_consensus.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
-            if number % parlia_consensus.epoch() == 0 {
-                let (validators, weights) = parlia_consensus.get_finality_weights(header)?;
+        if self.parlia_consensus.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+            if number % self.parlia_consensus.epoch() == 0 {
+                let (validators, weights) = self.parlia_consensus.get_finality_weights(header)?;
                 let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
                 self.transact_system_tx(
-                    &parlia_consensus.distribute_finality_reward(nonce, validators, weights),
+                    &self.parlia_consensus.distribute_finality_reward(nonce, validators, weights),
                     validator,
                     system_txs,
                     receipts,
@@ -518,22 +522,23 @@ where
             }
         }
 
-        if parlia_consensus
+        if self
+            .parlia_consensus
             .chain_spec()
             .fork(Hardfork::Feynman)
             .active_at_timestamp(header.timestamp) &&
             is_breathe_block(parent.timestamp, header.timestamp)
         {
-            if !parlia_consensus.is_on_feynman(header.timestamp, parent.timestamp) {
-                let (to, data) = parlia_consensus.get_max_elected_validators();
+            if !self.parlia_consensus.is_on_feynman(header.timestamp, parent.timestamp) {
+                let (to, data) = self.parlia_consensus.get_max_elected_validators();
                 let output = self.eth_call(to, data)?;
                 let max_elected_validators =
-                    parlia_consensus.unpack_data_into_max_elected_validators(output.as_ref());
+                    self.parlia_consensus.unpack_data_into_max_elected_validators(output.as_ref());
 
-                let (to, data) = parlia_consensus.get_validator_election_info();
+                let (to, data) = self.parlia_consensus.get_validator_election_info();
                 let output = self.eth_call(to, data)?;
                 let (consensus_addrs, voting_powers, vote_addrs, total_length) =
-                    parlia_consensus.unpack_data_into_validator_election_info(output.as_ref());
+                    self.parlia_consensus.unpack_data_into_validator_election_info(output.as_ref());
 
                 let (e_validators, e_voting_powers, e_vote_addrs) =
                     get_top_validators_by_voting_power(
@@ -546,7 +551,7 @@ where
                     .ok_or(Err(BscBlockExecutionError::GetTopValidatorsFailed.into()))?;
                 let nonce = self.db_mut().basic(validator).unwrap().unwrap().nonce;
                 self.transact_system_tx(
-                    &parlia_consensus.update_validator_set_v2(
+                    &self.parlia_consensus.update_validator_set_v2(
                         nonce,
                         e_validators,
                         e_voting_powers,
@@ -601,6 +606,7 @@ where
         tx_env.access_list = Vec::new();
         tx_env.blob_hashes = Vec::new();
         tx_env.max_fee_per_blob_gas = None;
+        tx_env.bsc.is_system_transaction = Some(true);
 
         // disable the base fee check for this call by setting the base fee to zero
         let block_env = self.evm.block_mut();
@@ -676,11 +682,7 @@ where
 
     #[cfg(feature = "bsc")]
     pub fn get_current_validators(&mut self, block_number: BlockNumber) {
-        let parlia_consensus = self.parlia_consensus.as_ref().ok_or(
-            BlockExecutionError::Validation(BscBlockExecutionError::NoParliaConsensus.into()),
-        )?;
-
-        if parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(block_number) {}
+        if self.parlia_consensus.chain_spec().fork(Hardfork::Luban).active_at_block(block_number) {}
     }
 }
 
@@ -784,24 +786,16 @@ where
         block: &BlockWithSenders,
         total_difficulty: U256,
     ) -> Result<(Vec<&TransactionSigned>, Vec<Receipt>, u64), BlockExecutionError> {
-        let parlia_consensus;
-        if let Some(parlia) = &self.parlia_consensus {
-            parlia_consensus = parlia;
-        } else {
-            return Err(BlockExecutionError::Validation(
-                BscBlockExecutionError::NoParliaConsensus.into(),
-            ))
-        }
-
         self.init_env(&block.header, total_difficulty);
 
-        if !parlia_consensus
+        if !self
+            .parlia_consensus
             .chain_spec()
             .fork(Hardfork::Feynman)
             .active_at_timestamp(block.timestamp)
         {
             let _parent =
-                parlia_consensus.get_header_by_hash(block.number - 1, block.parent_hash)?;
+                self.parlia_consensus.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
             todo!()
         }
@@ -820,7 +814,7 @@ where
                 continue
             }
             // systemTxs should be always at the end of block.
-            if parlia_consensus.chain_spec().is_cancun_active_at_timestamp(block.timestamp) {
+            if self.parlia_consensus.chain_spec().is_cancun_active_at_timestamp(block.timestamp) {
                 if system_txs.len() > 0 {
                     return Err(BlockExecutionError::Validation(
                         BscBlockExecutionError::UnexpectedNormalTx.into(),
@@ -902,9 +896,7 @@ where
         &mut self,
         provider: &DatabaseProviderRW<DB>,
     ) {
-        if let Some(parlia) = &mut self.parlia_consensus {
-            parlia.set_provider(provider);
-        }
+        self.parlia_consensus.set_provider(provider);
     }
 }
 

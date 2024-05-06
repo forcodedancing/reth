@@ -260,10 +260,6 @@ pub struct HeaderConsensusError(ConsensusError, SealedHeader);
 /// Parlia consensus error.
 #[derive(thiserror::Error, Debug, PartialEq, Eq, Clone)]
 pub enum ParliaConsensusError {
-    /// Error when the consensus is not parlia
-    #[error("consensus is not parlia")]
-    NotParlia,
-
     /// Error when the provider is not set
     #[error("provider not set")]
     ProviderNotSet,

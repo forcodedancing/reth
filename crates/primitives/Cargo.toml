@@ -114,6 +114,7 @@ zstd-codec = [
     "dep:zstd"
 ]
 clap = ["dep:clap"]
+bsc = ["revm-primitives/bsc"]
 optimism = [
     "reth-codecs/optimism",
     "revm-primitives/optimism",

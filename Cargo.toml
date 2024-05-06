@@ -269,11 +269,12 @@ reth-trie-parallel = { path = "crates/trie-parallel" }
 reth-node-events = { path = "crates/node/events" }
 
 # revm
-revm = { version = "8.0.0", features = [
+# TODO: update to official version
+revm = { git = "https://github.com/bnb-chain/revm", rev = "dee51654d63f2a8c0197ae804e3efe985ec39557", features = [
     "std",
     "secp256k1",
 ], default-features = false }
-revm-primitives = { version = "3.1.0", features = [
+revm-primitives = { git = "https://github.com/bnb-chain/revm", rev = "dee51654d63f2a8c0197ae804e3efe985ec39557", eatures = [
     "std",
 ], default-features = false }
 revm-inspectors = { git = "https://github.com/paradigmxyz/evm-inspectors", rev = "dc614ee" }

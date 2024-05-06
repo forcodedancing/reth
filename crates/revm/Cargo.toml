@@ -29,12 +29,13 @@ revm-inspectors.workspace = true
 
 # common
 tracing.workspace = true
+cfg-if = "1.0.0"
 
 [dev-dependencies]
 reth-trie.workspace = true
 
 [features]
-bsc = []
+bsc = ["revm/bsc"]
 test-utils = ["dep:reth-trie"]
 optimism = [
     "revm/optimism",

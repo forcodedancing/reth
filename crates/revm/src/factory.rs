@@ -17,14 +17,22 @@ pub struct EvmProcessorFactory<EvmConfig, P> {
     stack: Option<InspectorStack>,
     /// Type that defines how the produced EVM should be configured.
     evm_config: EvmConfig,
+
     /// Parlia consensus instance
-    parlia_consensus: Option<Arc<Parlia<P>>>,
+    #[cfg(feature = "bsc")]
+    parlia_consensus: Arc<Parlia<P>>,
 }
 
 impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
     /// Create new factory
     pub fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig) -> Self {
-        Self { chain_spec, stack: None, evm_config, parlia_consensus: None }
+        Self {
+            chain_spec,
+            stack: None,
+            evm_config,
+            #[cfg(feature = "bsc")]
+            parlia_consensus: Arc::new(Parlia::<P>::default()),
+        }
     }
 
     /// Sets the inspector stack for all generated executors.
@@ -41,7 +49,7 @@ impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
 
     #[cfg(feature = "bsc")]
     pub fn with_parlia(mut self, parlia_consensus: Arc<Parlia<P>>) -> Self {
-        self.parlia_consensus = Some(parlia_consensus);
+        self.parlia_consensus = parlia_consensus;
         self
     }
 }
@@ -64,9 +72,7 @@ where
             evm.set_stack(stack.clone());
         }
         #[cfg(feature = "bsc")]
-        if let Some(parlia_consensus) = &self.parlia_consensus {
-            evm.set_parlia(parlia_consensus.clone());
-        }
+        evm.set_parlia(self.parlia_consensus.clone());
         Box::new(evm)
     }
 }
