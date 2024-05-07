@@ -23,7 +23,6 @@ use reth_interfaces::{
     RethResult,
 };
 use reth_primitives::{
-    parlia::Snapshot,
     stage::{StageCheckpoint, StageId},
     Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumber,
     BlockNumberOrTag, BlockWithSenders, ChainInfo, ChainSpec, Header, PruneCheckpoint,
@@ -63,6 +62,7 @@ use chain_info::ChainInfoTracker;
 
 mod consistent_view;
 pub use consistent_view::{ConsistentDbView, ConsistentViewError};
+use reth_db::models::parlia::Snapshot;
 
 /// The main type for interacting with the blockchain.
 ///

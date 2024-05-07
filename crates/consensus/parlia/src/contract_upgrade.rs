@@ -1,11 +1,8 @@
 use lazy_static::lazy_static;
 use reth_interfaces::consensus::ConsensusError;
-use reth_primitives::{
-    revm_primitives::db::Database, Address, BlockNumber, Bytes, ChainSpec, Hardfork, B256,
-};
-use reth_provider::{HeaderProvider, ProviderFactory, StateProvider};
-use std::{collections::HashMap, str::FromStr};
-use tracing::info;
+use reth_primitives::{revm_primitives::db::Database, BlockNumber, ChainSpec};
+use reth_provider::ProviderFactory;
+use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd)]
 pub struct UpgradeConfig {
@@ -14,117 +11,18 @@ pub struct UpgradeConfig {
 }
 
 pub fn upgrade_build_in_system_contract<DB: Database>(
-    chain_spec: &ChainSpec,
-    block_number: BlockNumber,
-    mut statedb: ProviderFactory<DB>,
+    _chain_spec: &ChainSpec,
+    _block_number: BlockNumber,
+    _statedb: ProviderFactory<DB>,
 ) -> Result<(), ConsensusError> {
-    let empty_config: Vec<UpgradeConfig> = vec![];
-    if chain_spec.fork(Hardfork::Ramanujan).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            RAMANUJAN_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap_or(&empty_config),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Niels).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            NIELS_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap_or(&empty_config),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::MirrorSync).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            MIRRORSYNC_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap_or(&empty_config),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Bruno).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BRUNO_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap_or(&empty_config),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Euler).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            EULER_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap_or(&empty_config),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Gibbs).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            GIBBS_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap_or(&empty_config),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Luban).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Plato).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Hertz).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::HertzFix).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    // TODO: fork by timestamp
-    if chain_spec.fork(Hardfork::Kepler).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::Feynman).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    if chain_spec.fork(Hardfork::FeynmanFix).active_at_block(block_number) {
-        apply_system_contract_upgrade(
-            BONEH_UPGRADE_CONFIG.get(&chain_spec.chain.id()).unwrap(),
-            statedb.borrow_mut(),
-        )?;
-    }
-
-    Ok(())
+    todo!()
 }
 
 pub fn apply_system_contract_upgrade<DB: Database>(
-    upgrade: &[UpgradeConfig],
-    statedb: &mut ProviderFactory<DB>,
+    _upgrade: &[UpgradeConfig],
+    _statedb: ProviderFactory<DB>,
 ) -> Result<(), ConsensusError> {
-    for x in upgrade.iter() {
-        info!("apply_system_contract_upgrade {}", x.contract_addr);
-        let addr: Address = Address::from_str(x.contract_addr).unwrap();
-        // TODO
-        statedb.set_code(addr, Bytes::from(x.code.from_hex().unwrap()))?;
-    }
-    Ok(())
+    todo!()
 }
 
 // TODO: add system contracts bytecode

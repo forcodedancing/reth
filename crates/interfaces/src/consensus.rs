@@ -9,7 +9,7 @@ pub use reth_rpc_types::engine::ForkchoiceState;
 
 /// Consensus is a protocol that chooses canonical chain.
 #[auto_impl::auto_impl(&, Arc)]
-pub trait Consensus: Any + Debug + Send + Sync {
+pub trait Consensus: Debug + Send + Sync {
     /// Validate if header is correct and follows consensus specification.
     ///
     /// This is called on standalone header to check if all hashes are correct.
@@ -304,19 +304,19 @@ pub enum ParliaConsensusError {
     SnapFutureBlock(GotExpected<u64>),
 
     /// Error when the block signer is not authorized
-    #[error("proposer {} at height {} is not authorized")]
+    #[error("proposer {proposer} at height {block_number} is not authorized")]
     SignerUnauthorized { block_number: BlockNumber, proposer: Address },
 
     /// Error when the block signer is over limit
-    #[error("proposer {} is over limit")]
+    #[error("proposer {proposer} is over limit")]
     SignerOverLimit { proposer: Address },
 
     /// Error when the header is unknown
-    #[error("unknown header [number={BlockNumber}, hash={hash}]")]
+    #[error("unknown header [number={block_number}, hash={hash}]")]
     UnknownHeader { block_number: BlockNumber, hash: B256 },
 
     /// Error when the header is not in epoch
-    #[error("{BlockNumber} is not in epoch")]
+    #[error("{block_number} is not in epoch")]
     NotInEpoch { block_number: BlockNumber },
 
     /// Error when apply snapshot failed
@@ -324,11 +324,11 @@ pub enum ParliaConsensusError {
     ApplySnapshotFailed,
 
     /// Error when the block proposer is in the backoff period
-    #[error("block [number={BlockNumber}, hash={hash}] proposer is in the backoff period")]
+    #[error("block [number={block_number}, hash={hash}] proposer is in the backoff period")]
     FutureBlock { block_number: BlockNumber, hash: B256 },
 
     /// Error when the block's parent is unknown
-    #[error("unknown ancestor of block [number={BlockNumber}, hash={hash}]")]
+    #[error("unknown ancestor of block [number={block_number}, hash={hash}]")]
     UnknownAncestor { block_number: BlockNumber, hash: B256 },
 
     /// Error when the vote's signature is invalid
@@ -353,12 +353,29 @@ pub enum ParliaConsensusError {
 
     /// Error when the vote address is not found
     #[error("vote address not found: {address}")]
-    SnapNotFoundVoteAddr { address: Address },
+    VoteAddrNotFoundInSnap { address: Address },
 
     /// Error when the block's header signer is invalid
     #[error("wrong header signer: block number {block_number}, expected {expected}, got {got}")]
     WrongHeaderSigner { block_number: BlockNumber, expected: Address, got: Address },
 
     /// Error when the system transaction is unexpected
+    #[error("unexpected system transaction")]
     UnexpectedSystemTx,
+
+    /// Error when encountering a provider inner error
+    #[error("provider inner error")]
+    ProviderInnerError,
+
+    /// Error when encountering a blst inner error
+    #[error("blst inner error")]
+    BLSTInnerError,
+
+    /// Error when encountering a abi decode inner error
+    #[error("abi decode inner error")]
+    ABIDecodeInnerError,
+
+    /// Error when encountering a recover ecdsa inner error
+    #[error("recover ecdsa inner error")]
+    RecoverECDSAInnerError,
 }

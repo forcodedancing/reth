@@ -25,6 +25,7 @@ pub(crate) mod utils;
 
 use crate::{
     abstraction::table::Table,
+    models::parlia::Snapshot,
     table::DupSort,
     tables::{
         codecs::CompactU256,
@@ -38,7 +39,6 @@ use crate::{
     },
 };
 use reth_primitives::{
-    parlia::Snapshot,
     stage::StageCheckpoint,
     trie::{StorageTrieEntry, StoredBranchNode, StoredNibbles, StoredNibblesSubKey},
     Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, PruneCheckpoint,

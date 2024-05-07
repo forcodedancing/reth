@@ -19,8 +19,9 @@ use reth_db::{
     cursor::{DbCursorRO, DbCursorRW, DbDupCursorRO, RangeWalker},
     database::Database,
     models::{
-        sharded_key, storage_sharded_key::StorageShardedKey, AccountBeforeTx, BlockNumberAddress,
-        ShardedKey, StoredBlockBodyIndices, StoredBlockOmmers, StoredBlockWithdrawals,
+        parlia::Snapshot, sharded_key, storage_sharded_key::StorageShardedKey, AccountBeforeTx,
+        BlockNumberAddress, ShardedKey, StoredBlockBodyIndices, StoredBlockOmmers,
+        StoredBlockWithdrawals,
     },
     table::{Table, TableRow},
     tables,
@@ -35,7 +36,6 @@ use reth_interfaces::{
 };
 use reth_primitives::{
     keccak256,
-    parlia::Snapshot,
     revm::{config::revm_spec, env::fill_block_env},
     stage::{StageCheckpoint, StageId},
     trie::Nibbles,

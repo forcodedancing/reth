@@ -21,6 +21,7 @@ reth-nippy-jar.workspace = true
 reth-tracing.workspace = true
 
 # codecs
+alloy-rlp = { workspace = true, features = ["arrayvec"] }
 serde = { workspace = true, default-features = false }
 parity-scale-codec = { version = "3.2.1", features = ["bytes"] }
 modular-bitfield.workspace = true
@@ -30,6 +31,7 @@ reth-metrics.workspace = true
 metrics.workspace = true
 
 # misc
+byteorder = "1"
 bytes.workspace = true
 page_size = "0.6.0"
 thiserror.workspace = true

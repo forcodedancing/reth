@@ -1,27 +1,16 @@
-use reth_db::database;
 use reth_evm::ConfigureEvm;
-use reth_interfaces::executor::{
-    BlockExecutionError, BlockValidationError, BscBlockExecutionError,
-};
-use reth_parlia_consensus::{
-    get_top_validators_by_voting_power, is_breathe_block, is_system_transaction, Parlia,
-    DIFF_INTURN, MAX_SYSTEM_REWARD, SYSTEM_REWARD_CONTRACT, SYSTEM_REWARD_PERCENT,
-};
+use reth_interfaces::executor::{BlockExecutionError, BlockValidationError};
 #[cfg(feature = "optimism")]
 use reth_primitives::revm::env::fill_op_tx_env;
 #[cfg(not(feature = "optimism"))]
 use reth_primitives::revm::env::fill_tx_env;
 use reth_primitives::{
-    constants::SYSTEM_ADDRESS, Address, Block, BlockNumber, BlockWithSenders, Bloom, Bytes,
-    ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, ReceiptWithBloom, Receipts,
-    SealedHeader, Transaction, TransactionSigned, Withdrawals, B256, U256,
+    Address, Block, BlockNumber, BlockWithSenders, Bloom, ChainSpec, GotExpected, Hardfork, Header,
+    PruneModes, Receipt, ReceiptWithBloom, Receipts, TransactionSigned, Withdrawals, B256, U256,
 };
 #[cfg(not(feature = "optimism"))]
 use reth_provider::BundleStateWithReceipts;
-use reth_provider::{
-    BlockExecutor, DatabaseProviderRW, ProviderError, PrunableBlockExecutor, StateProvider,
-};
-use reth_rpc_types::beacon::BlsPublicKey;
+use reth_provider::{BlockExecutor, ProviderError, PrunableBlockExecutor, StateProvider};
 #[cfg(not(feature = "optimism"))]
 use revm::DatabaseCommit;
 use revm::{
@@ -31,18 +20,36 @@ use revm::{
     primitives::{CfgEnvWithHandlerCfg, ResultAndState},
     Evm, State,
 };
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{marker::PhantomData, sync::Arc, time::Instant};
 #[cfg(not(feature = "optimism"))]
 use tracing::{debug, trace};
+
+#[cfg(feature = "bsc")]
+use crate::Database;
+#[cfg(feature = "bsc")]
+use reth_db::{database, models::parlia::VoteAddress};
+#[cfg(feature = "bsc")]
+use reth_interfaces::executor::BscBlockExecutionError;
+#[cfg(feature = "bsc")]
+use reth_parlia_consensus::{
+    get_top_validators_by_voting_power, is_breathe_block, is_system_transaction, Parlia,
+    DIFF_INTURN, MAX_SYSTEM_REWARD, SYSTEM_REWARD_CONTRACT, SYSTEM_REWARD_PERCENT,
+};
+#[cfg(feature = "bsc")]
+use reth_primitives::{constants::SYSTEM_ADDRESS, Bytes, SealedHeader, Transaction};
+#[cfg(feature = "bsc")]
+use reth_provider::DatabaseProviderRW;
+#[cfg(feature = "bsc")]
+use revm::primitives::{Env, TransactTo, TxEnv};
+#[cfg(feature = "bsc")]
+use std::collections::HashMap;
 
 use crate::{
     batch::{BlockBatchRecord, BlockExecutorStats},
     database::StateProviderDatabase,
     eth_dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS},
-    primitives::{Env, TransactTo, TxEnv},
     stack::{InspectorStack, InspectorStackConfig},
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
-    Database,
 };
 
 /// EVMProcessor is a block executor that uses revm to execute blocks or multiple blocks.
@@ -73,6 +80,9 @@ pub struct EVMProcessor<'a, EvmConfig, P> {
     /// The type that is able to configure the EVM environment.
     _evm_config: EvmConfig,
 
+    /// Placeholder for the P type
+    _phantom: PhantomData<P>,
+
     #[cfg(feature = "bsc")]
     parlia_consensus: Arc<Parlia<P>>,
 }
@@ -97,7 +107,7 @@ where
             .with_bundle_update()
             .without_state_clear()
             .build();
-        EVMProcessor::new_with_state(chain_spec, state, evm_config)
+        EVMProcessor::<EvmConfig, P>::new_with_state(chain_spec, state, evm_config)
     }
 
     /// Create a new EVM processor with the given revm state.
@@ -108,12 +118,13 @@ where
     ) -> Self {
         let stack = InspectorStack::new(InspectorStackConfig::default());
         let evm = evm_config.evm_with_inspector(revm_state, stack);
-        EVMProcessor {
+        EVMProcessor::<EvmConfig, P> {
             chain_spec,
             evm,
             batch_record: BlockBatchRecord::default(),
             stats: BlockExecutorStats::default(),
             _evm_config: evm_config,
+            _phantom: PhantomData,
             #[cfg(feature = "bsc")]
             parlia_consensus: Arc::new(Parlia::default()),
         }
@@ -318,7 +329,6 @@ where
         total_difficulty: U256,
     ) -> Result<Vec<Receipt>, BlockExecutionError> {
         self.init_env(&block.header, total_difficulty);
-        self.apply_beacon_root_contract_call(block)?;
         let (mut system_tx, mut receipts, mut cumulative_gas_used) =
             self.execute_transactions(block, total_difficulty)?;
 
@@ -361,7 +371,8 @@ where
         let snap = self
             .parlia_consensus
             .get_snapshot_from_cache(&header.parent_hash)
-            .ok_or(BscBlockExecutionError::NoParliaConsensus.into())?;
+            .ok_or(BscBlockExecutionError::NoParliaConsensus.into())?
+            .clone();
 
         //TODO: isMajorityFork ?
 
@@ -401,7 +412,7 @@ where
                     if self.parlia_consensus.is_on_luban(number) {
                         vote_addrs_map = Vec::with_capacity(validator_num);
                         for _ in 0..validator_num {
-                            vote_addrs_map.push(BlsPublicKey::default());
+                            vote_addrs_map.push(VoteAddress::default());
                         }
                     }
 
@@ -414,8 +425,11 @@ where
                     validator_bytes.as_slice()
                 };
 
-            if !validator_bytes
-                .eq(self.parlia_consensus.get_validator_bytes_from_header(header).unwrap())
+            if !validator_bytes.eq(self
+                .parlia_consensus
+                .get_validator_bytes_from_header(header)
+                .unwrap()
+                .as_slice())
             {
                 return Err(BlockExecutionError::Validation(
                     BscBlockExecutionError::InvalidValidators.into(),

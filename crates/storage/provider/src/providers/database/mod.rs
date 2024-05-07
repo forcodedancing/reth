@@ -29,8 +29,7 @@ mod metrics;
 mod provider;
 
 pub use provider::{DatabaseProvider, DatabaseProviderRO, DatabaseProviderRW};
-use reth_db::mdbx::DatabaseArguments;
-use reth_primitives::parlia::Snapshot;
+use reth_db::{mdbx::DatabaseArguments, models::parlia::Snapshot};
 
 /// A common provider that fetches data from a database or static file.
 ///

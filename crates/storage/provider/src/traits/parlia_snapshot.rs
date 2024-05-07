@@ -1,5 +1,6 @@
+use reth_db::models::parlia::Snapshot;
 use reth_interfaces::provider::ProviderResult;
-use reth_primitives::{parlia::Snapshot, B256};
+use reth_primitives::B256;
 
 /// The trait for fetching parlia snapshot related data.
 #[auto_impl::auto_impl(&, Arc)]

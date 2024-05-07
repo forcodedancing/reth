@@ -30,9 +30,9 @@ pub fn get_top_validators_by_voting_power(
     total_length: U256,
     max_elected_validators: U256,
 ) -> Option<(Vec<Address>, Vec<U256>, Vec<Vec<u8>>)> {
-    if consensus_addrs.len() != total_length.into() ||
-        voting_powers.len() != total_length.into() ||
-        vote_addresses.len() != total_length.into()
+    if consensus_addrs.len() != total_length.to::<usize>() ||
+        voting_powers.len() != total_length.to::<usize>() ||
+        vote_addresses.len() != total_length.to::<usize>()
     {
         return None;
     }
@@ -49,7 +49,7 @@ pub fn get_top_validators_by_voting_power(
         }
     }
 
-    let top_n = max_elected_validators.as_usize();
+    let top_n = max_elected_validators.to::<u64>() as usize;
     let top_n = if top_n > validator_heap.len() { validator_heap.len() } else { top_n };
     let mut e_validators = Vec::with_capacity(top_n);
     let mut e_voting_powers = Vec::with_capacity(top_n);
@@ -59,9 +59,9 @@ pub fn get_top_validators_by_voting_power(
         e_validators.push(item.address);
         // as the decimal in BNB Beacon Chain is 1e8 and in BNB Smart Chain is 1e18, we need to
         // divide it by 1e10
-        e_voting_powers.push((item.voting_power / U256::from(10u64.pow(10))).as_u64());
+        e_voting_powers.push(item.voting_power / U256::from(10u64.pow(10)));
         e_vote_addrs.push(item.vote_address);
     }
 
-    (e_validators, e_voting_powers, e_vote_addrs)
+    Some((e_validators, e_voting_powers, e_vote_addrs))
 }

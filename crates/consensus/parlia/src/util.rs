@@ -3,7 +3,7 @@ use reth_primitives::{Address, Header, TransactionSigned};
 
 use alloy_json_abi::JsonAbi;
 use serde_json::Error;
-use std::{io::Read, str::FromStr};
+use std::str::FromStr;
 
 lazy_static! {
     // preset contracts

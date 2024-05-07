@@ -6,11 +6,10 @@ use crate::{
     StateProviderBox, StateProviderFactory, StateRootProvider, TransactionVariant,
     TransactionsProvider, WithdrawalsProvider,
 };
-use reth_db::models::{AccountBeforeTx, StoredBlockBodyIndices};
+use reth_db::models::{parlia::Snapshot, AccountBeforeTx, StoredBlockBodyIndices};
 use reth_evm::ConfigureEvmEnv;
 use reth_interfaces::provider::ProviderResult;
 use reth_primitives::{
-    parlia::Snapshot,
     stage::{StageCheckpoint, StageId},
     trie::AccountProof,
     Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumber, BlockWithSenders,

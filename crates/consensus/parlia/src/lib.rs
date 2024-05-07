@@ -14,7 +14,6 @@ use blst::{
 use lazy_static::lazy_static;
 use lru::LruCache;
 use parking_lot::RwLock;
-use reth_db::database::Database;
 use reth_provider::{HeaderProvider, ParliaSnapshotReader, ParliaSnapshotWriter};
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId},
@@ -24,7 +23,6 @@ use sha3::{Digest, Keccak256};
 use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
-    hash::Hash,
     num::NonZeroUsize,
     sync::Arc,
     time::SystemTime,
@@ -33,14 +31,9 @@ use std::{
 use reth_consensus_common::validation::validate_4844_header_standalone;
 use reth_interfaces::consensus::{Consensus, ConsensusError, ParliaConsensusError};
 use reth_primitives::{
-    alloy_primitives::private::rand::prelude::SliceRandom,
-    constants::EMPTY_MIX_HASH,
-    parlia::{
-        Snapshot, ValidatorInfo, VoteAttestation, CHECKPOINT_INTERVAL, MAX_ATTESTATION_EXTRA_LENGTH,
-    },
-    transaction::TransactionKind,
-    Address, BlockNumber, Bytes, ChainSpec, GotExpected, Hardfork, Header, SealedBlock,
-    SealedHeader, Transaction, TxLegacy, B256, EMPTY_OMMER_ROOT_HASH, U256,
+    constants::EMPTY_MIX_HASH, transaction::TransactionKind, Address, BlockNumber, Bytes,
+    ChainSpec, GotExpected, Hardfork, Header, SealedBlock, SealedHeader, Transaction, TxLegacy,
+    B256, EMPTY_OMMER_ROOT_HASH, U256,
 };
 use reth_rpc_types::beacon::BlsPublicKey;
 
@@ -51,7 +44,14 @@ pub use constants::*;
 
 pub mod contract_upgrade;
 mod feynman_fork;
+mod go_rng;
+
+use crate::go_rng::{RngSource, Shuffle};
 pub use feynman_fork::*;
+use reth_db::models::parlia::{
+    Snapshot, ValidatorInfo, VoteAddress, VoteAttestation, CHECKPOINT_INTERVAL,
+    MAX_ATTESTATION_EXTRA_LENGTH,
+};
 
 const RECOVERED_PROPOSER_CACHE_NUM: usize = 4096;
 const SNAP_CACHE_NUM: usize = 2048;
@@ -64,9 +64,14 @@ lazy_static! {
     static ref RECENT_SNAPS: RwLock<LruCache<B256, Snapshot>> = RwLock::new(LruCache::new(NonZeroUsize::new(SNAP_CACHE_NUM).unwrap()));
 }
 
+#[derive(Clone, Debug)]
+pub struct ParliaConfig {
+    epoch: u64,
+    period: u64,
+}
+
 /// BSC parlia consensus implementation
-#[derive(Debug)]
-pub struct Parlia<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> {
+pub struct Parlia<P> {
     chain_spec: Arc<ChainSpec>,
     epoch: u64,
     period: u64,
@@ -77,14 +82,14 @@ pub struct Parlia<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWrite
     provider: Option<P>,
 }
 
-impl Default for Parlia<_> {
+impl<P> Default for Parlia<P> {
     fn default() -> Self {
-        Self::new(Arc::new(ChainSpec::default()), 200, 3)
+        Self::new(Arc::new(ChainSpec::default()), ParliaConfig { epoch: 300, period: 15 })
     }
 }
 
-impl Parlia<_> {
-    pub fn new(chain_spec: Arc<ChainSpec>, epoch: u64, period: u64) -> Self {
+impl<P> Parlia<P> {
+    pub fn new(chain_spec: Arc<ChainSpec>, cfg: ParliaConfig) -> Self {
         let validator_abi = load_abi_from_file("./abi/validator_set.json").unwrap();
         let validator_abi_before_luban =
             load_abi_from_file("./abi/validator_set_before_luban.json").unwrap();
@@ -93,8 +98,8 @@ impl Parlia<_> {
 
         Self {
             chain_spec,
-            epoch,
-            period,
+            epoch: cfg.epoch,
+            period: cfg.period,
             validator_abi,
             validator_abi_before_luban,
             slash_abi,
@@ -126,17 +131,22 @@ impl Parlia<_> {
 
         let sig = &header.extra_data[signature_offset..signature_offset + EXTRA_SEAL_LEN - 1];
         let rec =
-            RecoveryId::from_i32(header.extra_data[signature_offset + EXTRA_SEAL_LEN - 1] as i32)?;
-        let signature = RecoverableSignature::from_compact(sig, rec)?;
+            RecoveryId::from_i32(header.extra_data[signature_offset + EXTRA_SEAL_LEN - 1] as i32)
+                .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
+        let signature = RecoverableSignature::from_compact(sig, rec)
+            .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
-        let mut sig_hash_header = header.clone();
+        let mut sig_hash_header = header.header().clone();
         sig_hash_header.extra_data =
             Bytes::copy_from_slice(&header.extra_data[..header.extra_data.len() - EXTRA_SEAL_LEN]);
-        let message = Message::from_digest_slice(
-            sig_hash_header.hash_with_chain_id(self.chain_spec.chain.id()).as_bytes(),
-        )?;
+        let message = Message::from_slice(
+            sig_hash_header.hash_with_chain_id(self.chain_spec.chain.id()).as_slice(),
+        )
+        .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
-        let public = &SECP256K1.recover_ecdsa(&message, &signature)?;
+        let public = &SECP256K1
+            .recover_ecdsa(&message, &signature)
+            .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
         let address_slice = &Keccak256::digest(&public.serialize_uncompressed()[1..])[12..];
         let proposer = Address::from_slice(address_slice);
 
@@ -176,8 +186,8 @@ impl Parlia<_> {
             val_info_map.insert(
                 addr,
                 ValidatorInfo {
-                    index: i + 1,
-                    vote_addr: BlsPublicKey::from_slice(&val_bytes[start..end]),
+                    index: (i + 1) as u64,
+                    vote_addr: VoteAddress::from_slice(&val_bytes[start..end]),
                 },
             );
         }
@@ -205,19 +215,21 @@ impl Parlia<_> {
             return Ok(None);
         }
 
-        Ok(Some(Decodable::decode(&mut raw)?))
+        Ok(Some(
+            Decodable::decode(&mut raw).map_err(|_| ParliaConsensusError::ABIDecodeInnerError)?,
+        ))
     }
 
     pub fn get_snapshot_from_cache(&self, hash: &B256) -> Option<Snapshot> {
-        let mut cache = RECENT_SNAPS.read();
+        let mut cache = RECENT_SNAPS.write();
 
-        cache.get(hash).cloned()
+        cache.get_mut(hash).cloned()
     }
 
     pub fn get_validator_bytes_from_header(
         &self,
         header: &Header,
-    ) -> Result<&[u8], ConsensusError> {
+    ) -> Result<Vec<u8>, ConsensusError> {
         self.check_header_extra_len(header)?;
 
         if header.number % self.epoch != 0 {
@@ -227,14 +239,14 @@ impl Parlia<_> {
         let extra_len = header.extra_data.len();
 
         if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
-            return Ok(&header.extra_data[EXTRA_VANITY_LEN..extra_len - EXTRA_SEAL_LEN]);
+            return Ok(header.extra_data[EXTRA_VANITY_LEN..extra_len - EXTRA_SEAL_LEN].to_vec());
         }
 
         let count = header.extra_data[EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM - 1] as usize;
         let start = EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM;
         let end = start + count * EXTRA_VALIDATOR_LEN;
 
-        Ok(&header.extra_data[start..end])
+        Ok(header.extra_data[start..end].to_vec())
     }
 
     fn check_header_extra_len(&self, header: &Header) -> Result<(), ConsensusError> {
@@ -313,9 +325,7 @@ impl Parlia<_> {
     ) -> Result<(), ConsensusError> {
         if self.chain_spec.fork(Hardfork::Ramanujan).active_at_block(header.number) {
             if header.timestamp <
-                parent.timestamp +
-                    self.period +
-                    self.backoff_time(snapshot, header, header.beneficiary)
+                parent.timestamp + self.period + self.back_off_time(snapshot, header)
             {
                 return Err(ParliaConsensusError::FutureBlock {
                     block_number: header.number,
@@ -324,6 +334,8 @@ impl Parlia<_> {
                 .into());
             }
         }
+
+        Ok(())
     }
 
     fn verify_seal(&self, snap: &Snapshot, header: &SealedHeader) -> Result<(), ConsensusError> {
@@ -390,9 +402,71 @@ impl Parlia<_> {
         let count = header.extra_data[EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM - 1] as usize;
         Ok(count * EXTRA_VALIDATOR_LEN)
     }
+
+    fn back_off_time(&self, snap: &Snapshot, header: &SealedHeader) -> u64 {
+        let validator = header.beneficiary;
+        if snap.is_inturn(validator) {
+            return 0;
+        }
+        let idx = match snap.index_of(validator) {
+            Some(i) => i,
+            None => {
+                // The backOffTime does not matter when a validator is not authorized.
+                return 0;
+            }
+        };
+
+        let mut rng = RngSource::new(snap.block_number as i64);
+        let validator_count = snap.validators.len();
+
+        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+            // select a random step for delay, range 0~(proposer_count-1)
+            let mut backoff_steps = Vec::new();
+            for i in 0..validator_count {
+                backoff_steps.push(i);
+            }
+            backoff_steps.shuffle(&mut rng);
+            return BACKOFF_TIME_OF_INITIAL + (backoff_steps[idx] as u64) * BACKOFF_TIME_OF_WIGGLE;
+        }
+
+        // Exclude the recently signed validators first
+        let mut recents = HashMap::new();
+        let limit = self.get_recently_proposal_limit(header, validator_count as u64);
+        let block_number = header.number;
+        for (seen, proposer) in snap.recent_proposers.iter() {
+            if block_number < limit || *seen > block_number - limit {
+                if validator == *proposer {
+                    // The backOffTime does not matter when a validator has signed recently.
+                    return 0;
+                }
+                recents.insert(*proposer, true);
+            }
+        }
+        let mut index = idx;
+        let mut backoff_steps = Vec::new();
+        for i in 0..validator_count {
+            if recents.get(&snap.validators[i]).is_some() {
+                if i < idx {
+                    index -= 1;
+                }
+                continue;
+            }
+            backoff_steps.push(backoff_steps.len())
+        }
+
+        // select a random step for delay in left validators
+        backoff_steps.shuffle(&mut rng);
+        let mut delay =
+            BACKOFF_TIME_OF_INITIAL + (backoff_steps[index] as u64) * BACKOFF_TIME_OF_WIGGLE;
+        // If the current validator has recently signed, reduce initial delay.
+        if recents.get(&snap.inturn_validator()).is_some() {
+            delay -= BACKOFF_TIME_OF_INITIAL;
+        }
+        delay
+    }
 }
 
-impl Parlia<_> {
+impl<P> Parlia<P> {
     pub fn init_genesis_contracts(&self, nonce: u64) -> Vec<Transaction> {
         let function = self.validator_abi.function("init").unwrap().first().unwrap();
         let input = function.abi_encode_input(&[]).unwrap();
@@ -559,7 +633,7 @@ impl Parlia<_> {
     }
 }
 
-impl Parlia<_> {
+impl<P> Parlia<P> {
     pub fn get_current_validators_before_luban(
         &self,
         block_number: BlockNumber,
@@ -591,7 +665,7 @@ impl Parlia<_> {
         (*VALIDATOR_CONTRACT, Bytes::from(function.abi_encode_input(&[]).unwrap()))
     }
 
-    pub fn unpack_data_into_validator_set(&self, data: &[u8]) -> (Vec<Address>, Vec<BlsPublicKey>) {
+    pub fn unpack_data_into_validator_set(&self, data: &[u8]) -> (Vec<Address>, Vec<VoteAddress>) {
         let function = self.validator_abi.function("getMiningValidators").unwrap().first().unwrap();
         let output = function.abi_decode_output(data, true).unwrap();
 
@@ -601,8 +675,12 @@ impl Parlia<_> {
             .into_iter()
             .map(|val| val.as_address().unwrap())
             .collect();
-        let vote_address =
-            output[1].as_array().unwrap().into_iter().map(|val| val.as_bytes().unwrap()).collect();
+        let vote_address = output[1]
+            .as_array()
+            .unwrap()
+            .into_iter()
+            .map(|val| VoteAddress::from_slice(val.as_bytes().unwrap()))
+            .collect();
 
         (consensus_addresses, vote_address)
     }
@@ -638,19 +716,15 @@ impl Parlia<_> {
             .into_iter()
             .map(|val| val.as_address().unwrap())
             .collect();
-        let voting_powers = output[1]
-            .as_array()
-            .unwrap()
-            .into_iter()
-            .map(|val| val.as_uint().unwrap().into())
-            .collect();
+        let voting_powers =
+            output[1].as_array().unwrap().into_iter().map(|val| val.as_uint().unwrap().0).collect();
         let vote_addresses = output[2]
             .as_array()
             .unwrap()
             .into_iter()
             .map(|val| val.as_bytes().unwrap().to_vec())
             .collect();
-        let total_length = output[3].as_uint().unwrap().into();
+        let total_length = output[3].as_uint().unwrap().0;
 
         (consensus_address, voting_powers, vote_addresses, total_length)
     }
@@ -667,11 +741,11 @@ impl Parlia<_> {
             self.stake_hub_abi.function("maxElectedValidators").unwrap().first().unwrap();
         let output = function.abi_decode_output(data, true).unwrap();
 
-        output[0].as_uint().unwrap().into()
+        output[0].as_uint().unwrap().0
     }
 }
 
-impl Parlia<_> {
+impl<P> Parlia<P> {
     pub fn chain_spec(&self) -> &ChainSpec {
         &self.chain_spec
     }
@@ -688,7 +762,7 @@ impl Parlia<_> {
 }
 
 impl<P: HeaderProvider> Parlia<P> {
-    pub fn verify_cascading_fields<P>(
+    pub fn verify_cascading_fields(
         &self,
         snap: &Snapshot,
         header: &SealedHeader,
@@ -710,70 +784,16 @@ impl<P: HeaderProvider> Parlia<P> {
         Ok(())
     }
 
-    pub fn get_finality_weights<P>(
-        &self,
-        header: &Header,
-    ) -> Result<(Vec<Address>, Vec<U256>), ConsensusError> {
-        if header.number % self.epoch != 0 {
-            return Ok((Vec::new(), Vec::new()));
-        }
-
-        let mut header = header;
-        let mut accumulated_weights: HashMap<Address, U256> = HashMap::new();
-        let start = (header.number - self.epoch).max(1);
-        for height in (start..header.number).rev() {
-            let header = self.get_header_by_hash(height, header.parent_hash)?;
-            if let Some(attestation) = self.get_vote_attestation_from_header(&header)? {
-                let justified_header = self.get_header_by_hash(
-                    attestation.data.target_number,
-                    attestation.data.target_hash,
-                )?;
-                let snap = self.snapshot(&justified_header, None)?;
-                let validators = snap.validators;
-                let validators_bit_set = BitSet::from_u64(attestation.vote_address_set);
-                if validators_bit_set.count() as usize > validators.len() {
-                    return Err(ParliaConsensusError::InvalidAttestationVoteCount(GotExpected {
-                        got: validators_bit_set.count(),
-                        expected: validators.len() as u64,
-                    })
-                    .into());
-                }
-
-                let mut valid_vote_count = 0;
-                for (index, val) in validators.iter().enumerate() {
-                    if validators_bit_set.test(index) {
-                        *accumulated_weights.entry(*val).or_insert(U256::ZERO) += U256::from(1);
-                        valid_vote_count += 1;
-                    }
-                }
-                let quorum = (snap.validators.len() * 2 + 2) / 3; // ceil div
-                if valid_vote_count > quorum {
-                    *accumulated_weights.entry(header.beneficiary).or_insert(U256::ZERO) +=
-                        U256::from(
-                            ((valid_vote_count - quorum) * COLLECT_ADDITIONAL_VOTES_REWARD_RATIO) /
-                                100,
-                        );
-                }
-            }
-        }
-
-        let mut validators: Vec<Address> = accumulated_weights.keys().cloned().collect();
-        validators.sort();
-        let weights: Vec<U256> =
-            validators.iter().map(|val| accumulated_weights[val].clone()).collect();
-
-        Ok((validators, weights))
-    }
-
     pub fn get_header_by_hash(
         &self,
         block_number: BlockNumber,
         hash: B256,
     ) -> Result<SealedHeader, ConsensusError> {
-        let provider = self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet.into())?;
+        let provider = self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet)?;
         let header = provider
-            .sealed_header(block_number)?
-            .ok_or(ParliaConsensusError::UnknownHeader { block_number, hash }.into())?;
+            .sealed_header(block_number)
+            .map_err(|_| ParliaConsensusError::ProviderInnerError)?
+            .ok_or_else(|| ParliaConsensusError::UnknownHeader { block_number, hash })?;
 
         return if header.hash() == hash {
             Ok(header)
@@ -782,7 +802,7 @@ impl<P: HeaderProvider> Parlia<P> {
         }
     }
 
-    fn verify_vote_attestation<P>(
+    fn verify_vote_attestation(
         &self,
         snap: &Snapshot,
         header: &SealedHeader,
@@ -841,8 +861,8 @@ impl<P: HeaderProvider> Parlia<P> {
                 let val_info = snap
                     .validators_map
                     .get(val)
-                    .ok_or(ParliaConsensusError::SnapNotFoundVoteAddr { address: *val }.into())?;
-                vote_addrs.push(BlsPublicKey::from_slice(&val_info.vote_addr[..])?);
+                    .ok_or(ParliaConsensusError::VoteAddrNotFoundInSnap { address: *val })?;
+                vote_addrs.push(BlsPublicKey::from_slice(&val_info.vote_addr[..]));
             }
 
             // check if voted validator count satisfied 2/3+1
@@ -856,72 +876,78 @@ impl<P: HeaderProvider> Parlia<P> {
             }
 
             // check bls aggregate sig
-            let vote_addrs: Vec<&PublicKey> =
-                vote_addrs.iter().map(|bytes| &PublicKey::from_bytes(&bytes[..])?).collect();
+            let vote_addrs: Vec<PublicKey> =
+                vote_addrs.iter().map(|bytes| PublicKey::from_bytes(&bytes[..]).unwrap()).collect();
+            let vote_addrs: Vec<&PublicKey> = vote_addrs.iter().collect();
 
-            let sig = Signature::from_bytes(&attestation.agg_signature[..])?;
+            let sig = Signature::from_bytes(&attestation.agg_signature[..])
+                .map_err(|_| ParliaConsensusError::BLSTInnerError)?;
             let err = sig.aggregate_verify(
                 true,
-                &[attestation.data.hash().as_bytes()],
+                &[attestation.data.hash().as_slice()],
                 &[],
                 &vote_addrs,
                 true,
-            )?;
+            );
 
-            if !err == BLST_ERROR::BLST_SUCCESS {
-                return Err(err.into());
+            return match err {
+                BLST_ERROR::BLST_SUCCESS => Ok(()),
+                _ => Err(ParliaConsensusError::BLSTInnerError.into()),
             }
         }
 
         Ok(())
     }
 
-    fn get_justified_header<P>(
+    fn get_justified_header(
         &self,
         snap: &Snapshot,
         header: &SealedHeader,
     ) -> Result<SealedHeader, ConsensusError> {
-        let header_provider =
-            self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet.into())?;
+        let header_provider = self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet)?;
         // If there has vote justified block, find it or return naturally justified block.
-        if let Some(ref vote) = snap.vote_data {
-            if snap.block_number - vote.target_number > NATURALLY_JUSTIFIED_DIST {
+        if snap.vote_data.source_hash != B256::ZERO && snap.vote_data.target_hash != B256::ZERO {
+            if snap.block_number - snap.vote_data.target_number > NATURALLY_JUSTIFIED_DIST {
                 return self.find_ancient_header(header, NATURALLY_JUSTIFIED_DIST);
             }
-            return Ok(header_provider.sealed_header(vote.target_number)?.ok_or_else(|| {
-                ParliaConsensusError::UnknownHeader {
-                    block_number: vote.target_number,
-                    hash: vote.target_hash,
-                }
-            })?);
+            return Ok(header_provider
+                .sealed_header(snap.vote_data.target_number)
+                .map_err(|_| ParliaConsensusError::ProviderInnerError)?
+                .ok_or_else(|| ParliaConsensusError::UnknownHeader {
+                    block_number: snap.vote_data.target_number,
+                    hash: snap.vote_data.target_hash,
+                })?);
         }
 
         // If there is no vote justified block, then return root or naturally justified block.
         if header.number < NATURALLY_JUSTIFIED_DIST {
-            return Ok(header_provider.sealed_header(0)?.ok_or_else(|| {
-                ParliaConsensusError::UnknownHeader { block_number: 0, hash: Default::default() }
-            })?);
+            return Ok(header_provider
+                .sealed_header(0)
+                .map_err(|_| ParliaConsensusError::ProviderInnerError)?
+                .ok_or_else(|| ParliaConsensusError::UnknownHeader {
+                    block_number: 0,
+                    hash: Default::default(),
+                })?);
         }
 
         self.find_ancient_header(header, NATURALLY_JUSTIFIED_DIST)
     }
 
-    fn find_ancient_header<P>(
+    fn find_ancient_header(
         &self,
         header: &SealedHeader,
         count: u64,
     ) -> Result<SealedHeader, ConsensusError> {
-        let header_provider =
-            self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet.into())?;
+        let header_provider = self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet)?;
         let mut result = header.clone();
         for _ in 0..count {
-            result = header_provider.sealed_header(result.number - 1)?.ok_or_else(|| {
-                ParliaConsensusError::UnknownHeader {
+            result = header_provider
+                .sealed_header(result.number - 1)
+                .map_err(|_| ParliaConsensusError::ProviderInnerError)?
+                .ok_or_else(|| ParliaConsensusError::UnknownHeader {
                     block_number: result.number,
                     hash: result.hash(),
-                }
-                .into()
-            })?;
+                })?;
         }
         Ok(result)
     }
@@ -932,14 +958,15 @@ impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> 
         self.provider = Some(provider);
     }
 
-    pub fn snapshot<P>(
+    pub fn snapshot(
         &self,
-        mut header: &SealedHeader,
+        header: &SealedHeader,
         parent: Option<&SealedHeader>,
     ) -> Result<Snapshot, ConsensusError> {
-        let provider = self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet.into())?;
+        let provider = self.provider.as_ref().ok_or(ParliaConsensusError::ProviderNotSet)?;
         let mut cache = RECENT_SNAPS.write();
 
+        let mut header = header.clone();
         let mut block_number = header.number;
         let mut block_hash = header.hash();
         let mut skip_headers = Vec::new();
@@ -954,7 +981,10 @@ impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> 
 
             // Read from db
             if block_number % CHECKPOINT_INTERVAL == 0 {
-                if let Some(cached) = provider.get_parlia_snapshot(block_hash)? {
+                if let Some(cached) = provider
+                    .get_parlia_snapshot(block_hash)
+                    .map_err(|_| ParliaConsensusError::ProviderInnerError)?
+                {
                     snap = cached;
                     break;
                 }
@@ -962,24 +992,28 @@ impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> 
 
             // If we're at the genesis, snapshot the initial state.
             if block_number == 0 {
-                let (next_validators, bls_keys) = self.parse_validators_from_header(header)?;
+                let (next_validators, bls_keys) =
+                    self.parse_validators_from_header(header.header())?;
                 snap =
                     Snapshot::new(next_validators, block_number, block_hash, self.epoch, bls_keys);
                 break;
             }
 
             // No snapshot for this header, gather the header and move backward
-            skip_headers.push(header);
+            skip_headers.push(header.clone());
             if let Some(h) = parent {
-                header = h;
+                header = h.clone();
                 block_number = header.number;
                 block_hash = header.hash();
             } else {
-                if let Some(h) = provider.sealed_header(block_number - 1)? {
+                if let Some(h) = provider
+                    .sealed_header(block_number - 1)
+                    .map_err(|_| ParliaConsensusError::ProviderInnerError)?
+                {
                     if h.hash() != header.parent_hash {
                         return Err(ConsensusError::ParentUnknown { hash: block_hash });
                     }
-                    header = &h;
+                    header = h;
                     block_number = header.number;
                     block_hash = header.hash();
                 }
@@ -994,19 +1028,75 @@ impl<P: HeaderProvider + ParliaSnapshotReader + ParliaSnapshotWriter> Parlia<P> 
             let attestation = self.get_vote_attestation_from_header(header)?;
             snap = snap
                 .apply(validator, header, next_validators, bls_keys, attestation)
-                .ok_or(|_| ParliaConsensusError::ApplySnapshotFailed)?;
+                .ok_or(ParliaConsensusError::ApplySnapshotFailed)?;
         }
 
         cache.put(snap.block_hash, snap.clone());
         if snap.block_number % CHECKPOINT_INTERVAL == 0 {
-            provider.save_parlia_snapshot(snap.block_hash, snap.clone())?;
+            provider
+                .save_parlia_snapshot(snap.block_hash, snap.clone())
+                .map_err(|_| ParliaConsensusError::ProviderInnerError)?;
         }
 
         Ok(snap)
     }
+
+    pub fn get_finality_weights(
+        &self,
+        header: &Header,
+    ) -> Result<(Vec<Address>, Vec<U256>), ConsensusError> {
+        if header.number % self.epoch != 0 {
+            return Ok((Vec::new(), Vec::new()));
+        }
+
+        let mut accumulated_weights: HashMap<Address, U256> = HashMap::new();
+        let start = (header.number - self.epoch).max(1);
+        for height in (start..header.number).rev() {
+            let header = self.get_header_by_hash(height, header.parent_hash)?;
+            if let Some(attestation) = self.get_vote_attestation_from_header(&header)? {
+                let justified_header = self.get_header_by_hash(
+                    attestation.data.target_number,
+                    attestation.data.target_hash,
+                )?;
+                let snap = self.snapshot(&justified_header, None)?;
+                let validators = &snap.validators;
+                let validators_bit_set = BitSet::from_u64(attestation.vote_address_set);
+                if validators_bit_set.count() as usize > validators.len() {
+                    return Err(ParliaConsensusError::InvalidAttestationVoteCount(GotExpected {
+                        got: validators_bit_set.count(),
+                        expected: validators.len() as u64,
+                    })
+                    .into());
+                }
+
+                let mut valid_vote_count = 0;
+                for (index, val) in validators.iter().enumerate() {
+                    if validators_bit_set.test(index) {
+                        *accumulated_weights.entry(*val).or_insert(U256::ZERO) += U256::from(1);
+                        valid_vote_count += 1;
+                    }
+                }
+                let quorum = (snap.validators.len() * 2 + 2) / 3; // ceil div
+                if valid_vote_count > quorum {
+                    *accumulated_weights.entry(header.beneficiary).or_insert(U256::ZERO) +=
+                        U256::from(
+                            ((valid_vote_count - quorum) * COLLECT_ADDITIONAL_VOTES_REWARD_RATIO) /
+                                100,
+                        );
+                }
+            }
+        }
+
+        let mut validators: Vec<Address> = accumulated_weights.keys().cloned().collect();
+        validators.sort();
+        let weights: Vec<U256> =
+            validators.iter().map(|val| accumulated_weights[val].clone()).collect();
+
+        Ok((validators, weights))
+    }
 }
 
-impl Debug for Parlia<_> {
+impl<P> Debug for Parlia<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Parlia")
             .field("chain_spec", &self.chain_spec)
@@ -1016,7 +1106,7 @@ impl Debug for Parlia<_> {
     }
 }
 
-impl Consensus for Parlia<_> {
+impl<P: Debug + Send + Sync> Consensus for Parlia<P> {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
         // Don't waste time checking blocks from the future
         let present_timestamp =
@@ -1093,8 +1183,8 @@ impl Consensus for Parlia<_> {
     // No total difficulty check for Parlia
     fn validate_header_with_total_difficulty(
         &self,
-        header: &Header,
-        total_difficulty: U256,
+        _header: &Header,
+        _total_difficulty: U256,
     ) -> Result<(), ConsensusError> {
         Ok(())
     }

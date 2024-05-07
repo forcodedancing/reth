@@ -18,7 +18,6 @@ use reth_interfaces::{
 };
 use reth_parlia_consensus::Parlia;
 use reth_primitives::{
-    parlia::{Snapshot, CHECKPOINT_INTERVAL},
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, HeadersCheckpoint, StageCheckpoint, StageId,
     },

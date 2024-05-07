@@ -26,19 +26,15 @@ alloy-json-abi.workspace = true
 
 # crypto
 secp256k1.workspace = true
-enr.workspace = true
 sha3 = "0.10.8"
 blst = "0.3.11"
 
 # misc
-auto_impl.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 parking_lot.workspace = true
 tracing.workspace = true
 lazy_static = "1.4.0"
 lru = "0.12"
-bytes = "1.5"
 bitset = "0.1.2"
 
 [dev-dependencies]

@@ -240,6 +240,35 @@ impl Header {
         Encodable::encode(&self.nonce, out);
     }
 
+    fn rlp_header_with_chain_id(&self, chain_id: u64) -> alloy_rlp::Header {
+        let mut rlp_head = alloy_rlp::Header {
+            list: true,
+            payload_length: 0,
+        };
+
+        // add chain_id make more security
+        rlp_head.payload_length += chain_id.length(); // chain_id
+        // +1?
+        rlp_head.payload_length += self.parent_hash.length(); // parent_hash
+        rlp_head.payload_length += self.ommers_hash.length(); // ommers_hash
+        rlp_head.payload_length += self.beneficiary.length(); // beneficiary
+        rlp_head.payload_length += self.state_root.length(); // state_root
+        rlp_head.payload_length += self.transactions_root.length(); // transactions_root
+        rlp_head.payload_length += self.receipts_root.length(); // receipts_root
+        rlp_head.payload_length += self.logs_bloom.length() + length_of_length(self.logs_bloom.length()); // logs_bloom
+        rlp_head.payload_length += self.difficulty.length(); // difficulty
+        rlp_head.payload_length += U256::from(self.number).length(); // block height
+        rlp_head.payload_length += self.gas_limit.length(); // gas_limit
+        rlp_head.payload_length += self.gas_used.length(); // gas_used
+        rlp_head.payload_length += self.timestamp.length(); // timestamp
+        rlp_head.payload_length += self.extra_data.length(); // extra_data
+        rlp_head.payload_length += self.mix_hash.length(); // mix_hash
+        rlp_head.payload_length += B64::new(self.nonce.to_be_bytes()).length(); // nonce
+
+        //bsc don’t need basfee for header rlp encode
+        rlp_head
+    }
+
     /// Checks if the header is empty - has no transactions and no ommers
     pub fn is_empty(&self) -> bool {
         self.transaction_root_is_empty() &&

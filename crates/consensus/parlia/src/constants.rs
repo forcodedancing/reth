@@ -14,12 +14,16 @@ pub const EXTRA_VALIDATOR_LEN_BEFORE_LUBAN: usize = ADDRESS_LENGTH;
 /// Fixed number of extra-data suffix bytes reserved for Luban validator
 pub const EXTRA_VALIDATOR_LEN: usize = EXTRA_VALIDATOR_LEN_BEFORE_LUBAN + BLS_PUBLIC_KEY_BYTES_LEN;
 /// Difficulty for INTURN block
-pub const DIFF_INTURN: U256 = U256::from(2);
+pub const DIFF_INTURN: U256 = U256::from_limbs([2u64, 0, 0, 0]);
 /// Difficulty for NOTURN block
-pub const DIFF_NOTURN: U256 = U256::from(1);
+pub const DIFF_NOTURN: U256 = U256::from_limbs([1u64, 0, 0, 0]);
 pub const SYSTEM_REWARD_PERCENT: usize = 4;
 /// The max reward in system reward contract
 pub const MAX_SYSTEM_REWARD: u128 = 100 * ETH_TO_WEI;
 /// The distance to naturally justify a block
 pub const NATURALLY_JUSTIFIED_DIST: u64 = 15;
 pub(crate) const COLLECT_ADDITIONAL_VOTES_REWARD_RATIO: usize = 100;
+/// Default delay (per signer) to allow concurrent signers, second
+pub(crate) const BACKOFF_TIME_OF_INITIAL: u64 = 1_u64;
+/// Random additional delay (per signer) to allow concurrent signers, second
+pub(crate) const BACKOFF_TIME_OF_WIGGLE: u64 = 1_u64;

@@ -5,10 +5,11 @@ use crate::{
 };
 use reth_evm::ConfigureEvm;
 use reth_interfaces::executor::BlockExecutionError;
-use reth_parlia_consensus::Parlia;
+#[cfg(feature = "bsc")]
+use reth_parlia_consensus::{Parlia, ParliaConfig};
 use reth_primitives::ChainSpec;
 use reth_provider::{ExecutorFactory, PrunableBlockExecutor, StateProvider};
-use std::sync::Arc;
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 /// Factory for creating [EVMProcessor].
 #[derive(Clone, Debug)]
@@ -18,9 +19,10 @@ pub struct EvmProcessorFactory<EvmConfig, P> {
     /// Type that defines how the produced EVM should be configured.
     evm_config: EvmConfig,
 
-    /// Parlia consensus instance
+    _phantom: PhantomData<P>,
+    /// Parlia consensus config
     #[cfg(feature = "bsc")]
-    parlia_consensus: Arc<Parlia<P>>,
+    parlia_cfg: Option<ParliaConfig>,
 }
 
 impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
@@ -30,8 +32,9 @@ impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
             chain_spec,
             stack: None,
             evm_config,
+            _phantom: PhantomData::default(),
             #[cfg(feature = "bsc")]
-            parlia_consensus: Arc::new(Parlia::default()),
+            parlia_cfg: None,
         }
     }
 
@@ -48,8 +51,8 @@ impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
     }
 
     #[cfg(feature = "bsc")]
-    pub fn with_parlia(mut self, parlia_consensus: Arc<Parlia<P>>) -> Self {
-        self.parlia_consensus = parlia_consensus;
+    pub fn with_parlia_config(mut self, parlia_cfg: ParliaConfig) -> Self {
+        self.parlia_cfg = Some(parlia_cfg);
         self
     }
 }
@@ -57,13 +60,14 @@ impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
 impl<EvmConfig, P> ExecutorFactory for EvmProcessorFactory<EvmConfig, P>
 where
     EvmConfig: ConfigureEvm + Send + Sync + Clone + 'static,
+    P: Debug + Send + Sync + 'static,
 {
     fn with_state<'a, SP: StateProvider + 'a>(
         &'a self,
         sp: SP,
     ) -> Box<dyn PrunableBlockExecutor<Error = BlockExecutionError> + 'a> {
         let database_state = StateProviderDatabase::new(sp);
-        let mut evm = EVMProcessor::new_with_db(
+        let mut evm = EVMProcessor::<EvmConfig, P>::new_with_db(
             self.chain_spec.clone(),
             database_state,
             self.evm_config.clone(),
@@ -72,7 +76,9 @@ where
             evm.set_stack(stack.clone());
         }
         #[cfg(feature = "bsc")]
-        evm.set_parlia(self.parlia_consensus.clone());
+        if let Some(parlia_cfg) = &self.parlia_cfg {
+            evm.set_parlia(Arc::new(Parlia::new(self.chain_spec.clone(), parlia_cfg.clone())));
+        }
         Box::new(evm)
     }
 }
