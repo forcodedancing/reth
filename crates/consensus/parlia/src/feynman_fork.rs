@@ -1,7 +1,7 @@
 use reth_primitives::{Address, U256};
 use std::{cmp::Ordering, collections::BinaryHeap};
 
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ValidatorItem {
     pub address: Address,
     pub voting_power: U256,

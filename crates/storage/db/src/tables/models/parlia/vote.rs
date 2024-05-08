@@ -48,6 +48,7 @@ pub struct VoteEnvelope {
 }
 
 impl VoteEnvelope {
+    /// hash, get the hash of VoteEnvelope
     pub fn hash(&self) -> B256 {
         keccak256(alloy_rlp::encode(self))
     }

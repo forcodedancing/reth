@@ -1,9 +1,15 @@
 //! Executor Factory
 
-use crate::{bundle_state::BundleStateWithReceipts, DatabaseProviderRW, StateProvider};
-use reth_db::database::Database;
+use crate::{bundle_state::BundleStateWithReceipts, StateProvider};
 use reth_interfaces::executor::BlockExecutionError;
-use reth_primitives::{BlockNumber, BlockWithSenders, PruneModes, Receipt, SealedHeader, U256};
+use reth_primitives::{BlockNumber, BlockWithSenders, PruneModes, Receipt, U256};
+
+#[cfg(feature = "bsc")]
+use crate::DatabaseProviderRW;
+#[cfg(feature = "bsc")]
+use reth_db::database::Database;
+#[cfg(feature = "bsc")]
+use reth_primitives::TransactionSigned;
 
 /// A factory capable of creating an executor with the given state provider.
 pub trait ExecutorFactory: Send + Sync + 'static {
@@ -51,6 +57,17 @@ pub trait BlockExecutor {
         block: &BlockWithSenders,
         total_difficulty: U256,
     ) -> Result<(Vec<Receipt>, u64), Self::Error>;
+
+    #[cfg(feature = "bsc")]
+    fn execute_transactions_and_get_system_txs(
+        &mut self,
+        block: &BlockWithSenders,
+        total_difficulty: U256,
+    ) -> Result<(Vec<&TransactionSigned>, Vec<Receipt>, u64), BlockExecutionError> {
+        let (receipts, gas_used) = self.execute_transactions(block, total_difficulty)?;
+        let system_txs = Vec::new();
+        Ok((system_txs, receipts, gas_used))
+    }
 
     /// Return bundle state. This is output of executed blocks.
     fn take_output_state(&mut self) -> BundleStateWithReceipts;

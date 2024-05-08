@@ -337,10 +337,10 @@ impl StorageInner {
     /// Executes the block with the given block and senders, on the provided [EVMProcessor].
     ///
     /// This returns the poststate from execution and post-block changes, as well as the gas used.
-    pub(crate) fn execute<EvmConfig, P>(
+    pub(crate) fn execute<EvmConfig>(
         &mut self,
         block: &BlockWithSenders,
-        executor: &mut EVMProcessor<'_, EvmConfig, P>,
+        executor: &mut EVMProcessor<'_, EvmConfig>,
     ) -> Result<(BundleStateWithReceipts, u64), BlockExecutionError>
     where
         EvmConfig: ConfigureEvm,

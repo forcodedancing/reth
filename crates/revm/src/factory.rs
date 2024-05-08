@@ -9,30 +9,28 @@ use reth_interfaces::executor::BlockExecutionError;
 use reth_parlia_consensus::{Parlia, ParliaConfig};
 use reth_primitives::ChainSpec;
 use reth_provider::{ExecutorFactory, PrunableBlockExecutor, StateProvider};
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 /// Factory for creating [EVMProcessor].
 #[derive(Clone, Debug)]
-pub struct EvmProcessorFactory<EvmConfig, P> {
+pub struct EvmProcessorFactory<EvmConfig> {
     chain_spec: Arc<ChainSpec>,
     stack: Option<InspectorStack>,
     /// Type that defines how the produced EVM should be configured.
     evm_config: EvmConfig,
 
-    _phantom: PhantomData<P>,
     /// Parlia consensus config
     #[cfg(feature = "bsc")]
     parlia_cfg: Option<ParliaConfig>,
 }
 
-impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
+impl<EvmConfig> EvmProcessorFactory<EvmConfig> {
     /// Create new factory
     pub fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig) -> Self {
         Self {
             chain_spec,
             stack: None,
             evm_config,
-            _phantom: PhantomData::default(),
             #[cfg(feature = "bsc")]
             parlia_cfg: None,
         }
@@ -57,7 +55,30 @@ impl<EvmConfig, P> EvmProcessorFactory<EvmConfig, P> {
     }
 }
 
-impl<EvmConfig, P> ExecutorFactory for EvmProcessorFactory<EvmConfig, P>
+#[cfg(not(feature = "bsc"))]
+impl<EvmConfig> ExecutorFactory for EvmProcessorFactory<EvmConfig>
+where
+    EvmConfig: ConfigureEvm + Send + Sync + Clone + 'static,
+{
+    fn with_state<'a, SP: StateProvider + 'a>(
+        &'a self,
+        sp: SP,
+    ) -> Box<dyn PrunableBlockExecutor<Error = BlockExecutionError> + 'a> {
+        let database_state = StateProviderDatabase::new(sp);
+        let mut evm = EVMProcessor::new_with_db(
+            self.chain_spec.clone(),
+            database_state,
+            self.evm_config.clone(),
+        );
+        if let Some(stack) = &self.stack {
+            evm.set_stack(stack.clone());
+        }
+        Box::new(evm)
+    }
+}
+
+#[cfg(feature = "bsc")]
+impl<EvmConfig, P> ExecutorFactory for EvmProcessorFactory<EvmConfig>
 where
     EvmConfig: ConfigureEvm + Send + Sync + Clone + 'static,
     P: Debug + Send + Sync + 'static,
@@ -75,7 +96,6 @@ where
         if let Some(stack) = &self.stack {
             evm.set_stack(stack.clone());
         }
-        #[cfg(feature = "bsc")]
         if let Some(parlia_cfg) = &self.parlia_cfg {
             evm.set_parlia(Arc::new(Parlia::new(self.chain_spec.clone(), parlia_cfg.clone())));
         }

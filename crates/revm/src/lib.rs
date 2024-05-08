@@ -37,6 +37,10 @@ pub mod stack;
 #[cfg(feature = "optimism")]
 pub mod optimism;
 
+/// Bsc-specific implementation and utilities for the executor
+#[cfg(feature = "bsc")]
+pub mod bsc;
+
 /// Common test helpers
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;

@@ -4,7 +4,6 @@ use reth_db::{
     cursor::DbCursorRO, database::Database, static_file::HeaderMask, tables, transaction::DbTx,
 };
 use reth_exex::ExExManagerHandle;
-use reth_parlia_consensus::Parlia;
 use reth_primitives::{
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, ExecutionCheckpoint, StageCheckpoint, StageId,
@@ -29,6 +28,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::*;
+
+#[cfg(feature = "bsc")]
+use reth_parlia_consensus::Parlia;
 
 /// The execution stage executes all transactions and
 /// update history indexes.

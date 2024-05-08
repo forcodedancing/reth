@@ -1,6 +1,4 @@
 use futures_util::StreamExt;
-use lru::LruCache;
-use parking_lot::RwLock;
 use reth_codecs::Compact;
 use reth_config::config::EtlConfig;
 use reth_db::{
@@ -12,31 +10,40 @@ use reth_db::{
 };
 use reth_etl::Collector;
 use reth_interfaces::{
-    consensus::{Consensus, ConsensusError, ParliaConsensusError},
+    consensus::Consensus,
     p2p::headers::{downloader::HeaderDownloader, error::HeadersDownloaderError},
     provider::ProviderError,
 };
-use reth_parlia_consensus::Parlia;
 use reth_primitives::{
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, HeadersCheckpoint, StageCheckpoint, StageId,
     },
-    Address, BlockHash, BlockNumber, SealedHeader, StaticFileSegment, B256,
+    BlockHash, BlockNumber, SealedHeader, StaticFileSegment,
 };
 use reth_provider::{
-    providers::{StaticFileProvider, StaticFileWriter},
+    providers::{StaticFileWriter},
     BlockHashReader, DatabaseProviderRW, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider,
-    HeaderSyncMode, ParliaSnapshotReader,
+    HeaderSyncMode,
 };
 use reth_stages_api::{
     BlockErrorKind, ExecInput, ExecOutput, Stage, StageError, UnwindInput, UnwindOutput,
 };
 use std::{
-    num::NonZeroUsize,
     sync::Arc,
     task::{ready, Context, Poll},
 };
 use tracing::*;
+
+#[cfg(feature = "bsc")]
+use reth_parlia_consensus::Parlia;
+#[cfg(feature = "bsc")]
+use reth_interfaces::{
+    consensus::{ConsensusError, ParliaConsensusError},
+};
+#[cfg(feature = "bsc")]
+use lru::LruCache;
+#[cfg(feature = "bsc")]
+use parking_lot::RwLock;
 
 /// The headers stage.
 ///
