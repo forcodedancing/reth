@@ -3,7 +3,8 @@ use num_traits::Zero;
 use reth_db::{
     cursor::DbCursorRO, database::Database, static_file::HeaderMask, tables, transaction::DbTx,
 };
-use reth_exex::ExExManagerHandle;
+use reth_evm::execute::{BatchBlockExecutionOutput, BatchExecutor, BlockExecutorProvider};
+use reth_exex::{ExExManagerHandle, ExExNotification};
 use reth_primitives::{
     stage::{
         CheckpointBlockRange, EntitiesCheckpoint, ExecutionCheckpoint, StageCheckpoint, StageId,
@@ -12,10 +13,11 @@ use reth_primitives::{
 };
 use reth_provider::{
     providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
-    BlockReader, CanonStateNotification, Chain, DatabaseProviderRW, ExecutorFactory,
-    HeaderProvider, LatestStateProviderRef, OriginalValuesKnown, ProviderError, StatsReader,
+    BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider,
+    LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriter, StatsReader,
     TransactionVariant,
 };
+use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
     BlockErrorKind, ExecInput, ExecOutput, MetricEvent, MetricEventsSender, Stage, StageError,
     UnwindInput, UnwindOutput,
@@ -60,10 +62,10 @@ use tracing::*;
 /// to [tables::PlainStorageState]
 // false positive, we cannot derive it if !DB: Debug.
 #[allow(missing_debug_implementations)]
-pub struct ExecutionStage<EF> {
+pub struct ExecutionStage<E> {
     metrics_tx: Option<MetricEventsSender>,
-    /// The stage's internal executor
-    executor_factory: EF,
+    /// The stage's internal block executor
+    executor_provider: E,
     /// The commit thresholds of the execution stage.
     thresholds: ExecutionStageThresholds,
     /// The highest threshold (in number of blocks) for switching between incremental
@@ -77,10 +79,10 @@ pub struct ExecutionStage<EF> {
     exex_manager_handle: ExExManagerHandle,
 }
 
-impl<EF> ExecutionStage<EF> {
+impl<E> ExecutionStage<E> {
     /// Create new execution stage with specified config.
     pub fn new(
-        executor_factory: EF,
+        executor_provider: E,
         thresholds: ExecutionStageThresholds,
         external_clean_threshold: u64,
         prune_modes: PruneModes,
@@ -89,19 +91,19 @@ impl<EF> ExecutionStage<EF> {
         Self {
             metrics_tx: None,
             external_clean_threshold,
-            executor_factory,
+            executor_provider,
             thresholds,
             prune_modes,
             exex_manager_handle,
         }
     }
 
-    /// Create an execution stage with the provided  executor factory.
+    /// Create an execution stage with the provided executor.
     ///
     /// The commit threshold will be set to 10_000.
-    pub fn new_with_factory(executor_factory: EF) -> Self {
+    pub fn new_with_executor(executor_provider: E) -> Self {
         Self::new(
-            executor_factory,
+            executor_provider,
             ExecutionStageThresholds::default(),
             MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD,
             PruneModes::none(),
@@ -145,7 +147,10 @@ impl<EF> ExecutionStage<EF> {
     }
 }
 
-impl<EF: ExecutorFactory> ExecutionStage<EF> {
+impl<E> ExecutionStage<E>
+where
+    E: BlockExecutorProvider,
+{
     /// Execute the stage.
     pub fn execute_inner<DB: Database>(
         &mut self,
@@ -165,17 +170,20 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
         let static_file_producer = if self.prune_modes.receipts.is_none() &&
             self.prune_modes.receipts_log_filter.is_empty()
         {
-            Some(prepare_static_file_producer(provider, start_block)?)
+            let mut producer = prepare_static_file_producer(provider, start_block)?;
+            // Since there might be a database <-> static file inconsistency (read
+            // `prepare_static_file_producer` for context), we commit the change straight away.
+            producer.commit()?;
+            Some(producer)
         } else {
             None
         };
 
-        // Build executor
-        let mut executor = self.executor_factory.with_state(LatestStateProviderRef::new(
+        let db = StateProviderDatabase(LatestStateProviderRef::new(
             provider.tx_ref(),
             provider.static_file_provider().clone(),
         ));
-        executor.set_prune_modes(prune_modes);
+        let mut executor = self.executor_provider.batch_executor(db, prune_modes);
         executor.set_tip(max_block);
 
         // Progress tracking
@@ -191,16 +199,17 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
         let mut cumulative_gas = 0;
         let batch_start = Instant::now();
 
-        let mut parent_block_timestamp = 0u64;
-        // get parent block timestamp for execution
-        if start_block > 0 {
-            let parent_block_number = start_block - 1 as u64;
-            let parent_header = match static_file_provider.header_by_number(parent_block_number) {
-                Ok(Some(header)) => header,
-                _ => return Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.into()))),
-            };
-            parent_block_timestamp = parent_header.timestamp;
-        }
+        // TODO bsc
+        // let mut parent_block_timestamp = 0u64;
+        // // get parent block timestamp for execution
+        // if start_block > 0 {
+        //     let parent_block_number = start_block - 1 as u64;
+        //     let parent_header = match static_file_provider.header_by_number(parent_block_number) {
+        //         Ok(Some(header)) => header,
+        //         _ => return Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.into()))),
+        //     };
+        //     parent_block_timestamp = parent_header.timestamp;
+        // }
 
 
         let mut blocks = Vec::new();
@@ -226,7 +235,8 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
 
             // Execute the block
             let execute_start = Instant::now();
-            executor.execute_and_verify_receipt(&block, td, parent_block_timestamp).map_err(|error| StageError::Block {
+
+            executor.execute_one((&block, td).into()).map_err(|error| StageError::Block {
                 block: Box::new(block.header.clone().seal_slow()),
                 error: BlockErrorKind::Execution(error),
             })?;
@@ -241,8 +251,9 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
             stage_progress = block_number;
             stage_checkpoint.progress.processed += block.gas_used;
 
-            // Update parent block timestamp for next block
-            parent_block_timestamp = block.header.timestamp;
+            // TODO bsc
+            // // Update parent block timestamp for next block
+            // parent_block_timestamp = block.header.timestamp;
 
             // If we have ExEx's we need to save the block in memory for later
             if self.exex_manager_handle.has_exexs() {
@@ -261,10 +272,11 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
             }
         }
         let time = Instant::now();
-        let state = executor.take_output_state();
+        let BatchBlockExecutionOutput { bundle, receipts, first_block } = executor.finalize();
+        let state = BundleStateWithReceipts::new(bundle, receipts, first_block);
         let write_preparation_duration = time.elapsed();
 
-        // Check if we should send a [`CanonStateNotification`] to execution extensions.
+        // Check if we should send a [`ExExNotification`] to execution extensions.
         //
         // Note: Since we only write to `blocks` if there are any ExEx's we don't need to perform
         // the `has_exexs` check here as well
@@ -280,7 +292,7 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
 
             // NOTE: We can ignore the error here, since an error means that the channel is closed,
             // which means the manager has died, which then in turn means the node is shutting down.
-            let _ = self.exex_manager_handle.send(CanonStateNotification::Commit { new: chain });
+            let _ = self.exex_manager_handle.send(ExExNotification::ChainCommitted { new: chain });
         }
 
         let time = Instant::now();
@@ -399,7 +411,11 @@ fn calculate_gas_used_from_headers(
     Ok(gas_total)
 }
 
-impl<EF: ExecutorFactory, DB: Database> Stage<DB> for ExecutionStage<EF> {
+impl<E, DB> Stage<DB> for ExecutionStage<E>
+where
+    DB: Database,
+    E: BlockExecutorProvider,
+{
     /// Return the id of the stage
     fn id(&self) -> StageId {
         StageId::Execution
@@ -443,18 +459,17 @@ impl<EF: ExecutorFactory, DB: Database> Stage<DB> for ExecutionStage<EF> {
         // This also updates `PlainStorageState` and `PlainAccountState`.
         let bundle_state_with_receipts = provider.unwind_or_peek_state::<true>(range.clone())?;
 
-        // Construct a `CanonStateNotification` if we have ExEx's installed.
+        // Construct a `ExExNotification` if we have ExEx's installed.
         if self.exex_manager_handle.has_exexs() {
-            // Get the blocks for the unwound range. This is needed for `CanonStateNotification`.
+            // Get the blocks for the unwound range. This is needed for `ExExNotification`.
             let blocks = provider.get_take_block_range::<false>(range.clone())?;
             let chain = Chain::new(blocks, bundle_state_with_receipts, None);
 
             // NOTE: We can ignore the error here, since an error means that the channel is closed,
             // which means the manager has died, which then in turn means the node is shutting down.
-            let _ = self.exex_manager_handle.send(CanonStateNotification::Reorg {
-                old: Arc::new(chain),
-                new: Arc::new(Chain::default()),
-            });
+            let _ = self
+                .exex_manager_handle
+                .send(ExExNotification::ChainReverted { old: Arc::new(chain) });
         }
 
         // Unwind all receipts for transactions in the block range
@@ -626,24 +641,25 @@ mod tests {
     use alloy_rlp::Decodable;
     use assert_matches::assert_matches;
     use reth_db::{models::AccountBeforeTx, transaction::DbTxMut};
-    use reth_evm_ethereum::EthEvmConfig;
+    use reth_evm_ethereum::execute::EthExecutorProvider;
     use reth_interfaces::executor::BlockValidationError;
     use reth_primitives::{
         address, hex_literal::hex, keccak256, stage::StageUnitCheckpoint, Account, Address,
         Bytecode, ChainSpecBuilder, PruneMode, ReceiptsLogPruneConfig, SealedBlock, StorageEntry,
         B256, U256,
     };
-    use reth_provider::{test_utils::create_test_provider_factory, AccountReader, ReceiptProvider};
-    use reth_revm::EvmProcessorFactory;
+    use reth_provider::{
+        test_utils::create_test_provider_factory, AccountReader, ReceiptProvider,
+        StaticFileProviderFactory,
+    };
     use std::collections::BTreeMap;
 
-    fn stage() -> ExecutionStage<EvmProcessorFactory<EthEvmConfig>> {
-        let executor_factory = EvmProcessorFactory::new(
-            Arc::new(ChainSpecBuilder::mainnet().berlin_activated().build()),
-            EthEvmConfig::default(),
-        );
+    fn stage() -> ExecutionStage<EthExecutorProvider> {
+        let executor_provider = EthExecutorProvider::ethereum(Arc::new(
+            ChainSpecBuilder::mainnet().berlin_activated().build(),
+        ));
         ExecutionStage::new(
-            executor_factory,
+            executor_provider,
             ExecutionStageThresholds {
                 max_blocks: Some(100),
                 max_changes: None,
@@ -878,7 +894,7 @@ mod tests {
                 mode.receipts_log_filter = random_filter.clone();
             }
 
-            let mut execution_stage: ExecutionStage<EvmProcessorFactory<EthEvmConfig>> = stage();
+            let mut execution_stage = stage();
             execution_stage.prune_modes = mode.clone().unwrap_or_default();
 
             let output = execution_stage.execute(&provider, input).unwrap();

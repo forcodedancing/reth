@@ -501,7 +501,7 @@ impl<R> Default for Geometry<R> {
 ///
 /// # Arguments
 ///
-/// * `process_id` – A proceess id of the reader process.
+/// * `process_id` – A process id of the reader process.
 /// * `thread_id` – A thread id of the reader thread.
 /// * `read_txn_id` – An oldest read transaction number on which stalled.
 /// * `gap` – A lag from the last committed txn.
@@ -950,8 +950,7 @@ mod tests {
             .open(tempdir.path())
             .unwrap();
 
-        // Insert some data in the database, so the read transaction can lock on the static file of
-        // it
+        // Insert some data in the database, so the read transaction can lock on the snapshot of it
         {
             let tx = env.begin_rw_txn().unwrap();
             let db = tx.open_db(None).unwrap();
@@ -964,8 +963,7 @@ mod tests {
         // Create a read transaction
         let _tx_ro = env.begin_ro_txn().unwrap();
 
-        // Change previously inserted data, so the read transaction would use the previous static
-        // file
+        // Change previously inserted data, so the read transaction would use the previous snapshot
         {
             let tx = env.begin_rw_txn().unwrap();
             let db = tx.open_db(None).unwrap();
@@ -976,7 +974,7 @@ mod tests {
         }
 
         // Insert more data in the database, so we hit the DB size limit error, and MDBX tries to
-        // kick long-lived readers and delete their static_files
+        // kick long-lived readers and delete their snapshots
         {
             let tx = env.begin_rw_txn().unwrap();
             let db = tx.open_db(None).unwrap();
