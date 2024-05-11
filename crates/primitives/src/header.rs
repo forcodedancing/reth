@@ -16,7 +16,6 @@ use bytes::BufMut;
 #[cfg(any(test, feature = "arbitrary"))]
 use proptest::prelude::*;
 use reth_codecs::{add_arbitrary_tests, derive_arbitrary, main_codec, Compact};
-use reth_rpc_types::ConversionError;
 use serde::{Deserialize, Serialize};
 use std::{mem, ops::Deref};
 
@@ -486,10 +485,13 @@ impl Decodable for Header {
     }
 }
 
-impl TryFrom<reth_rpc_types::Header> for Header {
-    type Error = ConversionError;
+#[cfg(feature = "alloy-compat")]
+impl TryFrom<alloy_rpc_types::Header> for Header {
+    type Error = alloy_rpc_types::ConversionError;
 
-    fn try_from(header: reth_rpc_types::Header) -> Result<Self, Self::Error> {
+    fn try_from(header: alloy_rpc_types::Header) -> Result<Self, Self::Error> {
+        use alloy_rpc_types::ConversionError;
+
         Ok(Self {
             base_fee_per_gas: header
                 .base_fee_per_gas
@@ -776,6 +778,17 @@ impl SealedHeader {
         }
 
         // timestamp in past check
+        #[cfg(feature = "optimism")]
+        if chain_spec.is_bedrock_active_at_block(self.header.number) &&
+            self.header.is_timestamp_in_past(parent.timestamp)
+        {
+            return Err(HeaderValidationError::TimestampIsInPast {
+                parent_timestamp: parent.timestamp,
+                timestamp: self.timestamp,
+            })
+        }
+
+        #[cfg(not(feature = "optimism"))]
         if self.header.is_timestamp_in_past(parent.timestamp) {
             return Err(HeaderValidationError::TimestampIsInPast {
                 parent_timestamp: parent.timestamp,
@@ -786,16 +799,14 @@ impl SealedHeader {
         // TODO Check difficulty increment between parent and self
         // Ace age did increment it by some formula that we need to follow.
 
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "optimism")] {
-                // On Optimism, the gas limit can adjust instantly, so we skip this check
-                // if the optimism feature is enabled in the chain spec.
-                if !chain_spec.is_optimism() {
-                    self.validate_gas_limit(parent, chain_spec)?;
-                }
-            } else {
+        if cfg!(feature = "optimism") {
+            // On Optimism, the gas limit can adjust instantly, so we skip this check
+            // if the optimism feature is enabled in the chain spec.
+            if !chain_spec.is_optimism() {
                 self.validate_gas_limit(parent, chain_spec)?;
             }
+        } else {
+            self.validate_gas_limit(parent, chain_spec)?;
         }
 
         // EIP-1559 check base fee

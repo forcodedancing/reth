@@ -3,13 +3,22 @@ use futures::Future;
 use reth_exex::{ExExContext, ExExEvent};
 use reth_node_api::FullNodeComponents;
 use reth_node_ethereum::EthereumNode;
-use reth_primitives::{Log, SealedBlockWithSenders, TransactionSigned};
+use reth_primitives::{address, Address, Log, SealedBlockWithSenders, TransactionSigned};
 use reth_provider::Chain;
 use reth_tracing::tracing::info;
 use rusqlite::Connection;
 
 sol!(L1StandardBridge, "l1_standard_bridge_abi.json");
 use crate::L1StandardBridge::{ETHBridgeFinalized, ETHBridgeInitiated, L1StandardBridgeEvents};
+
+const OP_BRIDGES: [Address; 6] = [
+    address!("3154Cf16ccdb4C6d922629664174b904d80F2C35"),
+    address!("3a05E5d33d7Ab3864D53aaEc93c8301C1Fa49115"),
+    address!("697402166Fbf2F22E970df8a6486Ef171dbfc524"),
+    address!("99C9fc46f92E8a1c0deC1b1747d010903E884bE1"),
+    address!("735aDBbE72226BD52e818E7181953f42E3b0FF21"),
+    address!("3B95bC951EE0f553ba487327278cAc44f29715E5"),
+];
 
 /// Initializes the ExEx.
 ///
@@ -94,7 +103,8 @@ async fn op_bridge_exex<Node: FullNodeComponents>(
 ) -> eyre::Result<()> {
     // Process all new chain state notifications
     while let Some(notification) = ctx.notifications.recv().await {
-        if let Some(reverted_chain) = notification.reverted() {
+        // Revert all deposits and withdrawals
+        if let Some(reverted_chain) = notification.reverted_chain() {
             let events = decode_chain_into_events(&reverted_chain);
 
             let mut deposits = 0;
@@ -126,22 +136,22 @@ async fn op_bridge_exex<Node: FullNodeComponents>(
         }
 
         // Insert all new deposits and withdrawals
-        let committed_chain = notification.committed();
-        let events = decode_chain_into_events(&committed_chain);
+        if let Some(committed_chain) = notification.committed_chain() {
+            let events = decode_chain_into_events(&committed_chain);
 
-        let mut deposits = 0;
-        let mut withdrawals = 0;
+            let mut deposits = 0;
+            let mut withdrawals = 0;
 
-        for (block, tx, log, event) in events {
-            match event {
-                // L1 -> L2 deposit
-                L1StandardBridgeEvents::ETHBridgeInitiated(ETHBridgeInitiated {
-                    amount,
-                    from,
-                    to,
-                    ..
-                }) => {
-                    let inserted = connection.execute(
+            for (block, tx, log, event) in events {
+                match event {
+                    // L1 -> L2 deposit
+                    L1StandardBridgeEvents::ETHBridgeInitiated(ETHBridgeInitiated {
+                        amount,
+                        from,
+                        to,
+                        ..
+                    }) => {
+                        let inserted = connection.execute(
                                 r#"
                                 INSERT INTO deposits (block_number, tx_hash, contract_address, "from", "to", amount)
                                 VALUES (?, ?, ?, ?, ?, ?)
@@ -155,16 +165,16 @@ async fn op_bridge_exex<Node: FullNodeComponents>(
                                     amount.to_string(),
                                 ),
                             )?;
-                    deposits += inserted;
-                }
-                // L2 -> L1 withdrawal
-                L1StandardBridgeEvents::ETHBridgeFinalized(ETHBridgeFinalized {
-                    amount,
-                    from,
-                    to,
-                    ..
-                }) => {
-                    let inserted = connection.execute(
+                        deposits += inserted;
+                    }
+                    // L2 -> L1 withdrawal
+                    L1StandardBridgeEvents::ETHBridgeFinalized(ETHBridgeFinalized {
+                        amount,
+                        from,
+                        to,
+                        ..
+                    }) => {
+                        let inserted = connection.execute(
                                 r#"
                                 INSERT INTO withdrawals (block_number, tx_hash, contract_address, "from", "to", amount)
                                 VALUES (?, ?, ?, ?, ?, ?)
@@ -178,17 +188,18 @@ async fn op_bridge_exex<Node: FullNodeComponents>(
                                     amount.to_string(),
                                 ),
                             )?;
-                    withdrawals += inserted;
-                }
-                _ => continue,
-            };
+                        withdrawals += inserted;
+                    }
+                    _ => continue,
+                };
+            }
+
+            info!(block_range = ?committed_chain.range(), %deposits, %withdrawals, "Committed chain events");
+
+            // Send a finished height event, signaling the node that we don't need any blocks below
+            // this height anymore
+            ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().number))?;
         }
-
-        info!(block_range = ?committed_chain.range(), %deposits, %withdrawals, "Committed chain events");
-
-        // Send a finished height event, signaling the node that we don't need any blocks below
-        // this height anymore
-        ctx.events.send(ExExEvent::FinishedHeight(notification.tip().number))?;
     }
 
     Ok(())
@@ -211,8 +222,14 @@ fn decode_chain_into_events(
                 .zip(receipts.iter().flatten())
                 .map(move |(tx, receipt)| (block, tx, receipt))
         })
-        // Get all logs
-        .flat_map(|(block, tx, receipt)| receipt.logs.iter().map(move |log| (block, tx, log)))
+        // Get all logs from expected bridge contracts
+        .flat_map(|(block, tx, receipt)| {
+            receipt
+                .logs
+                .iter()
+                .filter(|log| OP_BRIDGES.contains(&log.address))
+                .map(move |log| (block, tx, log))
+        })
         // Decode and filter bridge events
         .filter_map(|(block, tx, log)| {
             L1StandardBridgeEvents::decode_raw_log(log.topics(), &log.data.data, true)
