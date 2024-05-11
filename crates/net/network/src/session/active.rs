@@ -230,7 +230,11 @@ impl ActiveSession {
             }
             EthMessage::Receipts(resp) => {
                 on_response!(resp, GetReceipts)
-            }
+            },
+            EthMessage::UpgradeStatus(resp) => {
+               //TODO: fix me
+                OnIncomingMessageOutcome::Ok
+            },
         }
     }
 

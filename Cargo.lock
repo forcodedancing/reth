@@ -7130,6 +7130,7 @@ dependencies = [
  "reth-network-api",
  "reth-nippy-jar",
  "reth-node-api",
+ "reth-node-bsc",
  "reth-node-builder",
  "reth-node-core",
  "reth-node-ethereum",
@@ -7981,6 +7982,34 @@ dependencies = [
  "reth-provider",
  "reth-tasks",
  "reth-transaction-pool",
+]
+
+[[package]]
+name = "reth-node-bsc"
+version = "0.2.0-beta.7"
+dependencies = [
+ "eyre",
+ "futures",
+ "futures-util",
+ "reth",
+ "reth-basic-payload-builder",
+ "reth-db",
+ "reth-e2e-test-utils",
+ "reth-ethereum-engine-primitives",
+ "reth-ethereum-payload-builder",
+ "reth-evm-ethereum",
+ "reth-exex",
+ "reth-network",
+ "reth-node-api",
+ "reth-node-builder",
+ "reth-node-core",
+ "reth-payload-builder",
+ "reth-primitives",
+ "reth-provider",
+ "reth-tracing",
+ "reth-transaction-pool",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

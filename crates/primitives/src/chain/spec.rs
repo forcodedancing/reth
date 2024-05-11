@@ -27,6 +27,12 @@ pub(crate) use crate::{
     net::{base_nodes, base_testnet_nodes, op_nodes, op_testnet_nodes},
 };
 
+
+#[cfg(feature = "bsc")]
+pub(crate) use crate::{
+    net::{bsc_mainnet_nodes, bsc_testnet_nodes},
+};
+
 /// The BSC mainnet spec
 #[cfg(feature = "bsc")]
 pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
@@ -38,7 +44,6 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             "0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b"
         )),
         paris_block_and_final_difficulty: Some((0, U256::from(0))),
-        fork_timestamps: ForkTimestamps::default(),
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
             (Hardfork::Homestead, ForkCondition::Block(0)),
@@ -92,7 +97,6 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             "6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34"
         )),
         paris_block_and_final_difficulty: Some((0, U256::from(0))),
-        fork_timestamps: ForkTimestamps::default(),
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
             (Hardfork::Homestead, ForkCondition::Block(0)),
@@ -1081,6 +1085,10 @@ impl ChainSpec {
             C::BaseGoerli | C::BaseSepolia => Some(base_testnet_nodes()),
             #[cfg(feature = "optimism")]
             C::OptimismSepolia | C::OptimismGoerli | C::OptimismKovan => Some(op_testnet_nodes()),
+            #[cfg(feature = "bsc")]
+            C::BinanceSmartChain => Some(bsc_mainnet_nodes()),
+            #[cfg(feature = "bsc")]
+            C::BinanceSmartChainTestnet => Some(bsc_testnet_nodes()),
             _ => None,
         }
     }
