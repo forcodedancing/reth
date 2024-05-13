@@ -3,7 +3,7 @@ use crate::{
     message::{EthBroadcastMessage, ProtocolBroadcastMessage},
     p2pstream::HANDSHAKE_TIMEOUT,
     CanDisconnect, DisconnectReason, EthMessage, EthVersion, ProtocolMessage, Status,
-    UpgradeStatus, UpgradeStatusExtension
+    UpgradeStatus, UpgradeStatusExtension,
 };
 use futures::{ready, Sink, SinkExt, StreamExt};
 use pin_project::pin_project;
@@ -47,9 +47,9 @@ impl<S> UnauthedEthStream<S> {
 }
 
 impl<S, E> UnauthedEthStream<S>
-where
-    S: Stream<Item = Result<BytesMut, E>> + CanDisconnect<Bytes> + Unpin,
-    EthStreamError: From<E> + From<<S as Sink<Bytes>>::Error>,
+    where
+        S: Stream<Item=Result<BytesMut, E>> + CanDisconnect<Bytes> + Unpin,
+        EthStreamError: From<E> + From<<S as Sink<Bytes>>::Error>,
 {
     /// Consumes the [`UnauthedEthStream`] and returns an [`EthStream`] after the `Status`
     /// handshake is completed successfully. This also returns the `Status` message sent by the
@@ -97,13 +97,13 @@ where
             Some(msg) => msg,
             None => {
                 self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse))
+                return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse));
             }
         }?;
 
         if their_msg.len() > MAX_MESSAGE_SIZE {
             self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
-            return Err(EthStreamError::MessageTooBig(their_msg.len()))
+            return Err(EthStreamError::MessageTooBig(their_msg.len()));
         }
 
         let version = EthVersion::try_from(status.version)?;
@@ -112,7 +112,7 @@ where
             Err(err) => {
                 debug!("decode error in eth handshake: msg={their_msg:x}");
                 self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                return Err(EthStreamError::InvalidMessage(err))
+                return Err(EthStreamError::InvalidMessage(err));
             }
         };
 
@@ -129,7 +129,7 @@ where
                     return Err(EthHandshakeError::MismatchedGenesis(
                         GotExpected { expected: status.genesis, got: resp.genesis }.into(),
                     )
-                    .into())
+                        .into());
                 }
 
                 if status.version != resp.version {
@@ -138,7 +138,7 @@ where
                         got: resp.version,
                         expected: status.version,
                     })
-                    .into())
+                        .into());
                 }
 
                 if status.chain != resp.chain {
@@ -147,7 +147,7 @@ where
                         got: resp.chain,
                         expected: status.chain,
                     })
-                    .into())
+                        .into());
                 }
 
                 // TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
@@ -158,26 +158,26 @@ where
                         got: status.total_difficulty.bit_len(),
                         maximum: 100,
                     }
-                    .into())
+                        .into());
                 }
 
                 if let Err(err) =
                     fork_filter.validate(resp.forkid).map_err(EthHandshakeError::InvalidFork)
                 {
                     self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
-                    return Err(err.into())
+                    return Err(err.into());
                 }
 
                 // For BSC, UpgradeStatus message should be sent during handshake.
                 //#[cfg(feature = "bsc")]
                 if version > EthVersion::Eth66 {
                     // TODO: support disable_peer_tx_broadcast flag
-                    let extension = UpgradeStatusExtension{disable_peer_tx_broadcast: false};
-                    let mut buffer = Vec::<u8>::new();
-                    let _ = extension.encode(&mut buffer);
+                    // let extension = UpgradeStatusExtension{disable_peer_tx_broadcast: true};
+                    // let mut buffer = Vec::<u8>::new();
+                    // let _ = extension.encode(&mut buffer);
                     self.inner
-                        .send(alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus{
-                            extension: buffer,
+                        .send(alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus {
+                            extension: UpgradeStatusExtension { disable_peer_tx_broadcast: false },
                         }))).into())
                         .await?;
                     let their_msg_res = self.inner.next().await;
@@ -185,7 +185,7 @@ where
                         Some(msg) => msg,
                         None => {
                             self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                            return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse))
+                            return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse));
                         }
                     }?;
                     let msg = match ProtocolMessage::decode_message(version, &mut their_msg.as_ref()) {
@@ -193,7 +193,7 @@ where
                         Err(err) => {
                             debug!("decode error in eth handshake: msg={their_msg:x}");
                             self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                            return Err(EthStreamError::InvalidMessage(err))
+                            return Err(EthStreamError::InvalidMessage(err));
                         }
                     };
                     // TODO: support disable_peer_tx_broadcast flag
@@ -261,9 +261,9 @@ impl<S> EthStream<S> {
 }
 
 impl<S, E> EthStream<S>
-where
-    S: Sink<Bytes, Error = E> + Unpin,
-    EthStreamError: From<E>,
+    where
+        S: Sink<Bytes, Error=E> + Unpin,
+        EthStreamError: From<E>,
 {
     /// Same as [`Sink::start_send`] but accepts a [`EthBroadcastMessage`] instead.
     pub fn start_send_broadcast(
@@ -279,9 +279,9 @@ where
 }
 
 impl<S, E> Stream for EthStream<S>
-where
-    S: Stream<Item = Result<BytesMut, E>> + Unpin,
-    EthStreamError: From<E>,
+    where
+        S: Stream<Item=Result<BytesMut, E>> + Unpin,
+        EthStreamError: From<E>,
 {
     type Item = Result<EthMessage, EthStreamError>;
 
@@ -295,7 +295,7 @@ where
         };
 
         if bytes.len() > MAX_MESSAGE_SIZE {
-            return Poll::Ready(Some(Err(EthStreamError::MessageTooBig(bytes.len()))))
+            return Poll::Ready(Some(Err(EthStreamError::MessageTooBig(bytes.len()))));
         }
 
         let msg = match ProtocolMessage::decode_message(*this.version, &mut bytes.as_ref()) {
@@ -311,14 +311,14 @@ where
                     %msg,
                     "failed to decode protocol message"
                 );
-                return Poll::Ready(Some(Err(EthStreamError::InvalidMessage(err))))
+                return Poll::Ready(Some(Err(EthStreamError::InvalidMessage(err))));
             }
         };
 
         if matches!(msg.message, EthMessage::Status(_)) {
             return Poll::Ready(Some(Err(EthStreamError::EthHandshakeError(
                 EthHandshakeError::StatusNotInHandshake,
-            ))))
+            ))));
         }
 
         Poll::Ready(Some(Ok(msg.message)))
@@ -326,9 +326,9 @@ where
 }
 
 impl<S> Sink<EthMessage> for EthStream<S>
-where
-    S: CanDisconnect<Bytes> + Unpin,
-    EthStreamError: From<<S as Sink<Bytes>>::Error>,
+    where
+        S: CanDisconnect<Bytes> + Unpin,
+        EthStreamError: From<<S as Sink<Bytes>>::Error>,
 {
     type Error = EthStreamError;
 
@@ -347,7 +347,7 @@ where
             // allowing for its start_disconnect method to be called.
             //
             // self.project().inner.start_disconnect(DisconnectReason::ProtocolBreach);
-            return Err(EthStreamError::EthHandshakeError(EthHandshakeError::StatusNotInHandshake))
+            return Err(EthStreamError::EthHandshakeError(EthHandshakeError::StatusNotInHandshake));
         }
 
         self.project()
@@ -367,9 +367,9 @@ where
 }
 
 impl<S> CanDisconnect<EthMessage> for EthStream<S>
-where
-    S: CanDisconnect<Bytes> + Send,
-    EthStreamError: From<<S as Sink<Bytes>>::Error>,
+    where
+        S: CanDisconnect<Bytes> + Send,
+        EthStreamError: From<<S as Sink<Bytes>>::Error>,
 {
     async fn disconnect(&mut self, reason: DisconnectReason) -> Result<(), EthStreamError> {
         self.inner.disconnect(reason).await.map_err(Into::into)
@@ -552,7 +552,7 @@ mod tests {
                 BlockHashNumber { hash: B256::random(), number: 5 },
                 BlockHashNumber { hash: B256::random(), number: 6 },
             ]
-            .into(),
+                .into(),
         );
 
         let test_msg_clone = test_msg.clone();
@@ -587,7 +587,7 @@ mod tests {
                 BlockHashNumber { hash: B256::random(), number: 5 },
                 BlockHashNumber { hash: B256::random(), number: 6 },
             ]
-            .into(),
+                .into(),
         );
 
         let test_msg_clone = test_msg.clone();
@@ -629,7 +629,7 @@ mod tests {
                 BlockHashNumber { hash: B256::random(), number: 5 },
                 BlockHashNumber { hash: B256::random(), number: 6 },
             ]
-            .into(),
+                .into(),
         );
 
         let genesis = B256::random();

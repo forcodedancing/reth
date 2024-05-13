@@ -7,7 +7,7 @@ use reth_primitives::{Bytes, B256, hex};
 #[derive(Debug, Clone, PartialEq, Eq, RlpEncodable, RlpDecodable)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UpgradeStatus {
-    pub extension : Vec<u8>
+    pub extension : UpgradeStatusExtension
 }
 
 #[derive_arbitrary(rlp)]
@@ -27,14 +27,22 @@ mod tests {
 
     #[test]
     fn test_encode_upgrade_status() {
-        let extension = UpgradeStatusExtension{disable_peer_tx_broadcast: false};
+        let extension = UpgradeStatusExtension{disable_peer_tx_broadcast: true};
         let mut buffer = Vec::<u8>::new();
         let _ = extension.encode(&mut buffer);
-        let result = alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus{
-            extension: buffer,
-        })));
+        println!("extension hex: {}", hex::encode(buffer.clone()));
 
-        println!("{}", hex::encode(result))
+        let upgrade_status = UpgradeStatus{
+            extension: extension,
+        };
+        let mut buffer = Vec::<u8>::new();
+        let _ = upgrade_status.encode(&mut buffer);
+        println!("upgrade_status hex: {}", hex::encode(buffer.clone()));
+
+        // let result = alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus{
+        //     extension: buffer,
+        // })));
+        // println!("message hex: {}", hex::encode(result))
     }
 }
 
