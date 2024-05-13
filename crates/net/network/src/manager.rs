@@ -477,9 +477,10 @@ where
         // reject message in POS
         if self.handle.mode().is_stake() {
             // connections to peers which send invalid messages should be terminated
-            self.swarm
-                .sessions_mut()
-                .disconnect(peer_id, Some(DisconnectReason::SubprotocolSpecific));
+            // self.swarm
+            //     .sessions_mut()
+            //     .disconnect(peer_id, Some(DisconnectReason::SubprotocolSpecific));
+            only_pow(self);
         } else {
             only_pow(self);
         }

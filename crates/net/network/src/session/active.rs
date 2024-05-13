@@ -231,9 +231,11 @@ impl ActiveSession {
             EthMessage::Receipts(resp) => {
                 on_response!(resp, GetReceipts)
             },
-            EthMessage::UpgradeStatus(resp) => {
-               //TODO: fix me
-                OnIncomingMessageOutcome::Ok
+            message @ EthMessage::UpgradeStatus(_) => {
+                OnIncomingMessageOutcome::BadMessage {
+                    error: EthStreamError::EthHandshakeError(EthHandshakeError::StatusNotInHandshake),
+                    message,
+                }
             },
         }
     }

@@ -3,6 +3,7 @@ use crate::{
     message::{EthBroadcastMessage, ProtocolBroadcastMessage},
     p2pstream::HANDSHAKE_TIMEOUT,
     CanDisconnect, DisconnectReason, EthMessage, EthVersion, ProtocolMessage, Status,
+    UpgradeStatus, UpgradeStatusExtension
 };
 use futures::{ready, Sink, SinkExt, StreamExt};
 use pin_project::pin_project;
@@ -15,6 +16,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use alloy_rlp::Encodable;
 use tokio::time::timeout;
 use tokio_stream::Stream;
 use tracing::{debug, trace};
@@ -164,6 +166,38 @@ where
                 {
                     self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
                     return Err(err.into())
+                }
+
+                // For BSC, UpgradeStatus message should be sent during handshake.
+                //#[cfg(feature = "bsc")]
+                if version > EthVersion::Eth66 {
+                    // TODO: support disable_peer_tx_broadcast flag
+                    let extension = UpgradeStatusExtension{disable_peer_tx_broadcast: false};
+                    let mut buffer = Vec::<u8>::new();
+                    let _ = extension.encode(&mut buffer);
+                    self.inner
+                        .send(alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus{
+                            extension: buffer,
+                        }))).into())
+                        .await?;
+                    let their_msg_res = self.inner.next().await;
+                    let their_msg = match their_msg_res {
+                        Some(msg) => msg,
+                        None => {
+                            self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
+                            return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse))
+                        }
+                    }?;
+                    let msg = match ProtocolMessage::decode_message(version, &mut their_msg.as_ref()) {
+                        Ok(m) => m,
+                        Err(err) => {
+                            debug!("decode error in eth handshake: msg={their_msg:x}");
+                            self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
+                            return Err(EthStreamError::InvalidMessage(err))
+                        }
+                    };
+                    // TODO: support disable_peer_tx_broadcast flag
+                    debug!("msg {:?}", msg.message)
                 }
 
                 // now we can create the `EthStream` because the peer has successfully completed
