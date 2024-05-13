@@ -38,6 +38,8 @@ pub fn revm_spec(chain_spec: &ChainSpec, block: Head) -> revm_primitives::SpecId
             return revm_primitives::ECOTONE
         } else if chain_spec.fork(Hardfork::Canyon).active_at_head(&block) {
             return revm_primitives::CANYON
+        } else if chain_spec.fork(Hardfork::Fermat).active_at_head(&block) {
+            return revm_primitives::FERMAT
         } else if chain_spec.fork(Hardfork::Regolith).active_at_head(&block) {
             return revm_primitives::REGOLITH
         } else if chain_spec.fork(Hardfork::Bedrock).active_at_head(&block) {
