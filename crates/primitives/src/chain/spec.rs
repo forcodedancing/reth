@@ -481,7 +481,7 @@ pub static OPBNB_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         genesis_hash: Some(b256!(
             "4dd61178c8b0f01670c231597e7bcb368e84545acd46d940a896d6a791dd6df4"
         )),
-        fork_timestamps: ForkTimestamps::default().regolith(0),
+        fork_timestamps: ForkTimestamps::default().regolith(0).fermat(1701151200),
         paris_block_and_final_difficulty: Some((0, U256::from(0))),
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
@@ -503,7 +503,7 @@ pub static OPBNB_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             ),
             (Hardfork::Bedrock, ForkCondition::Block(0)),
             (Hardfork::Regolith, ForkCondition::Timestamp(0)),
-            (Hardfork::Fermat, ForkCondition::Block(9397477)),
+            (Hardfork::Fermat, ForkCondition::Timestamp(1701151200)),
         ]),
         base_fee_params: BaseFeeParamsKind::Variable(
             vec![(Hardfork::London, BaseFeeParams::ethereum())].into(),
@@ -524,7 +524,7 @@ pub static OPBNB_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         genesis_hash: Some(b256!(
             "51fa57729dfb1c27542c21b06cb72a0459c57440ceb43a465dae1307cd04fe80"
         )),
-        fork_timestamps: ForkTimestamps::default().regolith(0),
+        fork_timestamps: ForkTimestamps::default().regolith(0).fermat(1698991506),
         paris_block_and_final_difficulty: Some((0, U256::from(0))),
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
@@ -547,7 +547,7 @@ pub static OPBNB_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Bedrock, ForkCondition::Block(0)),
             (Hardfork::Regolith, ForkCondition::Timestamp(0)),
             (Hardfork::PreContractForkBlock, ForkCondition::Block(5805494)),
-            (Hardfork::Fermat, ForkCondition::Block(12113000)),
+            (Hardfork::Fermat, ForkCondition::Timestamp(1698991506)),
         ]),
         base_fee_params: BaseFeeParamsKind::Variable(
             vec![(Hardfork::London, BaseFeeParams::ethereum())].into(),
@@ -1149,6 +1149,9 @@ pub struct ForkTimestamps {
     /// The timestamp of the Regolith fork
     #[cfg(feature = "optimism")]
     pub regolith: Option<u64>,
+    /// The timestamp of the Fermat fork
+    #[cfg(feature = "optimism")]
+    pub fermat: Option<u64>,
     /// The timestamp of the Canyon fork
     #[cfg(feature = "optimism")]
     pub canyon: Option<u64>,
@@ -1198,6 +1201,13 @@ impl ForkTimestamps {
     #[cfg(feature = "optimism")]
     pub fn regolith(mut self, regolith: u64) -> Self {
         self.regolith = Some(regolith);
+        self
+    }
+
+    /// Sets the given fermat timestamp
+    #[cfg(feature = "optimism")]
+    pub fn fermat(mut self, fermat: u64) -> Self {
+        self.fermat = Some(fermat);
         self
     }
 

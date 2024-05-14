@@ -14,6 +14,8 @@ pub fn revm_spec_by_timestamp_after_merge(
             revm_primitives::ECOTONE
         } else if chain_spec.fork(Hardfork::Canyon).active_at_timestamp(timestamp) {
             revm_primitives::CANYON
+        } else if chain_spec.fork(Hardfork::Fermat).active_at_timestamp(timestamp) {
+            revm_primitives::FERMAT
         } else if chain_spec.fork(Hardfork::Regolith).active_at_timestamp(timestamp) {
             revm_primitives::REGOLITH
         } else {
