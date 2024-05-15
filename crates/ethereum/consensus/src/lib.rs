@@ -33,8 +33,7 @@ impl EthBeaconConsensus {
 
 impl Consensus for EthBeaconConsensus {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
-        // TODO: revert after testing
-        //validation::validate_header_standalone(header, &self.chain_spec)?;
+        validation::validate_header_standalone(header, &self.chain_spec)?;
         Ok(())
     }
 
@@ -43,8 +42,7 @@ impl Consensus for EthBeaconConsensus {
         header: &SealedHeader,
         parent: &SealedHeader,
     ) -> Result<(), ConsensusError> {
-       // TODO: revert after testing
-       // header.validate_against_parent(parent, &self.chain_spec).map_err(ConsensusError::from)?;
+        header.validate_against_parent(parent, &self.chain_spec).map_err(ConsensusError::from)?;
         Ok(())
     }
 
