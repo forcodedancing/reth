@@ -2,6 +2,9 @@
 members = [
     "bin/reth/",
     "crates/blockchain-tree/",
+    "crates/bsc/consensus",
+    "crates/bsc/node/",
+    "crates/bsc/evm/",
     "crates/cli/runner/",
     "crates/config/",
     "crates/consensus/auto-seal/",
@@ -209,6 +212,7 @@ reth = { path = "bin/reth" }
 reth-auto-seal-consensus = { path = "crates/consensus/auto-seal" }
 reth-basic-payload-builder = { path = "crates/payload/basic" }
 reth-beacon-consensus = { path = "crates/consensus/beacon" }
+reth-bsc-consensus = { path = "crates/bsc/consensus" }
 reth-ethereum-consensus = { path = "crates/ethereum/consensus" }
 reth-blockchain-tree = { path = "crates/blockchain-tree" }
 reth-cli-runner = { path = "crates/cli/runner" }
@@ -224,8 +228,10 @@ reth-e2e-test-utils = { path = "crates/e2e-test-utils" }
 reth-engine-primitives = { path = "crates/engine-primitives" }
 reth-ethereum-engine-primitives = { path = "crates/ethereum/engine-primitives" }
 reth-node-builder = { path = "crates/node/builder" }
+reth-node-bsc= { path = "crates/bsc/node" }
 reth-node-ethereum = { path = "crates/ethereum/node" }
 reth-node-optimism = { path = "crates/optimism/node" }
+reth-evm-bsc = { path = "crates/bsc/evm" }
 reth-evm-optimism = { path = "crates/optimism/evm" }
 reth-node-core = { path = "crates/node-core" }
 reth-node-api = { path = "crates/node/api" }
@@ -277,7 +283,6 @@ reth-trie-parallel = { path = "crates/trie-parallel" }
 reth-optimism-consensus = { path = "crates/optimism/consensus" }
 reth-node-events = { path = "crates/node/events" }
 reth-testing-utils = { path = "testing/testing-utils" }
-reth-node-bsc = { path = "crates/bsc/node" }
 
 # revm
 revm = { version = "8.0.0", features = ["std", "secp256k1"], default-features = false }
@@ -288,6 +293,7 @@ revm-inspectors = { git = "https://github.com/paradigmxyz/evm-inspectors", rev =
 alloy-chains = "0.1.15"
 alloy-primitives = "0.7.2"
 alloy-dyn-abi = "0.7.2"
+alloy-json-abi = "0.7.2"
 alloy-sol-types = "0.7.2"
 alloy-rlp = "0.3.4"
 alloy-trie = "0.3.1"
@@ -404,7 +410,7 @@ test-fuzz = "5"
 
 
 [patch.crates-io]
-revm = { git = "https://github.com/bnb-chain/revm.git", rev = "26af1ca420a72073b98c5d35780a7dd6d2be891f", features = ["std", "secp256k1"], default-features = false }
-revm-primitives = { git = "https://github.com/bnb-chain/revm.git", rev = "26af1ca420a72073b98c5d35780a7dd6d2be891f", features = ["std"], default-features = false }
+revm = { git = "https://github.com/bnb-chain/revm.git", rev = "d99a54e461d6e6506fc6707ed1d2547915bbf943", features = ["std", "secp256k1"], default-features = false }
+revm-primitives = { git = "https://github.com/bnb-chain/revm.git", rev = "d99a54e461d6e6506fc6707ed1d2547915bbf943", features = ["std"], default-features = false }
 alloy-chains = { git = "https://github.com/bnb-chain/alloy-chains-rs.git", branch = "feat/v0.1.15-opbnb", feature = ["serde", "rlp", "arbitrary"] }
 alloy-genesis = { git = "https://github.com/forcodedancing/alloy", branch = "feat/parlia-config" }

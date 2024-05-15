@@ -1,3 +1,5 @@
+/// Implement BSC upgrade message which is required during handshake with other BSC clients, e.g., geth.
+
 use alloy_rlp::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use reth_codecs::derive_arbitrary;
@@ -8,6 +10,7 @@ use reth_codecs::derive_arbitrary;
 #[derive(Debug, Clone, PartialEq, Eq, RlpEncodable, RlpDecodable)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UpgradeStatus {
+    /// Extension for support customized features for BSC.
     pub extension: UpgradeStatusExtension,
 }
 
@@ -18,6 +21,7 @@ pub struct UpgradeStatus {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UpgradeStatusExtension {
     // TODO: support disable_peer_tx_broadcast flag
+    /// To notify a peer to disable the broadcast of transactions or not.
     pub disable_peer_tx_broadcast: bool,
 }
 

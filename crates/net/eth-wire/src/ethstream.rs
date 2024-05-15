@@ -2,7 +2,10 @@ use crate::{
     errors::{EthHandshakeError, EthStreamError},
     message::{EthBroadcastMessage, ProtocolBroadcastMessage},
     p2pstream::HANDSHAKE_TIMEOUT,
-    CanDisconnect, DisconnectReason, EthMessage, EthVersion, ProtocolMessage, Status,
+    CanDisconnect, DisconnectReason, EthMessage, EthVersion, ProtocolMessage, Status
+};
+#[cfg(feature = "bsc")]
+use crate::{
     UpgradeStatus, UpgradeStatusExtension,
 };
 use futures::{ready, Sink, SinkExt, StreamExt};
@@ -16,7 +19,6 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use alloy_rlp::Encodable;
 use tokio::time::timeout;
 use tokio_stream::Stream;
 use tracing::{debug, trace};

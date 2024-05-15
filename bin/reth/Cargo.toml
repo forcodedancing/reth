@@ -145,6 +145,7 @@ optimism = [
 ]
 
 bsc = [
+    "reth-rpc/bsc",
     "reth-primitives/bsc",
     "dep:reth-node-bsc",
     "reth-node-core/bsc"
@@ -165,3 +166,4 @@ required-features = ["optimism"]
 [[bin]]
 name = "bsc-reth"
 path = "src/bsc.rs"
+required-features = ["bsc"]

@@ -24,6 +24,8 @@ use revm::{
     },
     Database,
 };
+#[cfg(feature = "bsc")]
+use revm::primitives::{BscFields};
 use std::cmp::min;
 use tracing::trace;
 
@@ -272,6 +274,8 @@ pub(crate) fn create_txn_env(
         max_fee_per_blob_gas,
         #[cfg(feature = "optimism")]
         optimism: OptimismFields { enveloped_tx: Some(Bytes::new()), ..Default::default() },
+        #[cfg(feature = "bsc")]
+        bsc: BscFields { is_system_transaction: Some(false) },
     };
 
     Ok(env)

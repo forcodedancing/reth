@@ -1,7 +1,7 @@
 #![cfg(feature = "bsc")]
 
 use crate::chain::{BSC_MAINNET, BSC_TESTNET};
-use crate::{error, ChainSpec};
+use crate::{ChainSpec};
 use alloy_chains::{Chain, NamedChain};
 use alloy_primitives::BlockNumber;
 use include_dir::{include_dir, Dir};
@@ -141,6 +141,7 @@ lazy_static! {
         read_all_system_contracts(BSC_TESTNET.as_ref());
 }
 
+/// Return hardforks which contain upgrads of system contracts.
 fn hardforks_with_system_contracts() -> Vec<Hardfork> {
     vec![
         Hardfork::Bruno,
@@ -159,6 +160,7 @@ fn hardforks_with_system_contracts() -> Vec<Hardfork> {
     ]
 }
 
+/// Load the folder names which stores the codes of system contracts.
 fn hardfork_to_dir_name(hardfork: &Hardfork) -> Result<String, SystemContractError> {
     let name = match hardfork {
         Hardfork::Bruno => "bruno",
@@ -181,6 +183,7 @@ fn hardfork_to_dir_name(hardfork: &Hardfork) -> Result<String, SystemContractErr
     Ok(name.to_string())
 }
 
+/// Get all system contracts with byte codes.
 fn read_all_system_contracts(
     spec: &ChainSpec,
 ) -> HashMap<Hardfork, HashMap<String, Option<Bytecode>>> {
@@ -223,6 +226,7 @@ fn read_all_system_contracts(
     outer_map
 }
 
+/// Get byte codes for a specific hardfork.
 fn get_system_contract_codes(
     spec: &ChainSpec,
     hardfork: &Hardfork,
@@ -243,6 +247,7 @@ fn get_system_contract_codes(
     }
 }
 
+/// Get all system contracts to be upgraded.
 pub fn get_upgrade_system_contracts(
     spec: &ChainSpec,
     block_number: BlockNumber,

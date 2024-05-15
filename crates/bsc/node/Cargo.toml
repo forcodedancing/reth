@@ -38,9 +38,11 @@ futures.workspace = true
 tokio.workspace = true
 futures-util.workspace = true
 serde_json.workspace = true
+reth-evm-bsc.workspace = true
 
 [features]
 bsc = [
     "reth-primitives/bsc",
-    "reth-network/bsc"
+    "reth-network/bsc",
+    "reth-evm-bsc/bsc",
 ]

@@ -713,7 +713,7 @@ mod tests {
         let pos_hardforks = [Hardfork::Paris, Hardfork::Shanghai, Hardfork::Cancun];
 
         #[cfg(feature = "optimism")]
-            let op_hardforks =
+        let op_hardforks =
             [Hardfork::Bedrock, Hardfork::Regolith, Hardfork::Canyon, Hardfork::Ecotone];
 
         for hardfork in pow_hardforks.iter() {
