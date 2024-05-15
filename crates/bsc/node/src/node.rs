@@ -1,7 +1,8 @@
 //! BSC Node types config.
 
-use crate::{EthEngineTypes};
+use crate::EthEngineTypes;
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
+use reth_bsc_consensus::ParliaConfig;
 use reth_evm_bsc::{BscEvmConfig, BscExecutorProvider};
 use reth_network::NetworkHandle;
 use reth_node_builder::{
@@ -12,14 +13,11 @@ use reth_node_builder::{
     BuilderContext, Node, PayloadBuilderConfig,
 };
 use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
-use reth_provider::{CanonStateSubscriptions, ParliaProvider};
+use reth_provider::CanonStateSubscriptions;
 use reth_tracing::tracing::{debug, info};
 use reth_transaction_pool::{
     blobstore::DiskFileBlobStore, EthTransactionPool, TransactionPool,
     TransactionValidationTaskExecutor,
-};
-use reth_bsc_consensus::{
-    ParliaConfig
 };
 
 /// Type configuration for a regular BSC node.
@@ -82,7 +80,7 @@ where
     type EVM = BscEvmConfig;
 
     // TODO: parlia provider
-    type Executor = BscExecutorProvider<Self::EVM>;
+    type Executor = BscExecutorProvider<Node::Provider, Self::EVM>;
 
     async fn build_evm(
         self,

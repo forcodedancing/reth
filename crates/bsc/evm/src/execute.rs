@@ -329,7 +329,7 @@ where
                 });
                 return Ok(true)
             }
-            Err(e) => return Err(BscBlockExecutionError::SystemContractUpgradeError),
+            Err(_) => return Err(BscBlockExecutionError::SystemContractUpgradeError),
         };
     }
 
