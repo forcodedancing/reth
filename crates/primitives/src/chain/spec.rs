@@ -55,10 +55,6 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Petersburg, ForkCondition::Block(0)),
             (Hardfork::Istanbul, ForkCondition::Block(0)),
             (Hardfork::MuirGlacier, ForkCondition::Block(0)),
-            (
-                Hardfork::Paris,
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
-            ),
             (Hardfork::Ramanujan, ForkCondition::Block(0)),
             (Hardfork::Niels, ForkCondition::Block(0)),
             (Hardfork::MirrorSync, ForkCondition::Block(5184000)),
@@ -108,10 +104,6 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Petersburg, ForkCondition::Block(0)),
             (Hardfork::Istanbul, ForkCondition::Block(0)),
             (Hardfork::MuirGlacier, ForkCondition::Block(0)),
-            (
-                Hardfork::Paris,
-                ForkCondition::TTD { fork_block: Some(0), total_difficulty: U256::ZERO },
-            ),
             (Hardfork::Ramanujan, ForkCondition::Block(1010000)),
             (Hardfork::Niels, ForkCondition::Block(1014369)),
             (Hardfork::MirrorSync, ForkCondition::Block(5582500)),

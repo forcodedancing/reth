@@ -169,42 +169,56 @@ impl<S, E> UnauthedEthStream<S>
                 }
 
                 // For BSC, UpgradeStatus message should be sent during handshake.
-                //#[cfg(feature = "bsc")]
-                if version > EthVersion::Eth66 {
-                    // TODO: support disable_peer_tx_broadcast flag
-                    // let extension = UpgradeStatusExtension{disable_peer_tx_broadcast: true};
-                    // let mut buffer = Vec::<u8>::new();
-                    // let _ = extension.encode(&mut buffer);
-                    self.inner
-                        .send(alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus {
-                            extension: UpgradeStatusExtension { disable_peer_tx_broadcast: false },
-                        }))).into())
-                        .await?;
-                    let their_msg_res = self.inner.next().await;
-                    let their_msg = match their_msg_res {
-                        Some(msg) => msg,
-                        None => {
-                            self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                            return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse));
+                #[cfg(feature = "bsc")]
+                {
+                    if version > EthVersion::Eth66 {
+                        self.inner
+                            .send(alloy_rlp::encode(ProtocolMessage::from(EthMessage::UpgradeStatus(UpgradeStatus {
+                                extension: UpgradeStatusExtension { disable_peer_tx_broadcast: false },
+                            }))).into())
+                            .await?;
+                        let their_msg_res = self.inner.next().await;
+                        let their_msg = match their_msg_res {
+                            Some(msg) => msg,
+                            None => {
+                                self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
+                                return Err(EthStreamError::EthHandshakeError(EthHandshakeError::NoResponse));
+                            }
+                        }?;
+                        let msg = match ProtocolMessage::decode_message(version, &mut their_msg.as_ref()) {
+                            Ok(m) => m,
+                            Err(err) => {
+                                debug!("decode error in eth handshake: msg={their_msg:x}");
+                                self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
+                                return Err(EthStreamError::InvalidMessage(err));
+                            }
+                        };
+                        match msg.message {
+                            EthMessage::UpgradeStatus(_) => {
+                                // TODO: support disable_peer_tx_broadcast flag
+                                let stream = EthStream::new(version, self.inner);
+                                Ok((stream, resp))
+                            }
+                            _ => {
+                                self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;
+                                Err(EthStreamError::EthHandshakeError(
+                                    EthHandshakeError::NonStatusMessageInHandshake,
+                                ))
+                            }
                         }
-                    }?;
-                    let msg = match ProtocolMessage::decode_message(version, &mut their_msg.as_ref()) {
-                        Ok(m) => m,
-                        Err(err) => {
-                            debug!("decode error in eth handshake: msg={their_msg:x}");
-                            self.inner.disconnect(DisconnectReason::DisconnectRequested).await?;
-                            return Err(EthStreamError::InvalidMessage(err));
-                        }
-                    };
-                    // TODO: support disable_peer_tx_broadcast flag
-                    debug!("msg {:?}", msg.message)
+                    } else {
+                        let stream = EthStream::new(version, self.inner);
+                        Ok((stream, resp))
+                    }
                 }
 
-                // now we can create the `EthStream` because the peer has successfully completed
-                // the handshake
-                let stream = EthStream::new(version, self.inner);
+                #[cfg(not(feature = "bsc"))] {
+                    // now we can create the `EthStream` because the peer has successfully completed
+                    // the handshake
+                    let stream = EthStream::new(version, self.inner);
 
-                Ok((stream, resp))
+                    Ok((stream, resp))
+                }
             }
             _ => {
                 self.inner.disconnect(DisconnectReason::ProtocolBreach).await?;

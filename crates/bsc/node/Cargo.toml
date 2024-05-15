@@ -42,4 +42,5 @@ serde_json.workspace = true
 [features]
 bsc = [
     "reth-primitives/bsc",
+    "reth-network/bsc"
 ]
