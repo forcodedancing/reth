@@ -75,6 +75,7 @@ members = [
     "crates/transaction-pool/",
     "crates/trie/",
     "crates/trie-parallel/",
+    "crates/bsc/node/",
     "examples/node-custom-rpc/",
     "examples/beacon-api-sse/",
     "examples/node-event-hooks/",
@@ -407,7 +408,9 @@ serial_test = "3"
 similar-asserts = "1.5.0"
 test-fuzz = "5"
 
+
 [patch.crates-io]
-# TODO: update to official version
-revm = { git = "https://github.com/bnb-chain/revm", rev = "baf5e15d053b9cc183d69867934f40ffece898e1" }
-revm-primitives = { git = "https://github.com/bnb-chain/revm", rev = "baf5e15d053b9cc183d69867934f40ffece898e1" }
+revm = { git = "https://github.com/bnb-chain/revm.git", rev = "d99a54e461d6e6506fc6707ed1d2547915bbf943", features = ["std", "secp256k1"], default-features = false }
+revm-primitives = { git = "https://github.com/bnb-chain/revm.git", rev = "d99a54e461d6e6506fc6707ed1d2547915bbf943", features = ["std"], default-features = false }
+alloy-chains = { git = "https://github.com/bnb-chain/alloy-chains-rs.git", branch = "feat/v0.1.15-opbnb", feature = ["serde", "rlp", "arbitrary"] }
+alloy-genesis = { git = "https://github.com/forcodedancing/alloy", branch = "feat/parlia-config" }

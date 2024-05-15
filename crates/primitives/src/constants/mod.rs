@@ -19,7 +19,12 @@ pub const RETH_CLIENT_VERSION: &str = concat!("reth/v", env!("CARGO_PKG_VERSION"
 pub const SELECTOR_LEN: usize = 4;
 
 /// Maximum extra data size in a block after genesis
+#[cfg(not(feature="bsc"))]
 pub const MAXIMUM_EXTRA_DATA_SIZE: usize = 32;
+
+/// Maximum extra data size in a block after genesis
+#[cfg(feature="bsc")]
+pub const MAXIMUM_EXTRA_DATA_SIZE: usize = 1024*1024;
 
 /// An EPOCH is a series of 32 slots.
 pub const EPOCH_SLOTS: u64 = 32;

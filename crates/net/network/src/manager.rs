@@ -480,6 +480,7 @@ where
             self.swarm
                 .sessions_mut()
                 .disconnect(peer_id, Some(DisconnectReason::SubprotocolSpecific));
+            only_pow(self);
         } else {
             only_pow(self);
         }

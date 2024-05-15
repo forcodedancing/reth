@@ -110,6 +110,10 @@ optimism = [
     "reth-beacon-consensus/optimism",
 ]
 
+bsc = [
+    "reth-primitives/bsc",
+]
+
 jemalloc = ["dep:tikv-jemalloc-ctl"]
 
 [build-dependencies]
