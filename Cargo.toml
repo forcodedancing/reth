@@ -72,6 +72,7 @@ members = [
     "crates/transaction-pool/",
     "crates/trie/",
     "crates/trie-parallel/",
+    "crates/bsc/node/",
     "examples/node-custom-rpc/",
     "examples/beacon-api-sse/",
     "examples/node-event-hooks/",
@@ -276,6 +277,7 @@ reth-trie-parallel = { path = "crates/trie-parallel" }
 reth-optimism-consensus = { path = "crates/optimism/consensus" }
 reth-node-events = { path = "crates/node/events" }
 reth-testing-utils = { path = "testing/testing-utils" }
+reth-node-bsc = { path = "crates/bsc/node" }
 
 # revm
 revm = { version = "8.0.0", features = ["std", "secp256k1"], default-features = false }

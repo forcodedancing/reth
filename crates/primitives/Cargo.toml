@@ -114,7 +114,10 @@ optimism = [
 ]
 alloy-compat = ["alloy-rpc-types"]
 test-utils = ["dep:plain_hasher", "dep:hash-db"]
-bsc = ["revm-primitives/bsc", "revm/bsc"]
+bsc = [
+    "reth-ethereum-forks/bsc",
+    "revm/bsc",
+]
 
 [[bench]]
 name = "recover_ecdsa_crit"

@@ -157,3 +157,19 @@ mod optimism {
 
 #[cfg(feature = "optimism")]
 pub use optimism::*;
+
+
+/// Bsc specific re-exports
+#[cfg(feature = "bsc")]
+mod bsc {
+    pub use crate::{
+        chain::{BSC_MAINNET, BSC_TESTNET},
+        net::{
+            bsc_mainnet_nodes, bsc_testnet_nodes,
+            BSC_MAINNET_BOOTNODES, BSC_TESTNET_BOOTNODES,
+        },
+    };
+}
+
+#[cfg(feature = "bsc")]
+pub use bsc::*;
