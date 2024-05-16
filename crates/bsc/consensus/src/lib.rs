@@ -85,11 +85,21 @@ impl Default for Parlia {
 
 impl Parlia {
     pub fn new(chain_spec: Arc<ChainSpec>, cfg: ParliaConfig) -> Self {
-        let validator_abi = load_abi_from_file("./res/validator_set.json").unwrap();
-        let validator_abi_before_luban =
-            load_abi_from_file("./res/validator_set_before_luban.json").unwrap();
-        let slash_abi = load_abi_from_file("./res/slash.json").unwrap();
-        let stake_hub_abi = load_abi_from_file("./res/stake_hub.json").unwrap();
+        let validator_abi = load_abi_from_file(
+            "/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/validator_set.json",
+        )
+        .unwrap();
+        let validator_abi_before_luban = load_abi_from_file(
+            "/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/validator_set_before_luban.json",
+        )
+        .unwrap();
+        let slash_abi =
+            load_abi_from_file("/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/slash.json")
+                .unwrap();
+        let stake_hub_abi = load_abi_from_file(
+            "/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/stake_hub.json",
+        )
+        .unwrap();
 
         Self {
             chain_spec,

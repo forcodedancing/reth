@@ -8082,6 +8082,7 @@ dependencies = [
  "reth-auto-seal-consensus",
  "reth-beacon-consensus",
  "reth-blockchain-tree",
+ "reth-bsc-consensus",
  "reth-config",
  "reth-consensus",
  "reth-db",

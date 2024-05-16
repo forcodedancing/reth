@@ -38,6 +38,7 @@ reth-config.workspace = true
 reth-downloaders.workspace = true
 reth-node-events.workspace = true
 reth-consensus.workspace = true
+reth-bsc-consensus.workspace = true
 
 ## async
 futures.workspace = true
@@ -58,3 +59,6 @@ rayon.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[features]
+bsc = []

@@ -805,6 +805,8 @@ impl SealedHeader {
             if !chain_spec.is_optimism() {
                 self.validate_gas_limit(parent, chain_spec)?;
             }
+        } else if cfg!(feature = "bsc") {
+            //TODO: bsc validation
         } else {
             self.validate_gas_limit(parent, chain_spec)?;
         }
