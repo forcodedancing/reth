@@ -44,7 +44,7 @@ use revm_primitives::{
     db::{Database, DatabaseCommit},
     AccountInfo, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
 };
-use std::{collections::HashMap, marker::PhantomData, num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use tracing::{debug, trace};
 
 const SNAP_CACHE_NUM: usize = 2048;
@@ -61,14 +61,7 @@ pub struct BscExecutorProvider<P, EvmConfig = BscEvmConfig> {
     chain_spec: Arc<ChainSpec>,
     evm_config: EvmConfig,
     parlia_config: ParliaConfig,
-    _marker: PhantomData<P>,
-}
-
-impl<P> BscExecutorProvider<P> {
-    /// Creates a new default bsc executor provider.
-    pub fn bsc(chain_spec: Arc<ChainSpec>) -> Self {
-        Self::new(chain_spec, Default::default(), ParliaConfig::default())
-    }
+    provider: P,
 }
 
 impl<P, EvmConfig> BscExecutorProvider<P, EvmConfig> {
@@ -77,16 +70,18 @@ impl<P, EvmConfig> BscExecutorProvider<P, EvmConfig> {
         chain_spec: Arc<ChainSpec>,
         evm_config: EvmConfig,
         parlia_config: ParliaConfig,
+        provider: P,
     ) -> Self {
-        Self { chain_spec, evm_config, parlia_config, _marker: PhantomData::<P> }
+        Self { chain_spec, evm_config, parlia_config, provider }
     }
 }
 
 impl<P, EvmConfig> BscExecutorProvider<P, EvmConfig>
 where
+    P: Clone,
     EvmConfig: ConfigureEvm,
 {
-    fn bsc_executor<DB>(&self, db: DB, provider: P) -> BscBlockExecutor<EvmConfig, DB, P>
+    fn bsc_executor<DB>(&self, db: DB) -> BscBlockExecutor<EvmConfig, DB, P>
     where
         DB: Database<Error = ProviderError>,
     {
@@ -95,7 +90,7 @@ where
             self.evm_config.clone(),
             self.parlia_config.clone(),
             State::builder().with_database(db).with_bundle_update().without_state_clear().build(),
-            provider,
+            self.provider.clone(),
         )
     }
 }
@@ -109,43 +104,18 @@ where
 
     type BatchExecutor<DB: Database<Error = ProviderError>> = BscBatchExecutor<EvmConfig, DB, P>;
 
-    type ExtraProvider = P;
-
-    fn executor<DB>(&self, _db: DB) -> Self::Executor<DB>
+    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
     where
         DB: Database<Error = ProviderError>,
     {
-        panic!("Use `executor_with_provider_rw` instead")
+        self.bsc_executor(db)
     }
 
-    fn executor_with_provider_rw<DB>(
-        &self,
-        db: DB,
-        extra_provider: Self::ExtraProvider,
-    ) -> Self::Executor<DB>
+    fn batch_executor<DB>(&self, db: DB, prune_modes: PruneModes) -> Self::BatchExecutor<DB>
     where
         DB: Database<Error = ProviderError>,
     {
-        self.bsc_executor(db, extra_provider)
-    }
-
-    fn batch_executor<DB>(&self, _db: DB, _prune_modes: PruneModes) -> Self::BatchExecutor<DB>
-    where
-        DB: Database<Error = ProviderError>,
-    {
-        panic!("Use `batch_executor_with_provider_rw` instead")
-    }
-
-    fn batch_executor_with_provider_rw<DB>(
-        &self,
-        db: DB,
-        prune_modes: PruneModes,
-        extra_provider: Self::ExtraProvider,
-    ) -> Self::BatchExecutor<DB>
-    where
-        DB: Database<Error = ProviderError>,
-    {
-        let executor = self.bsc_executor(db, extra_provider);
+        let executor = self.bsc_executor(db);
         BscBatchExecutor {
             executor,
             batch_record: BlockBatchRecord::new(prune_modes),

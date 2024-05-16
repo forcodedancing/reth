@@ -183,13 +183,7 @@ where
             provider.tx_ref(),
             provider.static_file_provider().clone(),
         ));
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "bsc")] {
-                let mut executor = self.executor_provider.batch_executor_with_provider_rw(db, prune_modes, provider);
-            } else {
-                let mut executor = self.executor_provider.batch_executor(db, prune_modes);
-            }
-        }
+        let mut executor = self.executor_provider.batch_executor(db, prune_modes);
         executor.set_tip(max_block);
 
         // Progress tracking

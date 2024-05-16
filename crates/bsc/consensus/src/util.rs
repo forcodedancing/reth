@@ -4,9 +4,7 @@ use reth_primitives::{
 };
 
 use crate::EXTRA_SEAL_LEN;
-use alloy_json_abi::JsonAbi;
 use alloy_rlp::Encodable;
-use serde_json::Error;
 use std::str::FromStr;
 
 lazy_static! {
@@ -73,12 +71,6 @@ pub fn is_system_transaction(tx: &TransactionSigned, header: &Header) -> bool {
 /// whether the contract is system or not
 pub fn is_invoke_system_contract(addr: &Address) -> bool {
     SYSTEM_CONTRACTS.contains(addr)
-}
-
-pub fn load_abi_from_file(path: &str) -> Result<JsonAbi, Error> {
-    let json = std::fs::read_to_string(path).unwrap();
-    let abi: JsonAbi = serde_json::from_str(&json)?;
-    Ok(abi)
 }
 
 pub fn hash_with_chain_id(header: &Header, chain_id: u64) -> B256 {

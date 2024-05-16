@@ -157,28 +157,12 @@ pub trait BlockExecutorProvider: Send + Sync + Clone + Unpin + 'static {
         Error = BlockExecutionError,
     >;
 
-    /// Extra provider for read-write access.
-    type ExtraProvider;
-
     /// Creates a new executor for single block execution.
     ///
     /// This is used to execute a single block and get the changed state.
     fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
     where
         DB: Database<Error = ProviderError>;
-
-    /// Creates a new executor for single block execution with provider read-write.
-    fn executor_with_provider_rw<DB>(
-        &self,
-        db: DB,
-        _extra_provider: Self::ExtraProvider,
-    ) -> Self::Executor<DB>
-    where
-        DB: Database<Error = ProviderError>,
-    {
-        // return normal executor by default
-        self.executor(db)
-    }
 
     /// Creates a new batch executor with the given database and pruning modes.
     ///
@@ -190,21 +174,6 @@ pub trait BlockExecutorProvider: Send + Sync + Clone + Unpin + 'static {
     fn batch_executor<DB>(&self, db: DB, prune_modes: PruneModes) -> Self::BatchExecutor<DB>
     where
         DB: Database<Error = ProviderError>;
-
-    /// Creates a new batch executor with the given database and pruning modes with provider
-    /// read-write.
-    fn batch_executor_with_provider_rw<DB>(
-        &self,
-        db: DB,
-        prune_modes: PruneModes,
-        _extra_provider: Self::ExtraProvider,
-    ) -> Self::BatchExecutor<DB>
-    where
-        DB: Database<Error = ProviderError>,
-    {
-        // return normal batch executor by default
-        self.batch_executor(db, prune_modes)
-    }
 }
 
 #[cfg(test)]
@@ -220,7 +189,6 @@ mod tests {
     impl BlockExecutorProvider for TestExecutorProvider {
         type Executor<DB: Database<Error = ProviderError>> = TestExecutor<DB>;
         type BatchExecutor<DB: Database<Error = ProviderError>> = TestExecutor<DB>;
-        type ExtraProvider = ();
 
         fn executor<DB>(&self, _db: DB) -> Self::Executor<DB>
         where

@@ -46,6 +46,8 @@ mod error;
 pub use error::ParliaConsensusError;
 mod go_rng;
 pub use go_rng::{RngSource, Shuffle};
+mod abi;
+use abi::*;
 
 const RECOVERED_PROPOSER_CACHE_NUM: usize = 4096;
 
@@ -85,21 +87,11 @@ impl Default for Parlia {
 
 impl Parlia {
     pub fn new(chain_spec: Arc<ChainSpec>, cfg: ParliaConfig) -> Self {
-        let validator_abi = load_abi_from_file(
-            "/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/validator_set.json",
-        )
-        .unwrap();
-        let validator_abi_before_luban = load_abi_from_file(
-            "/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/validator_set_before_luban.json",
-        )
-        .unwrap();
-        let slash_abi =
-            load_abi_from_file("/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/slash.json")
-                .unwrap();
-        let stake_hub_abi = load_abi_from_file(
-            "/Users/liguo/rust/fcd/reth/crates/bsc/consensus/res/stake_hub.json",
-        )
-        .unwrap();
+        let validator_abi = serde_json::from_str(*VALIDATOR_SET_ABI).unwrap();
+        let validator_abi_before_luban =
+            serde_json::from_str(*VALIDATOR_SET_ABI_BEFORE_LUBAN).unwrap();
+        let slash_abi = serde_json::from_str(*SLASH_INDICATOR_ABI).unwrap();
+        let stake_hub_abi = serde_json::from_str(*STAKE_HUB_ABI).unwrap();
 
         Self {
             chain_spec,
@@ -811,11 +803,19 @@ mod tests {
     use super::*;
     use reth_primitives::{address, hex};
 
+    // To make sure the abi is correct
+    #[test]
+    fn new_parlia() {
+        let parlia = Parlia::new(Arc::new(ChainSpec::default()), ParliaConfig::default());
+        assert_eq!(parlia.epoch(), 300);
+        assert_eq!(parlia.period(), 15);
+    }
+
     #[test]
     fn abi_encode() {
         let expected = "63a036b500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
-        let stake_hub_abi = load_abi_from_file("./res/stake_hub.json").unwrap();
+        let stake_hub_abi: JsonAbi = serde_json::from_str(*STAKE_HUB_ABI).unwrap();
         let function = stake_hub_abi.function("getValidatorElectionInfo").unwrap().first().unwrap();
         let input = function
             .abi_encode_input(&[DynSolValue::from(U256::from(0)), DynSolValue::from(U256::from(0))])
@@ -836,7 +836,7 @@ mod tests {
         let output_str = "000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c08b5542d177ac6686946920409741463a15dddb000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000303c2438a4113804bf99e3849ef31887c0f880a0feb92f356f58fbd023a82f5311fc87a5883a662e9ebbbefc90bf13aa5300000000000000000000000000000000";
         let output = hex::decode(output_str).unwrap();
 
-        let stake_hub_abi = load_abi_from_file("./res/stake_hub.json").unwrap();
+        let stake_hub_abi: JsonAbi = serde_json::from_str(*STAKE_HUB_ABI).unwrap();
         let function = stake_hub_abi.function("getValidatorElectionInfo").unwrap().first().unwrap();
         let output = function.abi_decode_output(&output, true).unwrap();
 

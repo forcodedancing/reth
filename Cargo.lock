@@ -8637,7 +8637,6 @@ version = "0.2.0-beta.7"
 dependencies = [
  "alloy-rlp",
  "assert_matches",
- "cfg-if",
  "criterion",
  "futures-util",
  "itertools 0.12.1",

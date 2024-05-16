@@ -83,8 +83,6 @@ where
 
     type BatchExecutor<DB: Database<Error = ProviderError>> = EthBatchExecutor<EvmConfig, DB>;
 
-    type ExtraProvider = ();
-
     fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
     where
         DB: Database<Error = ProviderError>,

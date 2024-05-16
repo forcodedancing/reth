@@ -89,7 +89,7 @@ where
         let chain_spec = ctx.chain_spec();
         let evm_config = BscEvmConfig::default();
         //  TODO: parlia config
-        let executor = BscExecutorProvider::new(chain_spec, evm_config, ParliaConfig::default());
+        let executor = BscExecutorProvider::new(chain_spec, evm_config, ParliaConfig::default(), ctx.provider().clone());
 
         Ok((evm_config, executor))
     }
