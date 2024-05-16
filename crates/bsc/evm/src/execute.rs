@@ -501,7 +501,7 @@ where
         }
 
         let ref parent = self.get_header_by_hash(header.number - 1, header.parent_hash)?;
-        let ref snap = self.snapshot(header, Some(parent))?;
+        let ref snap = self.snapshot(parent, None)?;
 
         self.verify_block_time_for_ramanujan(snap, header, parent)?;
         self.verify_vote_attestation(snap, header, parent)?;
