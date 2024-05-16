@@ -658,7 +658,7 @@ where
                 // out
                 let limit =
                     self.parlia.get_recently_proposal_limit(header, snap.validators.len() as u64);
-                if *seen > block_number - limit {
+                if block_number < limit || *seen > block_number - limit {
                     return Err(BscBlockExecutionError::SignerOverLimit { proposer }.into());
                 }
             }

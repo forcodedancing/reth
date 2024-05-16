@@ -149,9 +149,8 @@ impl Parlia {
         let signature = RecoverableSignature::from_compact(sig, rec)
             .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
-        let sig_hash_header = header.clone();
         let message = Message::from_digest_slice(
-            hash_with_chain_id(&sig_hash_header, self.chain_spec.chain.id()).as_slice(),
+            hash_with_chain_id(header, self.chain_spec.chain.id()).as_slice(),
         )
         .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
@@ -169,7 +168,11 @@ impl Parlia {
         &self,
         header: &Header,
     ) -> Result<(Vec<Address>, Option<HashMap<Address, ValidatorInfo>>), ParliaConsensusError> {
-        let val_bytes = self.get_validator_bytes_from_header(header)?;
+        let val_bytes = self.get_validator_bytes_from_header(header).ok_or_else(|| {
+            ParliaConsensusError::InvalidHeaderExtraLen {
+                header_extra_len: header.extra_data.len() as u64,
+            }
+        })?;
 
         if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
             let count = val_bytes.len() / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN;
@@ -231,27 +234,32 @@ impl Parlia {
         ))
     }
 
-    pub fn get_validator_bytes_from_header(
-        &self,
-        header: &Header,
-    ) -> Result<Vec<u8>, ParliaConsensusError> {
-        self.check_header_extra_len(header)?;
-
-        if header.number % self.epoch != 0 {
-            return Err(ParliaConsensusError::NotInEpoch { block_number: header.number });
+    pub fn get_validator_bytes_from_header(&self, header: &Header) -> Option<Vec<u8>> {
+        let extra_len = header.extra_data.len();
+        if header.extra_data.len() < EXTRA_VANITY_LEN + EXTRA_SEAL_LEN {
+            return None;
         }
 
-        let extra_len = header.extra_data.len();
-
         if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
-            return Ok(header.extra_data[EXTRA_VANITY_LEN..extra_len - EXTRA_SEAL_LEN].to_vec());
+            if header.number % self.epoch != 0 &&
+                (extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN) %
+                    EXTRA_VALIDATOR_LEN_BEFORE_LUBAN !=
+                    0
+            {
+                return None;
+            }
+            return Some(header.extra_data[EXTRA_VANITY_LEN..extra_len - EXTRA_SEAL_LEN].to_vec());
+        }
+
+        if header.number % self.epoch != 0 {
+            return None;
         }
 
         let count = header.extra_data[EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM - 1] as usize;
         let start = EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM;
         let end = start + count * EXTRA_VALIDATOR_LEN;
 
-        Ok(header.extra_data[start..end].to_vec())
+        Some(header.extra_data[start..end].to_vec())
     }
 
     pub fn back_off_time(&self, snap: &Snapshot, header: &Header) -> u64 {
