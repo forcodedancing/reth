@@ -149,9 +149,7 @@ impl Parlia {
         let signature = RecoverableSignature::from_compact(sig, rec)
             .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
-        let mut sig_hash_header = header.clone();
-        sig_hash_header.extra_data =
-            Bytes::copy_from_slice(&header.extra_data[..header.extra_data.len() - EXTRA_SEAL_LEN]);
+        let sig_hash_header = header.clone();
         let message = Message::from_digest_slice(
             hash_with_chain_id(&sig_hash_header, self.chain_spec.chain.id()).as_slice(),
         )
