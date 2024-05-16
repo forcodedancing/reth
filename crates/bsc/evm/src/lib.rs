@@ -14,7 +14,7 @@ use reth_primitives::{
 };
 use reth_revm::{inspector_handle_register, Database, Evm, EvmBuilder, GetInspector};
 
-mod execute;
+pub mod execute;
 pub use execute::*;
 
 mod error;

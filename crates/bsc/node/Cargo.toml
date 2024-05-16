@@ -21,7 +21,8 @@ reth-tracing.workspace = true
 reth-provider.workspace = true
 reth-transaction-pool.workspace = true
 reth-network.workspace = true
-reth-evm-ethereum.workspace = true
+reth-evm-bsc.workspace = true
+reth-bsc-consensus.workspace = true
 
 # misc
 eyre.workspace = true

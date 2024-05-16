@@ -30,9 +30,9 @@ use reth_interfaces::{
     provider::ProviderError,
 };
 use reth_primitives::{
-    constants::SYSTEM_ADDRESS, Address, BlockNumber, BlockWithSenders, Bytes, ChainSpec,
-    GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction, TransactionSigned,
-    B256, U256,
+    constants::SYSTEM_ADDRESS, system_contracts, Address, BlockNumber, BlockWithSenders, Bytes,
+    ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction,
+    TransactionSigned, B256, U256,
 };
 use reth_provider::ParliaProvider;
 use reth_revm::{
@@ -42,7 +42,7 @@ use reth_revm::{
 };
 use revm_primitives::{
     db::{Database, DatabaseCommit},
-    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
+    AccountInfo, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
 };
 use std::{collections::HashMap, marker::PhantomData, num::NonZeroUsize, sync::Arc};
 use tracing::{debug, trace};
@@ -192,12 +192,12 @@ where
         for (sender, transaction) in block.transactions_with_sender() {
             if is_system_transaction(transaction, &block.header) {
                 system_txs.push(transaction.clone());
-                continue
+                continue;
             }
             // systemTxs should be always at the end of block.
             if self.chain_spec.is_cancun_active_at_timestamp(block.timestamp) {
                 if system_txs.len() > 0 {
-                    return Err(BscBlockExecutionError::UnexpectedNormalTx.into())
+                    return Err(BscBlockExecutionError::UnexpectedNormalTx.into());
                 }
             }
 
@@ -209,7 +209,7 @@ where
                     transaction_gas_limit: transaction.gas_limit(),
                     block_available_gas,
                 }
-                .into())
+                .into());
             }
 
             EvmConfig::fill_tx_env(evm.tx_mut(), transaction, *sender);
@@ -309,6 +309,30 @@ where
     DB: Database<Error = ProviderError>,
     P: ParliaProvider,
 {
+    /// Upgrade system contracts based on the hardfork rules.
+    fn upgrade_system_contracts(
+        &mut self,
+        block: BlockNumber,
+        parent_block_time: u64,
+        block_time: u64,
+    ) -> Result<bool, BscBlockExecutionError> {
+        match system_contracts::get_upgrade_system_contracts(
+            &self.parlia.chain_spec(),
+            block,
+            parent_block_time,
+            block_time,
+        ) {
+            Ok(contracts) => {
+                contracts.iter().for_each(|(k, v)| {
+                    let account = AccountInfo { code: v.clone(), ..Default::default() };
+                    self.state.insert_account(*k, account);
+                });
+                return Ok(true)
+            }
+            Err(e) => return Err(BscBlockExecutionError::SystemContractUpgradeError),
+        };
+    }
+
     /// Configures a new evm configuration and block environment for the given block.
     ///
     /// Caution: this does not initialize the tx environment.
@@ -343,9 +367,9 @@ where
         let env = self.evm_env_for_block(&block.header, total_difficulty);
 
         if !self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
-            let _parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
+            let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
-            todo!()
+            self.upgrade_system_contracts(block.number, parent.timestamp, block.timestamp)?;
         }
 
         let (mut system_txs, mut receipts, mut gas_used) = {
@@ -425,8 +449,9 @@ where
         }
 
         if self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
+            let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
-            todo!()
+            self.upgrade_system_contracts(block.number, parent.timestamp, block.timestamp)?;
         }
 
         if self.parlia.is_on_feynman(block.timestamp, parent.timestamp) {
@@ -494,7 +519,7 @@ where
         }
 
         if !system_txs.is_empty() {
-            return Err(BscBlockExecutionError::UnexpectedSystemTx.into())
+            return Err(BscBlockExecutionError::UnexpectedSystemTx.into());
         }
 
         Ok(())
@@ -633,7 +658,7 @@ where
             return match err {
                 BLST_ERROR::BLST_SUCCESS => Ok(()),
                 _ => Err(BscBlockExecutionError::BLSTInnerError.into()),
-            }
+            };
         }
 
         Ok(())
@@ -791,7 +816,8 @@ where
             if snap.block_number - snap.vote_data.target_number > NATURALLY_JUSTIFIED_DIST {
                 return self.find_ancient_header(header, NATURALLY_JUSTIFIED_DIST);
             }
-            return self.get_header_by_hash(snap.vote_data.target_number, snap.vote_data.target_hash)
+            return self
+                .get_header_by_hash(snap.vote_data.target_number, snap.vote_data.target_hash);
         }
 
         // If there is no vote justified block, then return root block or naturally justified block.
@@ -836,7 +862,7 @@ where
             Ok(header)
         } else {
             Err(BscBlockExecutionError::UnknownHeader { block_number, hash }.into())
-        }
+        };
     }
 
     fn verify_validators(
@@ -880,7 +906,7 @@ where
             .unwrap()
             .as_slice())
         {
-            return Err(BscBlockExecutionError::InvalidValidators.into())
+            return Err(BscBlockExecutionError::InvalidValidators.into());
         }
 
         Ok(())
@@ -1032,7 +1058,7 @@ where
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         if header.number % self.parlia.epoch() != 0 {
-            return Ok(())
+            return Ok(());
         }
 
         let validator = header.beneficiary;
@@ -1171,7 +1197,7 @@ where
         })?;
 
         if !result.is_success() {
-            return Err(BscBlockExecutionError::EthCallFailed.into())
+            return Err(BscBlockExecutionError::EthCallFailed.into());
         }
 
         let output = result.output().ok_or_else(|| BscBlockExecutionError::EthCallFailed)?;
@@ -1244,6 +1270,7 @@ where
         Ok(())
     }
 }
+
 impl<EvmConfig, DB, P> Executor<DB> for BscBlockExecutor<EvmConfig, DB, P>
 where
     EvmConfig: ConfigureEvm,

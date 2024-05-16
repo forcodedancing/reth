@@ -274,23 +274,6 @@ pub fn get_upgrade_system_contracts(
     Ok(m)
 }
 
-// TODO: integrate with Parlia
-// #[cfg(feature = "bsc")]
-// match system_contracts::get_upgrade_system_contracts(
-//     &self.chain_spec,
-//     block.number,
-//     parent_block_timestamp,
-//     block.header.timestamp,
-// ) {
-//     Ok(contracts) => {
-//         contracts.iter().for_each(|(k, v)| {
-//             let account = AccountInfo { code: v.clone(), ..Default::default() };
-//             self.db_mut().insert_account(*k, account);
-//         });
-//     }
-//     Err(e) => return Err(BlockExecutionError::CanonicalCommit { inner: e.to_string() }),
-// };
-
 
 #[cfg(test)]
 mod tests {

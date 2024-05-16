@@ -1,6 +1,6 @@
 //! BSC EVM support
 
 #[doc(inline)]
-pub use reth_evm_ethereum::execute::EthExecutorProvider; // TODO: bsc executor provider
+pub use reth_evm_bsc::execute::BscExecutorProvider;
 #[doc(inline)]
-pub use reth_evm_ethereum::EthEvmConfig; // TODO: bsc evm config
+pub use reth_evm_bsc::BscEvmConfig;
