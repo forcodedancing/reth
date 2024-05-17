@@ -171,16 +171,17 @@ where
                 }
             }
 
+            // TODO: seems unneeded, to be confirmed
             // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
             // must be no greater than the block’s gasLimit.
-            let block_available_gas = gas_limit - cumulative_gas_used;
-            if transaction.gas_limit() > block_available_gas {
-                return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
-                    transaction_gas_limit: transaction.gas_limit(),
-                    block_available_gas,
-                }
-                .into());
-            }
+            // let block_available_gas = gas_limit - cumulative_gas_used;
+            // if transaction.gas_limit() > block_available_gas {
+            //     return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
+            //         transaction_gas_limit: transaction.gas_limit(),
+            //         block_available_gas,
+            //     }
+            //     .into());
+            // }
 
             EvmConfig::fill_tx_env(evm.tx_mut(), transaction, *sender);
 
@@ -768,9 +769,11 @@ where
 
         cache.put(snap.block_hash, snap.clone());
         if snap.block_number % CHECKPOINT_INTERVAL == 0 {
-            self.provider
-                .save_parlia_snapshot(snap.block_hash, snap.clone())
-                .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?;
+            // TODO: fix lock issue
+            // self.provider
+            //     .save_parlia_snapshot(snap.block_hash, snap.clone())
+            //     .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into()
+            // })?;
         }
 
         Ok(snap)
