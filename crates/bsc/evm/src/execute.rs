@@ -30,8 +30,8 @@ use reth_interfaces::{
     provider::ProviderError,
 };
 use reth_primitives::{
-    constants::SYSTEM_ADDRESS, system_contracts, Address, BlockNumber, BlockWithSenders, Bytes,
-    ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction,
+    constants::SYSTEM_ADDRESS, hex, system_contracts, Address, BlockNumber, BlockWithSenders,
+    Bytes, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction,
     TransactionSigned, B256, U256,
 };
 use reth_provider::ParliaProvider;
@@ -160,7 +160,7 @@ where
         let mut system_txs = Vec::with_capacity(2); // Normally there are 2 system transactions.
         let mut receipts = Vec::with_capacity(block.body.len());
         for (sender, transaction) in block.transactions_with_sender() {
-            if is_system_transaction(transaction, &block.header) {
+            if is_system_transaction(transaction, *sender, &block.header) {
                 system_txs.push(transaction.clone());
                 continue;
             }
@@ -171,17 +171,16 @@ where
                 }
             }
 
-            // TODO: seems unneeded, to be confirmed
             // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
             // must be no greater than the block’s gasLimit.
-            // let block_available_gas = gas_limit - cumulative_gas_used;
-            // if transaction.gas_limit() > block_available_gas {
-            //     return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
-            //         transaction_gas_limit: transaction.gas_limit(),
-            //         block_available_gas,
-            //     }
-            //     .into());
-            // }
+            let block_available_gas = gas_limit - cumulative_gas_used;
+            if transaction.gas_limit() > block_available_gas {
+                return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
+                    transaction_gas_limit: transaction.gas_limit(),
+                    block_available_gas,
+                }
+                .into());
+            }
 
             EvmConfig::fill_tx_env(evm.tx_mut(), transaction, *sender);
 
@@ -403,7 +402,7 @@ where
         let header = &block.header;
 
         let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
-        let ref snap = self.snapshot(header, Some(parent))?;
+        let ref snap = self.snapshot(header, None)?;
 
         //TODO: isMajorityFork ?
 
@@ -873,6 +872,12 @@ where
                 validator_bytes
             };
 
+        trace!(
+            "validator bytes: {} \n parlia header: {} \n",
+            hex::encode(validator_bytes.as_slice()),
+            hex::encode(self.parlia.get_validator_bytes_from_header(header).unwrap())
+        );
+
         if !validator_bytes.as_slice().eq(self
             .parlia
             .get_validator_bytes_from_header(header)
@@ -1049,7 +1054,11 @@ where
                     attestation.data.target_number,
                     attestation.data.target_hash,
                 )?;
-                let snap = self.snapshot(&justified_header, None)?;
+                let parent = self.get_header_by_hash(
+                    justified_header.number - 1,
+                    justified_header.parent_hash,
+                )?;
+                let snap = self.snapshot(&parent, None)?;
                 let validators = &snap.validators;
                 let validators_bit_set = BitSet::from_u64(attestation.vote_address_set);
                 if validators_bit_set.count() as usize > validators.len() {

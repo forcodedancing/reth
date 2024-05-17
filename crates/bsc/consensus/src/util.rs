@@ -58,9 +58,12 @@ pub fn is_breathe_block(last_block_time: u64, block_time: u64) -> bool {
     last_block_time != 0 && !is_same_day_in_utc(last_block_time, block_time)
 }
 
-pub fn is_system_transaction(tx: &TransactionSigned, header: &Header) -> bool {
+pub fn is_system_transaction(tx: &TransactionSigned, sender: Address, header: &Header) -> bool {
     if let Some(to) = tx.to() {
-        if to == header.beneficiary && is_invoke_system_contract(&to) && tx.max_fee_per_gas() == 0 {
+        if sender == header.beneficiary &&
+            is_invoke_system_contract(&to) &&
+            tx.max_fee_per_gas() == 0
+        {
             return true;
         }
     }

@@ -50,6 +50,8 @@ impl ConfigureEvmEnv for BscEvmConfig {
 
         cfg_env.chain_id = chain_spec.chain().id();
         cfg_env.perf_analyse_created_bytecodes = AnalysisKind::Analyse;
+
+        // TODO: remove it later, system eth_call will fail
         cfg_env.disable_block_gas_limit = true;
 
         cfg_env.handler_cfg.spec_id = spec_id;
