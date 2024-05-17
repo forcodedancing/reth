@@ -890,7 +890,7 @@ where
         number: BlockNumber,
         env: EnvWithHandlerCfg,
     ) -> (Vec<Address>, Vec<VoteAddress>) {
-        if self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+        if !self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
             let (to, data) = self.parlia.get_current_validators_before_luban(number);
             let output = self.eth_call(to, data, env.clone()).unwrap();
 
