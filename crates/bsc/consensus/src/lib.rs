@@ -599,7 +599,14 @@ impl Parlia {
             self.validator_abi_before_luban.function("getValidators").unwrap().first().unwrap();
         let output = function.abi_decode_output(data, true).unwrap();
 
-        output.into_iter().map(|val| val.as_address().unwrap()).collect()
+        output
+            .first()
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .into_iter()
+            .map(|val| val.as_address().unwrap())
+            .collect()
     }
 
     pub fn get_current_validators(&self) -> (Address, Bytes) {

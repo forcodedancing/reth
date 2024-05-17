@@ -849,7 +849,7 @@ where
         validators.sort();
         let validator_num = validators.len();
         let validator_bytes =
-            if self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+            if !self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
                 let mut validator_bytes = Vec::new();
                 for v in validators {
                     validator_bytes.extend_from_slice(v.as_ref());
