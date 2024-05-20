@@ -985,7 +985,7 @@ where
         drop(evm);
 
         if !self.parlia.chain_spec().fork(Hardfork::Kepler).active_at_timestamp(header.timestamp) {
-            if system_reward_balance > U256::from(MAX_SYSTEM_REWARD) {
+            if system_reward_balance < U256::from(MAX_SYSTEM_REWARD) {
                 let reward_to_system = block_reward >> SYSTEM_REWARD_PERCENT;
                 if reward_to_system > 0 {
                     self.transact_system_tx(

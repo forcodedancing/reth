@@ -215,11 +215,13 @@ impl Parlia {
         &self,
         header: &Header,
     ) -> Result<Option<VoteAttestation>, ParliaConsensusError> {
-        self.check_header_extra_len(header)?;
-
-        if !self.chain_spec().fork(Hardfork::Luban).active_at_block(header.number) {
+        if header.extra_data.len() <= EXTRA_VANITY_LEN + EXTRA_SEAL_LEN {
             return Ok(None);
-        };
+        }
+
+        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+            return Ok(None);
+        }
 
         let mut raw;
         let extra_len = header.extra_data.len();
