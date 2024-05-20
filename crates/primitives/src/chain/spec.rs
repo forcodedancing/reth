@@ -47,7 +47,6 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
             (Hardfork::Homestead, ForkCondition::Block(0)),
-            (Hardfork::Dao, ForkCondition::Block(0)),
             (Hardfork::Tangerine, ForkCondition::Block(0)),
             (Hardfork::SpuriousDragon, ForkCondition::Block(0)),
             (Hardfork::Byzantium, ForkCondition::Block(0)),
@@ -69,11 +68,12 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Berlin, ForkCondition::Block(31302048)),
             (Hardfork::London, ForkCondition::Block(31302048)),
             (Hardfork::Hertz, ForkCondition::Block(31302048)),
-            (Hardfork::Hertzfix, ForkCondition::Block(34140700)),
+            (Hardfork::HertzFix, ForkCondition::Block(34140700)),
             (Hardfork::Shanghai, ForkCondition::Timestamp(1705996800)),
             (Hardfork::Kepler, ForkCondition::Timestamp(1705996800)),
             (Hardfork::Feynman, ForkCondition::Timestamp(1713419340)),
             (Hardfork::FeynmanFix, ForkCondition::Timestamp(1713419340)),
+            (Hardfork::Cancun, ForkCondition::Timestamp(1718863500)),
         ]),
         deposit_contract: None,
         base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
@@ -96,7 +96,6 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
             (Hardfork::Homestead, ForkCondition::Block(0)),
-            (Hardfork::Dao, ForkCondition::Block(0)),
             (Hardfork::Tangerine, ForkCondition::Block(0)),
             (Hardfork::SpuriousDragon, ForkCondition::Block(0)),
             (Hardfork::Byzantium, ForkCondition::Block(0)),
@@ -118,7 +117,7 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Berlin, ForkCondition::Block(31103030)),
             (Hardfork::London, ForkCondition::Block(31103030)),
             (Hardfork::Hertz, ForkCondition::Block(31103030)),
-            (Hardfork::Hertzfix, ForkCondition::Block(35682300)),
+            (Hardfork::HertzFix, ForkCondition::Block(35682300)),
             (Hardfork::Shanghai, ForkCondition::Timestamp(1702972800)),
             (Hardfork::Kepler, ForkCondition::Timestamp(1702972800)),
             (Hardfork::Feynman, ForkCondition::Timestamp(1710136800)),
@@ -677,15 +676,13 @@ impl ChainSpec {
     /// Returns `true` if this chain contains Bsc configuration.
     #[inline]
     pub fn is_bsc(&self) -> bool {
-        // TODO: self.chain.is_bsc()
-        self.chain.is_optimism()
+        self.chain == Chain::from_named(NamedChain::BinanceSmartChain) || self.chain == Chain::from_named(NamedChain::BinanceSmartChainTestnet)
     }
 
     /// Returns `true` if this chain is Bsc mainnet.
     #[inline]
     pub fn is_bsc_mainnet(&self) -> bool {
-        // TODO: self.chain == Chain::bsc_mainnet()
-        self.chain == Chain::optimism_mainnet()
+        self.chain == Chain::from_named(NamedChain::BinanceSmartChain)
     }
 
     /// Returns `true` if this chain contains Optimism configuration.

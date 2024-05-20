@@ -1,7 +1,9 @@
 #![cfg(feature = "bsc")]
 
-use crate::chain::{BSC_MAINNET, BSC_TESTNET};
-use crate::{ChainSpec};
+use crate::{
+    chain::{BSC_MAINNET, BSC_TESTNET},
+    ChainSpec,
+};
 use alloy_chains::{Chain, NamedChain};
 use alloy_primitives::BlockNumber;
 use include_dir::{include_dir, Dir};
@@ -231,19 +233,20 @@ fn get_system_contract_codes(
     spec: &ChainSpec,
     hardfork: &Hardfork,
 ) -> Result<HashMap<String, Option<Bytecode>>, SystemContractError> {
-    #[warn(unused_assignments)]
-    if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChain)) {
-        match BSC_MAINNET_CONTRACTS.get(hardfork) {
-            Some(m) => return Ok(m.clone()),
-            None => return Ok(HashMap::new()),
-        };
+    return if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChain)) {
+        if let Some(m) = BSC_MAINNET_CONTRACTS.get(hardfork) {
+            Ok(m.clone())
+        } else {
+            Ok(HashMap::new())
+        }
     } else if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChainTestnet)) {
-        match BSC_TESTNET_CONTRACTS.get(hardfork) {
-            Some(m) => return Ok(m.clone()),
-            None => return Ok(HashMap::new()),
-        };
+        if let Some(m) = BSC_TESTNET_CONTRACTS.get(hardfork) {
+            Ok(m.clone())
+        } else {
+            Ok(HashMap::new())
+        }
     } else {
-        return Err(SystemContractError::InvalidSpec);
+        Err(SystemContractError::InvalidSpec)
     }
 }
 
@@ -251,29 +254,26 @@ fn get_system_contract_codes(
 pub fn get_upgrade_system_contracts(
     spec: &ChainSpec,
     block_number: BlockNumber,
-    parent_block_time: u64,
     block_time: u64,
+    parent_block_time: u64,
 ) -> Result<HashMap<Address, Option<Bytecode>>, SystemContractError> {
     let mut m = HashMap::new();
-    for hardfork in spec.hardforks.iter() {
-        if hardfork.1.transitions_at_block(block_number)
-            || hardfork.1.transitions_at_timestamp(block_time, parent_block_time)
+    for (name, condition) in spec.hardforks.iter() {
+        if condition.transitions_at_block(block_number) ||
+            condition.transitions_at_timestamp(block_time, parent_block_time)
         {
-            let contracts = match get_system_contract_codes(spec, hardfork.0) {
-                Ok(m) => m,
-                Err(_) => return Err(SystemContractError::FailToUpdate),
-            };
-
-            contracts.iter().for_each(|(k, v)| {
-                let address = Address::parse_checksummed(k.clone(), None).unwrap();
-
-                m.insert(address, v.clone());
-            });
+            if let Ok(contracts) = get_system_contract_codes(spec, name) {
+                contracts.iter().for_each(|(k, v)| {
+                    let address = Address::parse_checksummed(k.clone(), None).unwrap();
+                    m.insert(address, v.clone());
+                });
+            } else {
+                return Err(SystemContractError::FailToUpdate);
+            }
         }
     }
     Ok(m)
 }
-
 
 #[cfg(test)]
 mod tests {

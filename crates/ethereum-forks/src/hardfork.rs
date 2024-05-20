@@ -113,8 +113,8 @@ pub enum Hardfork {
     /// BSC Hertz hardfork
     Hertz,
 
-    /// BSC Hertzfix hardfork
-    Hertzfix,
+    /// BSC HertzFix hardfork
+    HertzFix,
 
     /// BSC Kepler hardfork
     Kepler,

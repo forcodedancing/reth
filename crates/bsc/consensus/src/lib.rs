@@ -64,7 +64,7 @@ pub struct ParliaConfig {
 
 impl Default for ParliaConfig {
     fn default() -> Self {
-        Self { epoch: 300, period: 15 }
+        Self { epoch: 300, period: 3 }
     }
 }
 
@@ -117,14 +117,16 @@ impl Parlia {
         &self.chain_spec
     }
 
+    // Feynman fork is active at the given timestamp.
     pub fn is_on_feynman(&self, timestamp: u64, parent_timestamp: u64) -> bool {
-        self.chain_spec.fork(Hardfork::Feynman).active_at_timestamp(timestamp) &&
-            !self.chain_spec.fork(Hardfork::Feynman).active_at_timestamp(parent_timestamp)
+        self.chain_spec
+            .fork(Hardfork::Feynman)
+            .transitions_at_timestamp(timestamp, parent_timestamp)
     }
 
+    // Luban fork is active at the given block number.
     pub fn is_on_luban(&self, block_number: BlockNumber) -> bool {
-        self.chain_spec.fork(Hardfork::Luban).active_at_block(block_number) &&
-            !self.chain_spec.fork(Hardfork::Luban).active_at_block(block_number - 1)
+        self.chain_spec.fork(Hardfork::Luban).transitions_at_block(block_number)
     }
 
     pub fn recover_proposer(&self, header: &Header) -> Result<Address, ParliaConsensusError> {
@@ -278,7 +280,7 @@ impl Parlia {
         let mut rng = RngSource::new(snap.block_number as i64);
         let validator_count = snap.validators.len();
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.chain_spec.fork(Hardfork::Planck).active_at_block(header.number) {
             // select a random step for delay, range 0~(proposer_count-1)
             let mut backoff_steps = Vec::new();
             for i in 0..validator_count {

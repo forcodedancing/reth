@@ -1,4 +1,4 @@
-/// Implement BSC upgrade message which is required during handshake with other BSC clients, e.g., geth.
+//! Implement BSC upgrade message which is required during handshake with other BSC clients, e.g., geth.
 
 use alloy_rlp::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};

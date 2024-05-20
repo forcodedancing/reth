@@ -30,7 +30,7 @@ use revm_primitives::{
     db::{Database, DatabaseCommit},
     BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tracing::debug;
 
 /// Provides executors to execute regular ethereum blocks
@@ -368,7 +368,12 @@ where
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
 
-        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, gas_used })
+        Ok(BlockExecutionOutput {
+            state: self.state.take_bundle(),
+            receipts,
+            gas_used,
+            snapshot: None,
+        })
     }
 }
 
@@ -428,6 +433,7 @@ where
             self.executor.state.take_bundle(),
             self.batch_record.take_receipts(),
             self.batch_record.first_block().unwrap_or_default(),
+            HashMap::new(),
         )
     }
 

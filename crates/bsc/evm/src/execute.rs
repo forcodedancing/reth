@@ -29,11 +29,7 @@ use reth_interfaces::{
     executor::{BlockExecutionError, BlockValidationError},
     provider::ProviderError,
 };
-use reth_primitives::{
-    constants::SYSTEM_ADDRESS, hex, system_contracts, Address, BlockNumber, BlockWithSenders,
-    Bytes, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction,
-    TransactionSigned, B256, U256,
-};
+use reth_primitives::{constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts, Address, BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction, TransactionSigned, B256, U256, hex};
 use reth_provider::ParliaProvider;
 use reth_revm::{
     batch::{BlockBatchRecord, BlockExecutorStats},
@@ -45,7 +41,7 @@ use revm_primitives::{
     AccountInfo, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use tracing::{debug, trace};
+use tracing::{debug, log::info, trace};
 
 const SNAP_CACHE_NUM: usize = 2048;
 const BLST_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
@@ -120,6 +116,7 @@ where
             executor,
             batch_record: BlockBatchRecord::new(prune_modes),
             stats: BlockExecutorStats::default(),
+            snapshots: HashMap::new(),
         }
     }
 }
@@ -279,30 +276,6 @@ where
     DB: Database<Error = ProviderError>,
     P: ParliaProvider,
 {
-    /// Upgrade system contracts based on the hardfork rules.
-    fn upgrade_system_contracts(
-        &mut self,
-        block: BlockNumber,
-        parent_block_time: u64,
-        block_time: u64,
-    ) -> Result<bool, BscBlockExecutionError> {
-        match system_contracts::get_upgrade_system_contracts(
-            &self.parlia.chain_spec(),
-            block,
-            parent_block_time,
-            block_time,
-        ) {
-            Ok(contracts) => {
-                contracts.iter().for_each(|(k, v)| {
-                    let account = AccountInfo { code: v.clone(), ..Default::default() };
-                    self.state.insert_account(*k, account);
-                });
-                return Ok(true)
-            }
-            Err(_) => return Err(BscBlockExecutionError::SystemContractUpgradeError),
-        };
-    }
-
     /// Configures a new evm configuration and block environment for the given block.
     ///
     /// Caution: this does not initialize the tx environment.
@@ -329,17 +302,21 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
-    ) -> Result<(Vec<Receipt>, u64), BlockExecutionError> {
-        // 1. prepare state on new block
-        self.on_new_block(&block.header)?;
+    ) -> Result<(Vec<Receipt>, u64, Option<Snapshot>), BlockExecutionError> {
+        // 1. get parent header and snapshot
+        let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
+        let ref snap = self.snapshot(parent, None)?;
 
-        // 2. configure the evm and execute normal transactions
+        // 2. prepare state on new block
+        self.on_new_block(&block.header, parent, snap)?;
+
+        // 3. configure the evm and execute normal transactions
         let env = self.evm_env_for_block(&block.header, total_difficulty);
 
         if !self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
             let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
-            self.upgrade_system_contracts(block.number, parent.timestamp, block.timestamp)?;
+            self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
         }
 
         let (mut system_txs, mut receipts, mut gas_used) = {
@@ -347,8 +324,16 @@ where
             self.executor.execute_pre_and_transactions(block, evm)
         }?;
 
-        // 3. apply post execution changes
-        self.post_execution(block, &mut system_txs, &mut receipts, &mut gas_used, env.clone())?;
+        // 4. apply post execution changes
+        self.post_execution(
+            block,
+            parent,
+            snap,
+            &mut system_txs,
+            &mut receipts,
+            &mut gas_used,
+            env.clone(),
+        )?;
 
         // Check if gas used matches the value set in header.
         if block.gas_used != gas_used {
@@ -375,34 +360,41 @@ where
             };
         }
 
-        Ok((receipts, gas_used))
+        if snap.block_number % CHECKPOINT_INTERVAL == 0 {
+            return Ok((receipts, gas_used, Some(snap.clone())));
+        }
+
+        Ok((receipts, gas_used, None))
     }
 
     /// Apply settings and verify headers before a new block is executed.
-    pub(crate) fn on_new_block(&mut self, header: &Header) -> Result<(), BlockExecutionError> {
+    pub(crate) fn on_new_block(
+        &mut self,
+        header: &Header,
+        parent: &Header,
+        snap: &Snapshot,
+    ) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
         let state_clear_flag = self.chain_spec().is_spurious_dragon_active_at_block(header.number);
         self.state.set_state_clear_flag(state_clear_flag);
 
-        self.verify_cascading_fields(header)
+        self.verify_cascading_fields(header, parent, snap)
     }
 
     /// Apply post execution state changes, including system txs and other state change.
     pub fn post_execution(
         &mut self,
         block: &BlockWithSenders,
+        parent: &Header,
+        snap: &Snapshot,
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        // evm: &mut Evm<'_, Ext, &mut State<DB>>,
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let number = block.number;
         let validator = block.beneficiary;
         let header = &block.header;
-
-        let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
-        let ref snap = self.snapshot(header, None)?;
 
         //TODO: isMajorityFork ?
 
@@ -421,7 +413,7 @@ where
         if self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
             let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
-            self.upgrade_system_contracts(block.number, parent.timestamp, block.timestamp)?;
+            self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
         }
 
         if self.parlia.is_on_feynman(block.timestamp, parent.timestamp) {
@@ -495,14 +487,12 @@ where
         Ok(())
     }
 
-    fn verify_cascading_fields(&self, header: &Header) -> Result<(), BlockExecutionError> {
-        if header.number == 0 {
-            return Ok(());
-        }
-
-        let ref parent = self.get_header_by_hash(header.number - 1, header.parent_hash)?;
-        let ref snap = self.snapshot(parent, None)?;
-
+    fn verify_cascading_fields(
+        &self,
+        header: &Header,
+        parent: &Header,
+        snap: &Snapshot,
+    ) -> Result<(), BlockExecutionError> {
         self.verify_block_time_for_ramanujan(snap, header, parent)?;
         self.verify_vote_attestation(snap, header, parent)?;
         self.verify_seal(snap, header)?;
@@ -767,14 +757,6 @@ where
         }
 
         cache.put(snap.block_hash, snap.clone());
-        if snap.block_number % CHECKPOINT_INTERVAL == 0 {
-            // TODO: fix lock issue
-            // self.provider
-            //     .save_parlia_snapshot(snap.block_hash, snap.clone())
-            //     .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into()
-            // })?;
-        }
-
         Ok(snap)
     }
 
@@ -843,9 +825,13 @@ where
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let number = header.number;
-        let (mut validators, mut vote_addrs_map) = self.get_current_validators(number, env.clone());
+        if number % self.parlia().epoch() != 0 {
+            return Ok(())
+        };
 
+        let (mut validators, mut vote_addrs_map) = self.get_current_validators(number, env.clone());
         validators.sort();
+
         let validator_num = validators.len();
         let validator_bytes =
             if !self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
@@ -871,12 +857,6 @@ where
 
                 validator_bytes
             };
-
-        trace!(
-            "validator bytes: {} \n parlia header: {} \n",
-            hex::encode(validator_bytes.as_slice()),
-            hex::encode(self.parlia.get_validator_bytes_from_header(header).unwrap())
-        );
 
         if !validator_bytes.as_slice().eq(self
             .parlia
@@ -987,6 +967,9 @@ where
 
         let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
         let mut block_reward = *evm.db_mut().drain_balances([SYSTEM_ADDRESS])?.first().unwrap();
+        if block_reward == 0 {
+            return Ok(());
+        }
         let mut balance_increment = HashMap::new();
         balance_increment.insert(validator, block_reward);
         evm.db_mut()
@@ -994,7 +977,7 @@ where
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
         let system_reward_balance =
-            evm.db_mut().basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap().balance;
+            evm.db_mut().basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap_or_default().balance;
         drop(evm);
 
         if !self.parlia.chain_spec().fork(Hardfork::Kepler).active_at_timestamp(header.timestamp) {
@@ -1143,6 +1126,30 @@ where
         Ok(())
     }
 
+    /// Upgrade system contracts based on the hardfork rules.
+    fn upgrade_system_contracts(
+        &mut self,
+        block_number: BlockNumber,
+        block_time: u64,
+        parent_block_time: u64,
+    ) -> Result<bool, BscBlockExecutionError> {
+        if let Ok(contracts) = get_upgrade_system_contracts(
+            &self.parlia.chain_spec(),
+            block_number,
+            block_time,
+            parent_block_time,
+        ) {
+            contracts.iter().for_each(|(k, v)| {
+                info!("System contract {:?} upgraded at block {:?}", k, block_number);
+                let account = AccountInfo { code: v.clone(), ..Default::default() };
+                self.state.insert_account(*k, account);
+            });
+            Ok(true)
+        } else {
+            Err(BscBlockExecutionError::SystemContractUpgradeError)
+        }
+    }
+
     fn eth_call(
         &mut self,
         to: Address,
@@ -1197,7 +1204,7 @@ where
     ) -> Result<(), BlockExecutionError> {
         let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env);
 
-        let nonce = evm.db_mut().basic(sender).unwrap().unwrap().nonce;
+        let nonce = evm.db_mut().basic(sender).unwrap().unwrap_or_default().nonce;
         transaction.set_nonce(nonce);
         let hash = transaction.signature_hash();
         if hash != system_txs[0].signature_hash() {
@@ -1272,12 +1279,12 @@ where
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
         let BlockExecutionInput { block, total_difficulty } = input;
-        let (receipts, gas_used) = self.execute_and_verify(block, total_difficulty)?;
+        let (receipts, gas_used, snapshot) = self.execute_and_verify(block, total_difficulty)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
 
-        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, gas_used })
+        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, gas_used, snapshot })
     }
 }
 
@@ -1291,6 +1298,7 @@ pub struct BscBatchExecutor<EvmConfig, DB, P> {
     /// Keeps track of the batch and record receipts based on the configured prune mode
     batch_record: BlockBatchRecord,
     stats: BlockExecutorStats,
+    snapshots: HashMap<B256, Snapshot>,
 }
 
 impl<EvmConfig, DB, P> BscBatchExecutor<EvmConfig, DB, P> {
@@ -1318,7 +1326,8 @@ where
 
     fn execute_one(&mut self, input: Self::Input<'_>) -> Result<(), Self::Error> {
         let BlockExecutionInput { block, total_difficulty } = input;
-        let (receipts, _gas_used) = self.executor.execute_and_verify(block, total_difficulty)?;
+        let (receipts, _gas_used, snapshot) =
+            self.executor.execute_and_verify(block, total_difficulty)?;
 
         // prepare the state according to the prune mode
         let retention = self.batch_record.bundle_retention(block.number);
@@ -1326,6 +1335,11 @@ where
 
         // store receipts in the set
         self.batch_record.save_receipts(receipts)?;
+
+        // store snapshot
+        if let Some(snapshot) = snapshot {
+            self.snapshots.insert(block.header.hash_slow(), snapshot);
+        }
 
         if self.batch_record.first_block().is_none() {
             self.batch_record.set_first_block(block.number);
@@ -1341,6 +1355,7 @@ where
             self.executor.state.take_bundle(),
             self.batch_record.take_receipts(),
             self.batch_record.first_block().unwrap_or_default(),
+            self.snapshots,
         )
     }
 
