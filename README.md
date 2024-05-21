@@ -126,7 +126,7 @@ export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
     --ws.port=8546 \
     --builder.gaslimit=150000000 \
     --nat=any \
-    --log.file.directory ./datadir/logs -vvvv
+    --log.file.directory ./datadir/logs
 ```
 
 You can run `op-reth --help` for command explanations. More details on running opbnb nodes can be found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local-node/).
