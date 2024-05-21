@@ -37,7 +37,7 @@ use reth_primitives::{
 use reth_provider::ParliaProvider;
 use reth_revm::{
     batch::{BlockBatchRecord, BlockExecutorStats},
-    db::states::bundle_state::BundleRetention,
+    db::{states::bundle_state::BundleRetention, AccountStatus},
     Evm, State,
 };
 use revm_primitives::{
@@ -307,6 +307,10 @@ where
         block: &BlockWithSenders,
         total_difficulty: U256,
     ) -> Result<(Vec<Receipt>, u64, Option<Snapshot>), BlockExecutionError> {
+        if block.number == 364 {
+            info!("block number 364");
+        }
+
         // 1. get parent header and snapshot
         let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
         let ref snap = self.snapshot(parent, None)?;
@@ -971,13 +975,19 @@ where
 
         let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
 
-        let mut block_reward= {
-            if let Ok(system_account) = evm.db_mut().load_cache_account(SYSTEM_ADDRESS) {
-                system_account.drain_balance().0
-            } else {
-                0
-            }
-        };
+        let system_account = evm
+            .db_mut()
+            .load_cache_account(SYSTEM_ADDRESS)
+            .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?;
+        if system_account.status == AccountStatus::LoadedNotExisting {
+            return Ok(());
+        }
+
+        let (mut block_reward, transition) = system_account.drain_balance();
+        if let Some(s) = evm.db_mut().transition_state.as_mut() {
+            s.add_transitions(vec![(SYSTEM_ADDRESS, transition)]);
+        }
+
         if block_reward == 0 {
             return Ok(());
         }
