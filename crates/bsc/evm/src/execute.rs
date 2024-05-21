@@ -29,7 +29,11 @@ use reth_interfaces::{
     executor::{BlockExecutionError, BlockValidationError},
     provider::ProviderError,
 };
-use reth_primitives::{constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts, Address, BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction, TransactionSigned, B256, U256, hex};
+use reth_primitives::{
+    constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts, Address,
+    BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Hardfork, Header, PruneModes,
+    Receipt, Receipts, Transaction, TransactionSigned, B256, U256,
+};
 use reth_provider::ParliaProvider;
 use reth_revm::{
     batch::{BlockBatchRecord, BlockExecutorStats},

@@ -64,7 +64,7 @@ pub struct ParliaConfig {
 
 impl Default for ParliaConfig {
     fn default() -> Self {
-        Self { epoch: 300, period: 3 }
+        Self { epoch: 200, period: 3 }
     }
 }
 
@@ -216,6 +216,10 @@ impl Parlia {
         header: &Header,
     ) -> Result<Option<VoteAttestation>, ParliaConsensusError> {
         self.check_header_extra_len(header)?;
+
+        if !self.chain_spec().fork(Hardfork::Luban).active_at_block(header.number) {
+            return Ok(None);
+        };
 
         let mut raw;
         let extra_len = header.extra_data.len();
