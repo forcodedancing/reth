@@ -970,10 +970,18 @@ where
         let validator = header.beneficiary;
 
         let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
-        let mut block_reward = *evm.db_mut().drain_balances([SYSTEM_ADDRESS])?.first().unwrap();
+
+        let mut block_reward= {
+            if let Ok(system_account) = evm.db_mut().load_cache_account(SYSTEM_ADDRESS) {
+                system_account.drain_balance().0
+            } else {
+                0
+            }
+        };
         if block_reward == 0 {
             return Ok(());
         }
+
         let mut balance_increment = HashMap::new();
         balance_increment.insert(validator, block_reward);
         evm.db_mut()
