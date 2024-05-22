@@ -40,10 +40,36 @@ pub enum Hardfork {
     Istanbul,
     /// Muir Glacier: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/muir-glacier.md>.
     MuirGlacier,
+    /// BSC Ramanujan hardfork
+    Ramanujan,
+    /// BSC Niels hardfork
+    Niels,
+    /// BSC MirrorSync hardfork
+    MirrorSync,
+    /// BSC Bruno hardfork
+    Bruno,
+    /// BSC Euler hardfork
+    Euler,
+    /// BSC Nano hardfork
+    Nano,
+    /// BSC Moran hardfork
+    Moran,
+    /// BSC Gibbs hardfork
+    Gibbs,
+    /// BSC Planck hardfork
+    Planck,
+    /// BSC Luban hardfork
+    Luban,
+    /// BSC Plato hardfork
+    Plato,
     /// Berlin: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/berlin.md>.
     Berlin,
     /// London: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/london.md>.
     London,
+    /// BSC Hertz hardfork
+    Hertz,
+    /// BSC HertzFix hardfork
+    HertzFix,
     /// Arrow Glacier: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/arrow-glacier.md>.
     ArrowGlacier,
     /// Gray Glacier: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/gray-glacier.md>.
@@ -58,6 +84,12 @@ pub enum Hardfork {
     Regolith,
     /// Shanghai: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/shanghai.md>.
     Shanghai,
+    /// BSC Kepler hardfork
+    Kepler,
+    /// BSC Feynman hardfork
+    Feynman,
+    /// BSC FeynmanFix hardfork
+    FeynmanFix,
     /// Canyon:
     /// <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#canyon>.
     #[cfg(feature = "optimism")]
@@ -76,54 +108,6 @@ pub enum Hardfork {
     /// Fjord: <https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/superchain-upgrades.md#fjord>
     #[cfg(feature = "optimism")]
     Fjord,
-
-    /// BSC Ramanujan hardfork
-    Ramanujan,
-
-    /// BSC Niels hardfork
-    Niels,
-
-    /// BSC MirrorSync hardfork
-    MirrorSync,
-
-    /// BSC Bruno hardfork
-    Bruno,
-
-    /// BSC Euler hardfork
-    Euler,
-
-    /// BSC Nano hardfork
-    Nano,
-
-    /// BSC Moran hardfork
-    Moran,
-
-    /// BSC Gibbs hardfork
-    Gibbs,
-
-    /// BSC Planck hardfork
-    Planck,
-
-    /// BSC Luban hardfork
-    Luban,
-
-    /// BSC Plato hardfork
-    Plato,
-
-    /// BSC Hertz hardfork
-    Hertz,
-
-    /// BSC HertzFix hardfork
-    HertzFix,
-
-    /// BSC Kepler hardfork
-    Kepler,
-
-    /// BSC Feynman hardfork
-    Feynman,
-
-    /// BSC FeynmanFix hardfork
-    FeynmanFix,
 }
 
 impl Hardfork {
