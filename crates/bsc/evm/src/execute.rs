@@ -307,10 +307,6 @@ where
         block: &BlockWithSenders,
         total_difficulty: U256,
     ) -> Result<(Vec<Receipt>, u64, Option<Snapshot>), BlockExecutionError> {
-        if block.number == 364 {
-            info!("block number 364");
-        }
-
         // 1. get parent header and snapshot
         let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
         let ref snap = self.snapshot(parent, None)?;
@@ -979,7 +975,9 @@ where
             .db_mut()
             .load_cache_account(SYSTEM_ADDRESS)
             .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?;
-        if system_account.status == AccountStatus::LoadedNotExisting {
+        if system_account.status == AccountStatus::LoadedNotExisting ||
+            system_account.status == AccountStatus::DestroyedAgain
+        {
             return Ok(());
         }
 
