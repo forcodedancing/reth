@@ -17,7 +17,12 @@ reth-consensus.workspace = true
 reth-primitives.workspace = true
 reth-provider.workspace = true
 reth-rpc-types.workspace = true
+reth-network-types.workspace = true
+reth-network.workspace = true
 reth-db.workspace = true
+reth-beacon-consensus.workspace = true
+reth-engine-primitives.workspace = true
+reth-interfaces.workspace = true
 
 # eth
 alloy-rlp.workspace = true
@@ -37,6 +42,11 @@ lazy_static = "1.4.0"
 lru = "0.12"
 bitset = "0.1.2"
 thiserror = "1.0.59"
+
+# async
+futures-util.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tokio-stream.workspace = true
 
 [dev-dependencies]
 reth-interfaces = { workspace = true, features = ["test-utils"] }

@@ -6,6 +6,14 @@
 // The `bsc` feature must be enabled to use this crate.
 #![cfg(feature = "bsc")]
 
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Formatter},
+    num::NonZeroUsize,
+    sync::Arc,
+    time::SystemTime,
+};
+
 use alloy_dyn_abi::{DynSolValue, FunctionExt, JsonAbiExt};
 use alloy_json_abi::JsonAbi;
 use alloy_rlp::Decodable;
@@ -17,35 +25,37 @@ use secp256k1::{
     Message, SECP256K1,
 };
 use sha3::{Digest, Keccak256};
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Formatter},
-    num::NonZeroUsize,
-    sync::Arc,
-    time::SystemTime,
-};
+use tokio::sync::mpsc::{UnboundedSender,UnboundedReceiver};
+use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
+use tracing::trace;
 
+use abi::*;
+pub use constants::*;
+pub use error::ParliaConsensusError;
+pub use feynman_fork::*;
+pub use go_rng::{RngSource, Shuffle};
+use reth_beacon_consensus::BeaconEngineMessage;
 use reth_consensus::{Consensus, ConsensusError};
 use reth_consensus_common::validation::validate_4844_header_standalone;
 use reth_db::models::parlia::{Snapshot, ValidatorInfo, VoteAddress, VoteAttestation};
-use reth_primitives::{
-    constants::EMPTY_MIX_HASH, Address, BlockNumber, Bytes, ChainSpec, GotExpected, Hardfork,
-    Header, SealedBlock, SealedHeader, Transaction, TxKind, TxLegacy, B256, EMPTY_OMMER_ROOT_HASH,
-    U256,
-};
+use reth_engine_primitives::EngineTypes;
+use reth_primitives::{Address, B256, BlockBody, BlockHash, BlockHashOrNumber, BlockNumber, Bytes, ChainSpec, constants::EMPTY_MIX_HASH, EMPTY_OMMER_ROOT_HASH, GotExpected, Hardfork, Header, SealedBlock, SealedHeader, Transaction, TxKind, TxLegacy, U256};
+use reth_provider::{BlockReaderIdExt, CanonStateNotificationSender};
+use reth_network::{message::PeerMessage, fetch::FetchClient};
+
+pub use util::*;
 
 mod util;
-pub use util::*;
 mod constants;
-pub use constants::*;
+
 mod feynman_fork;
-pub use feynman_fork::*;
 mod error;
-pub use error::ParliaConsensusError;
 mod go_rng;
-pub use go_rng::{RngSource, Shuffle};
 mod abi;
-use abi::*;
+pub mod task;
+use task::*;
+pub mod client;
+use client::*;
 
 const RECOVERED_PROPOSER_CACHE_NUM: usize = 4096;
 
@@ -853,10 +863,177 @@ impl Consensus for Parlia {
     }
 }
 
+/// Builder type for configuring the setup
+#[derive(Debug)]
+pub struct ParliaEngineBuilder<Client, Engine: EngineTypes, ConsensusEngine: Consensus> {
+    chain_spec: Arc<ChainSpec>,
+    cfg: ParliaConfig,
+    client: Client,
+    storage: Storage,
+    to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
+    canon_state_notification: CanonStateNotificationSender,
+    network_block_event_tx: UnboundedReceiver<PeerMessage>,
+    fetch_client: FetchClient,
+}
+
+// === impl AutoSealBuilder ===
+
+impl<Client, Engine, ConsensusEngine> ParliaEngineBuilder<Client, Engine, ConsensusEngine>
+    where
+        Client: BlockReaderIdExt,
+        Engine: EngineTypes,
+        ConsensusEngine: Consensus,
+{
+    /// Creates a new builder instance to configure all parts.
+    pub fn new(
+        chain_spec: Arc<ChainSpec>,
+        cfg: ParliaConfig,
+        client: Client,
+        to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
+        canon_state_notification: CanonStateNotificationSender,
+        network_block_event_tx: UnboundedReceiver<PeerMessage>,
+        fetch_client: FetchClient,
+    ) -> Self {
+        let latest_header = client
+            .latest_header()
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| chain_spec.sealed_genesis_header());
+
+        Self {
+            chain_spec,
+            cfg,
+            client,
+            storage: Storage::new(latest_header),
+            to_engine,
+            canon_state_notification,
+            network_block_event_tx,
+            fetch_client,
+        }
+    }
+
+    /// Consumes the type and returns all components
+    #[track_caller]
+    pub fn build(
+        self,
+    ) -> (ParliaClient, ParliaEngineTask<Client, Engine, ConsensusEngine>) {
+        let Self {
+            chain_spec,
+            cfg,
+            client,
+            storage,
+            to_engine,
+            canon_state_notification,
+            network_block_event_tx,
+            fetch_client,
+        } = self;
+        let parlia_client = ParliaClient::new(storage.clone(), fetch_client);
+        let task = ParliaEngineTask::new(
+            chain_spec,
+            Parlia::new(chain_spec.clone(),cfg),
+            to_engine,
+            network_block_event_tx,
+            canon_state_notification,
+            storage,
+            client,
+        );
+        (parlia_client, task)
+    }
+}
+
+/// In memory storage
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Storage {
+    inner: Arc<tokio::sync::RwLock<StorageInner>>,
+}
+
+// == impl Storage ===
+
+impl Storage {
+    /// Initializes the [Storage] with the given best block. This should be initialized with the
+    /// highest block in the chain, if there is a chain already stored on-disk.
+    fn new(best_block: SealedHeader) -> Self {
+        let (header, best_hash) = best_block.split();
+        let mut storage = StorageInner {
+            best_hash,
+            total_difficulty: header.difficulty,
+            best_block: header.number,
+            ..Default::default()
+        };
+        storage.headers.insert(header.number, header);
+        storage.bodies.insert(best_hash, BlockBody::default());
+        Self { inner: Arc::new(tokio::sync::RwLock::new(storage)) }
+    }
+
+    /// Returns the write lock of the storage
+    pub(crate) async fn write(&self) -> RwLockWriteGuard<'_, StorageInner> {
+        self.inner.write().await
+    }
+
+    /// Returns the read lock of the storage
+    pub(crate) async fn read(&self) -> RwLockReadGuard<'_, StorageInner> {
+        self.inner.read().await
+    }
+}
+
+/// In-memory storage for the chain the auto seal engine is building.
+#[derive(Default, Debug)]
+pub(crate) struct StorageInner {
+    /// Headers buffered for download.
+    pub(crate) headers: HashMap<BlockNumber, Header>,
+    /// A mapping between block hash and number.
+    pub(crate) hash_to_number: HashMap<BlockHash, BlockNumber>,
+    /// Bodies buffered for download.
+    pub(crate) bodies: HashMap<BlockHash, BlockBody>,
+    /// Tracks best block
+    pub(crate) best_block: u64,
+    /// Tracks hash of best block
+    pub(crate) best_hash: B256,
+    /// The total difficulty of the chain until this block
+    pub(crate) total_difficulty: U256,
+}
+
+// === impl StorageInner ===
+
+impl StorageInner {
+    /// Returns the block hash for the given block number if it exists.
+    pub(crate) fn block_hash(&self, num: u64) -> Option<BlockHash> {
+        self.hash_to_number.iter().find_map(|(k, v)| num.eq(v).then_some(*k))
+    }
+
+    /// Returns the matching header if it exists.
+    pub(crate) fn header_by_hash_or_number(
+        &self,
+        hash_or_num: BlockHashOrNumber,
+    ) -> Option<Header> {
+        let num = match hash_or_num {
+            BlockHashOrNumber::Hash(hash) => self.hash_to_number.get(&hash).copied()?,
+            BlockHashOrNumber::Number(num) => num,
+        };
+        self.headers.get(&num).cloned()
+    }
+
+    /// Inserts a new header+body pair
+    pub(crate) fn insert_new_block(&mut self, mut header: Header, body: BlockBody) {
+        header.number = self.best_block + 1;
+        header.parent_hash = self.best_hash;
+
+        self.best_hash = header.hash_slow();
+        self.best_block = header.number;
+        self.total_difficulty += header.difficulty;
+
+        trace!(target: "consensus::auto", num=self.best_block, hash=?self.best_hash, "inserting new block");
+        self.headers.insert(header.number, header);
+        self.bodies.insert(self.best_hash, body);
+        self.hash_to_number.insert(self.best_hash, self.best_block);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
     use reth_primitives::{address, hex};
+
+    use super::*;
 
     // To make sure the abi is correct
     #[test]

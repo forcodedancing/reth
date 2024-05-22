@@ -40,7 +40,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub mod common;
 pub use common::LaunchContext;
-use reth_bsc_consensus::{Parlia, ParliaConfig};
+use reth_bsc_consensus::{Parlia, ParliaConfig, ParliaEngineBuilder};
 
 /// A general purpose trait that launches a new node of any kind.
 ///
@@ -334,23 +334,57 @@ where
 
             (pipeline, EitherDownloader::Left(client))
         } else {
-            let pipeline = crate::setup::build_networked_pipeline(
-                ctx.node_config(),
-                &ctx.toml_config().stages,
-                network_client.clone(),
-                Arc::clone(&consensus),
-                ctx.provider_factory().clone(),
-                ctx.task_executor(),
-                sync_metrics_tx,
-                ctx.prune_config(),
-                max_block,
-                static_file_producer,
-                node_adapter.components.block_executor().clone(),
-                pipeline_exex_handle,
-            )
-            .await?;
+            #[cfg(feature = "bsc")]
+            {
+                let rx = *node_adapter.components.network().get_to_engine_rx().clone();
+                let (client, task) = ParliaEngineBuilder::new(
+                    ctx.chain_spec(),
+                    ParliaConfig::default(),
+                    blockchain_db.clone(),
+                    consensus_engine_tx.clone(),
+                    canon_state_notification_sender,
+                    rx,
+                    network_client.clone(),
+                ).build();
+                let pipeline = crate::setup::build_networked_pipeline(
+                    ctx.node_config(),
+                    &ctx.toml_config().stages,
+                    network_client.clone(),
+                    Arc::clone(&consensus),
+                    ctx.provider_factory().clone(),
+                    ctx.task_executor(),
+                    sync_metrics_tx,
+                    ctx.prune_config(),
+                    max_block,
+                    static_file_producer,
+                    node_adapter.components.block_executor().clone(),
+                    pipeline_exex_handle,
+                ).await?;
+                debug!(target: "reth::cli", "Spawning parlia engine task");
+                ctx.task_executor().spawn(Box::pin(task));
 
-            (pipeline, EitherDownloader::Right(network_client.clone()))
+                (pipeline, EitherDownloader::Right(client))
+            }
+            #[cfg(all(not(feature = "bsc")))]
+            {
+                let pipeline = crate::setup::build_networked_pipeline(
+                    ctx.node_config(),
+                    &ctx.toml_config().stages,
+                    network_client.clone(),
+                    Arc::clone(&consensus),
+                    ctx.provider_factory().clone(),
+                    ctx.task_executor(),
+                    sync_metrics_tx,
+                    ctx.prune_config(),
+                    max_block,
+                    static_file_producer,
+                    node_adapter.components.block_executor().clone(),
+                    pipeline_exex_handle,
+                )
+                    .await?;
+
+                (pipeline, EitherDownloader::Right(network_client.clone()))
+            }
         };
 
         let pipeline_events = pipeline.events();

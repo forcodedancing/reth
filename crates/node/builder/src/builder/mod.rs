@@ -31,6 +31,7 @@ use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{PoolConfig, TransactionPool};
 pub use states::*;
 use std::{str::FromStr, sync::Arc};
+use reth_network::message::PeerMessage;
 
 mod states;
 
@@ -533,6 +534,7 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
         let (handle, network, txpool, eth) = builder
             .transactions(pool, Default::default())
             .request_handler(self.provider().clone())
+            .to_engine_tasks()
             .split_with_handle();
 
         self.executor.spawn_critical("p2p txpool", txpool);

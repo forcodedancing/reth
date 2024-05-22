@@ -24,7 +24,7 @@ use crate::{
     import::{BlockImport, BlockImportOutcome, BlockValidation},
     listener::ConnectionListener,
     message::{NewBlockMessage, PeerMessage, PeerRequest, PeerRequestSender},
-    metrics::{DisconnectMetrics, NetworkMetrics, NETWORK_POOL_TRANSACTIONS_SCOPE},
+    metrics::{DisconnectMetrics, NetworkMetrics, NETWORK_POOL_TRANSACTIONS_SCOPE, NETWORK_PEER_SCOPE},
     network::{NetworkHandle, NetworkHandleMessage},
     peers::{PeersHandle, PeersManager},
     poll_nested_stream_with_budget,
@@ -103,6 +103,7 @@ pub struct NetworkManager<C> {
     /// requests. This channel size is set at
     /// [`ETH_REQUEST_CHANNEL_CAPACITY`](crate::builder::ETH_REQUEST_CHANNEL_CAPACITY)
     to_eth_request_handler: Option<mpsc::Sender<IncomingEthRequest>>,
+    to_engine: Option<UnboundedMeteredSender<PeerMessage>>,
     /// Tracks the number of active session (connected peers).
     ///
     /// This is updated via internal events and shared via `Arc` with the [`NetworkHandle`]
@@ -145,6 +146,10 @@ impl<C> NetworkManager<C> {
     /// inside of the [`NetworkHandle`]
     pub fn bandwidth_meter(&self) -> &BandwidthMeter {
         self.handle.bandwidth_meter()
+    }
+
+    pub fn handle_with_engine_tx(&self) -> &NetworkHandle {
+        &self.handle
     }
 
     /// Returns the secret key used for authenticating sessions.
@@ -246,10 +251,13 @@ where
 
         let (to_manager_tx, from_handle_rx) = mpsc::unbounded_channel();
 
+        let (engine_task_tx, engine_task_rx) = mpsc::unbounded_channel();
+
         let handle = NetworkHandle::new(
             Arc::clone(&num_active_peers),
             listener_address,
             to_manager_tx,
+            engine_task_rx,
             secret_key,
             local_peer_id,
             peers_handle,
@@ -268,6 +276,7 @@ where
             event_listeners: Default::default(),
             to_transactions_manager: None,
             to_eth_request_handler: None,
+            to_engine: Some(UnboundedMeteredSender::new(engine_task_tx, NETWORK_PEER_SCOPE)),
             num_active_peers,
             metrics: Default::default(),
             disconnect_metrics: Default::default(),
@@ -389,6 +398,12 @@ where
         }
     }
 
+    fn notify_engine_task(&self, event: PeerMessage) {
+        if let Some(ref tx) = self.to_engine {
+            let _ = tx.send(event);
+        }
+    }
+
     /// Sends an event to the [`EthRequestManager`](crate::eth_requests::EthRequestHandler) if
     /// configured.
     fn delegate_eth_request(&self, event: IncomingEthRequest) {
@@ -500,6 +515,8 @@ where
                     this.swarm.state_mut().on_new_block(peer_id, block.hash);
                     // start block import process
                     this.block_import.on_new_block(peer_id, block);
+                    // notify task engine
+                    this.notify_engine_task(PeerMessage::NewBlock(block.clone()));
                 });
             }
             PeerMessage::PooledTransactions(msg) => {

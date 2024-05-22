@@ -24,8 +24,10 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::{mpsc, mpsc::UnboundedSender, oneshot};
+use tokio::sync::{mpsc, mpsc::{UnboundedSender,UnboundedReceiver}, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use reth_primitives::revm_primitives::bitvec::ptr::null;
+use crate::message::PeerMessage;
 
 /// A _shareable_ network frontend. Used to interact with the network.
 ///
@@ -45,6 +47,7 @@ impl NetworkHandle {
         num_active_peers: Arc<AtomicUsize>,
         listener_address: Arc<Mutex<SocketAddr>>,
         to_manager_tx: UnboundedSender<NetworkHandleMessage>,
+        engine_rx: UnboundedReceiver<PeerMessage>,
         secret_key: SecretKey,
         local_peer_id: PeerId,
         peers: PeersHandle,
@@ -57,6 +60,7 @@ impl NetworkHandle {
         let inner = NetworkInner {
             num_active_peers,
             to_manager_tx,
+            engine_rx,
             listener_address,
             secret_key,
             local_peer_id,
@@ -86,6 +90,10 @@ impl NetworkHandle {
 
     fn manager(&self) -> &UnboundedSender<NetworkHandleMessage> {
         &self.inner.to_manager_tx
+    }
+
+    pub fn get_to_engine_rx(&self) -> &UnboundedReceiver<PeerMessage> {
+        &self.inner.engine_rx
     }
 
     /// Returns a new [`FetchClient`] that can be cloned and shared.
@@ -379,6 +387,7 @@ struct NetworkInner {
     num_active_peers: Arc<AtomicUsize>,
     /// Sender half of the message channel to the [`crate::NetworkManager`].
     to_manager_tx: UnboundedSender<NetworkHandleMessage>,
+    engine_rx: UnboundedReceiver<PeerMessage>,
     /// The local address that accepts incoming connections.
     listener_address: Arc<Mutex<SocketAddr>>,
     /// The secret key used for authenticating sessions.
