@@ -31,9 +31,7 @@ use tracing::trace;
 
 use abi::*;
 pub use constants::*;
-pub use error::ParliaConsensusError;
 pub use feynman_fork::*;
-pub use go_rng::{RngSource, Shuffle};
 use reth_beacon_consensus::BeaconEngineMessage;
 use reth_consensus::{Consensus, ConsensusError};
 use reth_consensus_common::validation::validate_4844_header_standalone;
@@ -43,19 +41,22 @@ use reth_primitives::{Address, B256, BlockBody, BlockHash, BlockHashOrNumber, Bl
 use reth_provider::{BlockReaderIdExt, CanonStateNotificationSender};
 use reth_network::{message::PeerMessage, fetch::FetchClient};
 
-pub use util::*;
-
 mod util;
+pub use util::*;
 mod constants;
-
+pub use constants::*;
 mod feynman_fork;
+pub use feynman_fork::*;
 mod error;
+pub use error::ParliaConsensusError;
 mod go_rng;
+pub use go_rng::{RngSource, Shuffle};
 mod abi;
-pub mod task;
-use task::*;
-pub mod client;
+use abi::*;
+mod client;
 use client::*;
+mod task;
+use task::*;
 
 const RECOVERED_PROPOSER_CACHE_NUM: usize = 4096;
 
