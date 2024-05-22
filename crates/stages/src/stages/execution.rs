@@ -14,8 +14,8 @@ use reth_primitives::{
 use reth_provider::{
     providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
     BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider,
-    LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriter, StatsReader,
-    TransactionVariant, ParliaSnapshotWriter
+    LatestStateProviderRef, OriginalValuesKnown, ParliaSnapshotWriter, ProviderError, StateWriter,
+    StatsReader, TransactionVariant,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
@@ -199,19 +199,6 @@ where
         let mut cumulative_gas = 0;
         let batch_start = Instant::now();
 
-        // TODO bsc
-        // let mut parent_block_timestamp = 0u64;
-        // // get parent block timestamp for execution
-        // if start_block > 0 {
-        //     let parent_block_number = start_block - 1 as u64;
-        //     let parent_header = match static_file_provider.header_by_number(parent_block_number)
-        // {         Ok(Some(header)) => header,
-        //         _ => return
-        // Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.
-        // into()))),     };
-        //     parent_block_timestamp = parent_header.timestamp;
-        // }
-
         let mut blocks = Vec::new();
         for block_number in start_block..=max_block {
             // Fetch the block
@@ -251,10 +238,6 @@ where
             stage_progress = block_number;
             stage_checkpoint.progress.processed += block.gas_used;
 
-            // TODO bsc
-            // // Update parent block timestamp for next block
-            // parent_block_timestamp = block.header.timestamp;
-
             // If we have ExEx's we need to save the block in memory for later
             if self.exex_manager_handle.has_exexs() {
                 blocks.push(block);
@@ -272,7 +255,8 @@ where
             }
         }
         let time = Instant::now();
-        let BatchBlockExecutionOutput { bundle, receipts, first_block, snapshots } = executor.finalize();
+        let BatchBlockExecutionOutput { bundle, receipts, first_block, snapshots } =
+            executor.finalize();
         let state = BundleStateWithReceipts::new(bundle, receipts, first_block);
         let write_preparation_duration = time.elapsed();
 

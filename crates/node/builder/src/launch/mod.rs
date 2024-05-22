@@ -124,10 +124,6 @@ where
             }
         };
 
-        //#[cfg(feature = "bsc")]
-        // let consensus: Arc<dyn Consensus> =
-        //     Arc::new(Parlia::new(ctx.chain_spec(), ParliaConfig::default()));
-
         debug!(target: "reth::cli", "Spawning stages metrics listener task");
         let (sync_metrics_tx, sync_metrics_rx) = unbounded_channel();
         let sync_metrics_listener = reth_stages::MetricsListener::new(sync_metrics_rx);
