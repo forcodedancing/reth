@@ -317,7 +317,7 @@ where
         // 3. configure the evm and execute normal transactions
         let env = self.evm_env_for_block(&block.header, total_difficulty);
 
-        if !self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
+        if !self.parlia.is_feynman(block.timestamp) {
             let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
             self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
@@ -414,7 +414,7 @@ where
             )?;
         }
 
-        if self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
+        if self.parlia.is_feynman(block.timestamp) {
             let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
             self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
@@ -434,7 +434,7 @@ where
         if block.difficulty != DIFF_INTURN {
             let spoiled_val = snap.inturn_validator();
             let signed_recently: bool;
-            if self.parlia.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+            if self.parlia.is_plato(number) {
                 signed_recently = snap.sign_recently(spoiled_val);
             } else {
                 signed_recently = snap
@@ -459,7 +459,7 @@ where
 
         self.distribute_incoming(header, system_txs, receipts, cumulative_gas_used, env.clone())?;
 
-        if self.parlia.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+        if self.parlia.is_plato(number) {
             self.distribute_finality_reward(
                 header,
                 system_txs,
@@ -470,7 +470,7 @@ where
         }
 
         // update validator set after Feynman upgrade
-        if self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(header.timestamp) &&
+        if self.parlia.is_feynman(header.timestamp) &&
             is_breathe_block(parent.timestamp, header.timestamp)
         {
             if !self.parlia.is_on_feynman(header.timestamp, parent.timestamp) {
@@ -510,7 +510,7 @@ where
         header: &Header,
         parent: &Header,
     ) -> Result<(), BlockExecutionError> {
-        if self.parlia.chain_spec().fork(Hardfork::Ramanujan).active_at_block(header.number) {
+        if self.parlia.is_ramanujan(header.number) {
             if header.timestamp <
                 parent.timestamp +
                     self.parlia.period() +
@@ -837,30 +837,29 @@ where
         validators.sort();
 
         let validator_num = validators.len();
-        let validator_bytes =
-            if !self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
-                let mut validator_bytes = Vec::new();
-                for v in validators {
-                    validator_bytes.extend_from_slice(v.as_ref());
-                }
+        let validator_bytes = if !self.parlia.is_luban(number) {
+            let mut validator_bytes = Vec::new();
+            for v in validators {
+                validator_bytes.extend_from_slice(v.as_ref());
+            }
 
-                validator_bytes
-            } else {
-                if self.parlia.is_on_luban(number) {
-                    vote_addrs_map = Vec::with_capacity(validator_num);
-                    for _ in 0..validator_num {
-                        vote_addrs_map.push(VoteAddress::default());
-                    }
+            validator_bytes
+        } else {
+            if self.parlia.is_on_luban(number) {
+                vote_addrs_map = Vec::with_capacity(validator_num);
+                for _ in 0..validator_num {
+                    vote_addrs_map.push(VoteAddress::default());
                 }
+            }
 
-                let mut validator_bytes = Vec::new();
-                for i in 0..validator_num {
-                    validator_bytes.extend_from_slice(validators[i].as_ref());
-                    validator_bytes.extend_from_slice(vote_addrs_map[i].as_ref());
-                }
+            let mut validator_bytes = Vec::new();
+            for i in 0..validator_num {
+                validator_bytes.extend_from_slice(validators[i].as_ref());
+                validator_bytes.extend_from_slice(vote_addrs_map[i].as_ref());
+            }
 
-                validator_bytes
-            };
+            validator_bytes
+        };
 
         if !validator_bytes.as_slice().eq(self
             .parlia
@@ -879,7 +878,7 @@ where
         number: BlockNumber,
         env: EnvWithHandlerCfg,
     ) -> (Vec<Address>, Vec<VoteAddress>) {
-        if !self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+        if !self.parlia.is_luban(number) {
             let (to, data) = self.parlia.get_current_validators_before_luban(number);
             let output = self.eth_call(to, data, env.clone()).unwrap();
 
@@ -1000,7 +999,7 @@ where
             evm.db_mut().basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap_or_default().balance;
         drop(evm);
 
-        if !self.parlia.chain_spec().fork(Hardfork::Kepler).active_at_timestamp(header.timestamp) {
+        if !self.parlia.is_kepler(header.timestamp) {
             if system_reward_balance < U256::from(MAX_SYSTEM_REWARD) {
                 let reward_to_system = block_reward >> SYSTEM_REWARD_PERCENT;
                 if reward_to_system > 0 {

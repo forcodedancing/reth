@@ -28,6 +28,7 @@ pub const MAX_SYSTEM_REWARD: u128 = 100 * ETH_TO_WEI;
 /// The distance to naturally justify a block
 pub const NATURALLY_JUSTIFIED_DIST: u64 = 15;
 pub const COLLECT_ADDITIONAL_VOTES_REWARD_RATIO: usize = 100;
+
 /// Default delay (per signer) to allow concurrent signers, second
 pub(crate) const BACKOFF_TIME_OF_INITIAL: u64 = 1_u64;
 /// Random additional delay (per signer) to allow concurrent signers, second

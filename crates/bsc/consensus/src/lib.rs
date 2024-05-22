@@ -38,8 +38,6 @@ mod util;
 pub use util::*;
 mod constants;
 pub use constants::*;
-
-pub mod contract_upgrade;
 mod feynman_fork;
 pub use feynman_fork::*;
 mod error;
@@ -69,6 +67,7 @@ impl Default for ParliaConfig {
 }
 
 /// BSC parlia consensus implementation
+#[derive(Clone)]
 pub struct Parlia {
     chain_spec: Arc<ChainSpec>,
     epoch: u64,
@@ -117,16 +116,51 @@ impl Parlia {
         &self.chain_spec
     }
 
-    // Feynman fork is active at the given timestamp.
+    /// Convenience method to check if [Hardfork::Ramanujan] is active at a given block.
+    pub fn is_ramanujan(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Ramanujan, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Euler] is active at a given block.
+    pub fn is_euler(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Euler, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Planck] is active at a given block.
+    pub fn is_planck(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Planck, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Luban] is firstly active at a given block.
+    pub fn is_on_luban(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.fork(Hardfork::Luban).transitions_at_block(block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Luban] is active at a given block.
+    pub fn is_luban(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Luban, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Plato] is active at a given block.
+    pub fn is_plato(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Plato, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Kepler] is active at a given timestamp.
+    pub fn is_kepler(&self, timestamp: u64) -> bool {
+        self.chain_spec.is_fork_active_at_timestamp(Hardfork::Kepler, timestamp)
+    }
+
+    /// Convenience method to check if [Hardfork::Feynman] is firstly active at a given timestamp.
     pub fn is_on_feynman(&self, timestamp: u64, parent_timestamp: u64) -> bool {
         self.chain_spec
             .fork(Hardfork::Feynman)
             .transitions_at_timestamp(timestamp, parent_timestamp)
     }
 
-    // Luban fork is active at the given block number.
-    pub fn is_on_luban(&self, block_number: BlockNumber) -> bool {
-        self.chain_spec.fork(Hardfork::Luban).transitions_at_block(block_number)
+    /// Convenience method to check if [Hardfork::Feynman] is active at a given timestamp.
+    pub fn is_feynman(&self, timestamp: u64) -> bool {
+        self.chain_spec.is_fork_active_at_timestamp(Hardfork::Feynman, timestamp)
     }
 
     pub fn recover_proposer(&self, header: &Header) -> Result<Address, ParliaConsensusError> {
@@ -176,7 +210,7 @@ impl Parlia {
             }
         })?;
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             let count = val_bytes.len() / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN;
             let mut vals = Vec::with_capacity(count);
             for i in 0..count {
@@ -219,7 +253,7 @@ impl Parlia {
             return Ok(None);
         }
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             return Ok(None);
         }
 
@@ -248,7 +282,7 @@ impl Parlia {
             return None;
         }
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             if header.number % self.epoch != 0 &&
                 (extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN) %
                     EXTRA_VALIDATOR_LEN_BEFORE_LUBAN !=
@@ -286,7 +320,7 @@ impl Parlia {
         let mut rng = RngSource::new(snap.block_number as i64);
         let validator_count = snap.validators.len();
 
-        if !self.chain_spec.fork(Hardfork::Planck).active_at_block(header.number) {
+        if !self.is_planck(header.number) {
             // select a random step for delay, range 0~(proposer_count-1)
             let mut backoff_steps = Vec::new();
             for i in 0..validator_count {
@@ -345,7 +379,7 @@ impl Parlia {
             return Ok(());
         }
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             if (extra_len - EXTRA_SEAL_LEN - EXTRA_VANITY_LEN) / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN ==
                 0
             {
@@ -396,7 +430,7 @@ impl Parlia {
     }
 
     pub fn get_recently_proposal_limit(&self, header: &Header, validator_count: u64) -> u64 {
-        if self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if self.is_luban(header.number) {
             validator_count * 2 / 3 + 1
         } else {
             validator_count / 2 + 1
@@ -415,7 +449,7 @@ impl Parlia {
 
         let extra_len = header.extra_data.len();
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             return Ok(extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN);
         }
 
@@ -589,7 +623,7 @@ impl Parlia {
         &self,
         block_number: BlockNumber,
     ) -> (Address, Bytes) {
-        let function = if self.chain_spec.fork(Hardfork::Euler).active_at_block(block_number) {
+        let function = if self.is_euler(block_number) {
             self.validator_abi_before_luban
                 .function("getMiningValidators")
                 .unwrap()
