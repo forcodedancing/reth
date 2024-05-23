@@ -297,7 +297,12 @@ where
             // get parent hashes
             let mut parent_block_hashes = self.all_chain_hashes(chain_id);
             let first_pending_block_number =
-                *parent_block_hashes.first_key_value().expect("There is at least one block hash").0;
+                if let Some(key_value) = parent_block_hashes.first_key_value() {
+                    *key_value.0
+                } else {
+                    debug!(target: "blockchain_tree", ?chain_id, "No blockhashes stored");
+                    return None
+                };
             let canonical_chain = canonical_chain
                 .iter()
                 .filter(|&(key, _)| key < first_pending_block_number)
