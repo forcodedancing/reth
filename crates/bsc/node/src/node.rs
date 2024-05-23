@@ -79,7 +79,6 @@ where
 {
     type EVM = BscEvmConfig;
 
-    // TODO: parlia provider
     type Executor = BscExecutorProvider<Node::Provider, Self::EVM>;
 
     async fn build_evm(

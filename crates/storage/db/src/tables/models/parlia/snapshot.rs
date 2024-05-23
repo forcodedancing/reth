@@ -72,7 +72,7 @@ impl Snapshot {
         &mut self,
         validator: Address,
         next_header: &Header,
-        mut next_validators: Vec<Address>,
+        mut new_validators: Vec<Address>,
         val_info_map: Option<HashMap<Address, ValidatorInfo>>,
         attestation: Option<VoteAttestation>,
     ) -> Option<Snapshot> {
@@ -85,7 +85,7 @@ impl Snapshot {
         snap.block_hash = next_header.hash_slow();
         snap.block_number = block_number;
         let limit = (snap.validators.len() / 2 + 1) as u64;
-        if block_number >= limit {
+        if block_number >= limit || block_number >= snap.validators.len() as u64 {
             snap.recent_proposers.remove(&(block_number - limit));
         }
 
@@ -97,9 +97,17 @@ impl Snapshot {
         }
         snap.recent_proposers.insert(block_number, validator);
 
-        if !next_validators.is_empty() {
-            next_validators.sort();
-            snap.validators = next_validators;
+        if !new_validators.is_empty() {
+            new_validators.sort();
+
+            let new_limit = (new_validators.len() / 2 + 1) as u64;
+            if new_limit < limit {
+                for i in 0..(limit - new_limit) {
+                    snap.recent_proposers.remove(&(block_number - new_limit - i));
+                }
+            }
+
+            snap.validators = new_validators;
             snap.validators_map = val_info_map.unwrap_or_default();
         }
 

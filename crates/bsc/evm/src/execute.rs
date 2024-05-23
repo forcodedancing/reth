@@ -31,8 +31,8 @@ use reth_interfaces::{
 };
 use reth_primitives::{
     constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts, Address,
-    BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Hardfork, Header, PruneModes,
-    Receipt, Receipts, Transaction, TransactionSigned, B256, U256,
+    BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Header, PruneModes, Receipt,
+    Receipts, Transaction, TransactionSigned, B256, U256,
 };
 use reth_provider::ParliaProvider;
 use reth_revm::{
@@ -744,19 +744,30 @@ where
         // apply skip headers
         skip_headers.reverse();
         for header in skip_headers.iter() {
+            let (new_validators, bls_keys) = if header.number > 0 &&
+                header.number % self.parlia.epoch() == (snap.validators.len() / 2) as u64
+            {
+                // change validator set
+                let checkpoint_header =
+                    self.find_ancient_header(header, (snap.validators.len() / 2) as u64)?;
+
+                self.parlia.parse_validators_from_header(&checkpoint_header).map_err(|err| {
+                    BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
+                })?
+            } else {
+                (Vec::new(), None)
+            };
+
             let validator = self.parlia.recover_proposer(header).map_err(|err| {
                 BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
             })?;
-            let (next_validators, bls_keys) =
-                self.parlia.parse_validators_from_header(header).map_err(|err| {
-                    BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
-                })?;
             let attestation =
                 self.parlia.get_vote_attestation_from_header(header).map_err(|err| {
                     BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
                 })?;
+
             snap = snap
-                .apply(validator, header, next_validators, bls_keys, attestation)
+                .apply(validator, header, new_validators, bls_keys, attestation)
                 .ok_or_else(|| BscBlockExecutionError::ApplySnapshotFailed)?;
         }
 

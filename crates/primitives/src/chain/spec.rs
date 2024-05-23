@@ -86,7 +86,7 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
 #[cfg(feature = "bsc")]
 pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     ChainSpec {
-        chain: Chain::from_named(NamedChain::BinanceSmartChain),
+        chain: Chain::from_named(NamedChain::BinanceSmartChainTestnet),
         genesis: serde_json::from_str(include_str!("../../res/genesis/bsc_testnet.json"))
             .expect("Can't deserialize BSC Testnet genesis json"),
         genesis_hash: Some(b256!(
@@ -130,7 +130,6 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     }
         .into()
 });
-
 
 /// The Ethereum mainnet spec
 pub static MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
