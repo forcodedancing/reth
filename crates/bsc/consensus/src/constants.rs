@@ -20,7 +20,7 @@ pub const DIFF_INTURN: U256 = U256::from_limbs([2u64, 0, 0, 0]);
 pub const DIFF_NOTURN: U256 = U256::from_limbs([1u64, 0, 0, 0]);
 
 /// Reserved gas for system tx
-pub const SYSTEM_TXS_GAS: u64 = 20_000_000;
+pub const SYSTEM_TXS_GAS: u64 = 0;
 /// The reward percent to system
 pub const SYSTEM_REWARD_PERCENT: usize = 4;
 /// The max reward in system reward contract
