@@ -254,7 +254,7 @@ impl ForkFilter {
 
         // Compute cache based on filtered forks and the current head.
         let cache = Cache::compute_cache(&forks, head);
-        
+
         // Create and return a new `ForkFilter`.
         Self { forks, head, cache }
     }
