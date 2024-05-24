@@ -8852,7 +8852,7 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "8.0.0"
-source = "git+https://github.com/bnb-chain/revm.git?rev=dd4a41ad6655a99b97d3cce6eaa6d168b56298e3#dd4a41ad6655a99b97d3cce6eaa6d168b56298e3"
+source = "git+https://github.com/bnb-chain/revm.git?rev=ce37fa60eb5066f3119d353a2ad335b1402f36e1#ce37fa60eb5066f3119d353a2ad335b1402f36e1"
 dependencies = [
  "auto_impl",
  "cfg-if",
@@ -8884,7 +8884,7 @@ dependencies = [
 [[package]]
 name = "revm-interpreter"
 version = "4.0.0"
-source = "git+https://github.com/bnb-chain/revm.git?rev=dd4a41ad6655a99b97d3cce6eaa6d168b56298e3#dd4a41ad6655a99b97d3cce6eaa6d168b56298e3"
+source = "git+https://github.com/bnb-chain/revm.git?rev=ce37fa60eb5066f3119d353a2ad335b1402f36e1#ce37fa60eb5066f3119d353a2ad335b1402f36e1"
 dependencies = [
  "revm-primitives",
  "serde",
@@ -8893,7 +8893,7 @@ dependencies = [
 [[package]]
 name = "revm-precompile"
 version = "6.0.0"
-source = "git+https://github.com/bnb-chain/revm.git?rev=dd4a41ad6655a99b97d3cce6eaa6d168b56298e3#dd4a41ad6655a99b97d3cce6eaa6d168b56298e3"
+source = "git+https://github.com/bnb-chain/revm.git?rev=ce37fa60eb5066f3119d353a2ad335b1402f36e1#ce37fa60eb5066f3119d353a2ad335b1402f36e1"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -8919,7 +8919,7 @@ dependencies = [
 [[package]]
 name = "revm-primitives"
 version = "3.1.1"
-source = "git+https://github.com/bnb-chain/revm.git?rev=dd4a41ad6655a99b97d3cce6eaa6d168b56298e3#dd4a41ad6655a99b97d3cce6eaa6d168b56298e3"
+source = "git+https://github.com/bnb-chain/revm.git?rev=ce37fa60eb5066f3119d353a2ad335b1402f36e1#ce37fa60eb5066f3119d353a2ad335b1402f36e1"
 dependencies = [
  "alloy-primitives",
  "auto_impl",

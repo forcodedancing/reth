@@ -410,7 +410,7 @@ test-fuzz = "5"
 
 
 [patch.crates-io]
-revm = { git = "https://github.com/bnb-chain/revm.git", rev = "dd4a41ad6655a99b97d3cce6eaa6d168b56298e3" }
-revm-primitives = { git = "https://github.com/bnb-chain/revm.git", rev = "dd4a41ad6655a99b97d3cce6eaa6d168b56298e3" }
+revm = { git = "https://github.com/bnb-chain/revm.git", rev = "ce37fa60eb5066f3119d353a2ad335b1402f36e1" }
+revm-primitives = { git = "https://github.com/bnb-chain/revm.git", rev = "ce37fa60eb5066f3119d353a2ad335b1402f36e1" }
 alloy-chains = { git = "https://github.com/bnb-chain/alloy-chains-rs.git", branch = "feat/v0.1.15-opbnb" }
 alloy-genesis = { git = "https://github.com/forcodedancing/alloy", branch = "feat/parlia-config" }
