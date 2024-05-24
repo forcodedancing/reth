@@ -229,6 +229,10 @@ impl ForkFilter {
         forks.remove(&ForkFilterKey::Time(0));
         forks.remove(&ForkFilterKey::Block(0));
 
+        // Skip Fermat hardfork for opbnb
+        forks.remove(&ForkFilterKey::Time(1698991506));
+        forks.remove(&ForkFilterKey::Time(1701151200));
+
         let forks = forks
             .into_iter()
             // filter out forks that are pre-genesis by timestamp
@@ -250,7 +254,7 @@ impl ForkFilter {
 
         // Compute cache based on filtered forks and the current head.
         let cache = Cache::compute_cache(&forks, head);
-
+        
         // Create and return a new `ForkFilter`.
         Self { forks, head, cache }
     }

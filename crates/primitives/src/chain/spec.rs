@@ -526,6 +526,10 @@ pub static OPBNB_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Regolith, ForkCondition::Timestamp(0)),
             (Hardfork::PreContractForkBlock, ForkCondition::Block(5805494)),
             (Hardfork::Fermat, ForkCondition::Timestamp(1698991506)),
+            (Hardfork::Shanghai, ForkCondition::Timestamp(1715753400)),
+            (Hardfork::Canyon, ForkCondition::Timestamp(1715753400)),
+            (Hardfork::Cancun, ForkCondition::Timestamp(1715754600)),
+            (Hardfork::Ecotone, ForkCondition::Timestamp(1715754600)),
         ]),
         base_fee_params: BaseFeeParamsKind::Variable(
             vec![(Hardfork::London, BaseFeeParams::ethereum())].into(),
@@ -963,6 +967,11 @@ impl ChainSpec {
         }) {
             let cond = ForkCondition::Timestamp(timestamp);
             if cond.active_at_head(head) {
+                // Skip Fermat hardfork for opbnb
+                if timestamp == 1698991506 || timestamp == 1701151200 {
+                    continue;
+                }
+
                 if timestamp != current_applied {
                     forkhash += timestamp;
                     current_applied = timestamp;
