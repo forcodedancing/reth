@@ -15,8 +15,9 @@ use reth_bsc_consensus::{
     MAX_SYSTEM_REWARD, NATURALLY_JUSTIFIED_DIST, SYSTEM_REWARD_CONTRACT, SYSTEM_REWARD_PERCENT,
     SYSTEM_TXS_GAS,
 };
-use reth_db::models::parlia::{
-    Snapshot, VoteAddress, CHECKPOINT_INTERVAL, MAX_ATTESTATION_EXTRA_LENGTH,
+use reth_db::{
+    models::parlia::{Snapshot, VoteAddress, CHECKPOINT_INTERVAL, MAX_ATTESTATION_EXTRA_LENGTH},
+    table::Compress,
 };
 use reth_evm::{
     execute::{
@@ -30,7 +31,7 @@ use reth_interfaces::{
     provider::ProviderError,
 };
 use reth_primitives::{
-    constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts, Address,
+    constants::SYSTEM_ADDRESS, hex, system_contracts::get_upgrade_system_contracts, Address,
     BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Header, PruneModes, Receipt,
     Receipts, Transaction, TransactionSigned, B256, U256,
 };
@@ -42,7 +43,7 @@ use reth_revm::{
 };
 use revm_primitives::{
     db::{Database, DatabaseCommit},
-    AccountInfo, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
+    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use tracing::{debug, log::info, trace};
@@ -365,6 +366,9 @@ where
         }
 
         if snap.block_number % CHECKPOINT_INTERVAL == 0 {
+            let bz = snap.clone().compress();
+            debug!(target: "snapshot", "number: {:?}, hash: {:?}, snapshot: {:?}",
+                snap.block_number, snap.block_hash, hex::encode(&bz));
             return Ok((receipts, gas_used, Some(snap.clone())));
         }
 
@@ -979,10 +983,8 @@ where
     ) -> Result<(), BlockExecutionError> {
         let validator = header.beneficiary;
 
-        let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
-
-        let system_account = evm
-            .db_mut()
+        let system_account = self
+            .state
             .load_cache_account(SYSTEM_ADDRESS)
             .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?;
         if system_account.status == AccountStatus::LoadedNotExisting ||
@@ -990,25 +992,22 @@ where
         {
             return Ok(());
         }
-
         let (mut block_reward, transition) = system_account.drain_balance();
-        if let Some(s) = evm.db_mut().transition_state.as_mut() {
+        if let Some(s) = self.state.transition_state.as_mut() {
             s.add_transitions(vec![(SYSTEM_ADDRESS, transition)]);
         }
-
         if block_reward == 0 {
             return Ok(());
         }
 
         let mut balance_increment = HashMap::new();
         balance_increment.insert(validator, block_reward);
-        evm.db_mut()
+        self.state
             .increment_balances(balance_increment)
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
         let system_reward_balance =
-            evm.db_mut().basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap_or_default().balance;
-        drop(evm);
+            self.state.basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap_or_default().balance;
 
         if !self.parlia.is_kepler(header.timestamp) {
             if system_reward_balance < U256::from(MAX_SYSTEM_REWARD) {
@@ -1169,11 +1168,21 @@ where
             block_time,
             parent_block_time,
         ) {
-            contracts.iter().for_each(|(k, v)| {
-                info!("System contract {:?} upgraded at block {:?}", k, block_number);
-                let account = AccountInfo { code: v.clone(), ..Default::default() };
-                self.state.insert_account(*k, account);
-            });
+            for (k, v) in contracts {
+                let account = self.state.load_cache_account(k).map_err(|err| {
+                    BscBlockExecutionError::ProviderInnerError { error: err.into() }
+                })?;
+
+                let mut new_info = account.account_info().unwrap_or_default();
+                new_info.code_hash = v.clone().unwrap().hash_slow();
+                new_info.code = v;
+                let transition = account.change(new_info, HashMap::new());
+
+                if let Some(s) = self.state.transition_state.as_mut() {
+                    s.add_transitions(vec![(k, transition)]);
+                }
+            }
+
             Ok(true)
         } else {
             Err(BscBlockExecutionError::SystemContractUpgradeError)

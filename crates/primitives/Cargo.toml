@@ -60,9 +60,11 @@ proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 strum = { workspace = true, features = ["derive"] }
 
-include_dir = "0.7.3"
+# `bsc` feature
+include_dir = { version = "0.7.3", optional = true }
+lazy_static = { version = "1.4.0", optional = true }
+
 log = "0.4.21"
-lazy_static = "1.4.0"
 
 [dev-dependencies]
 # eth
@@ -117,6 +119,8 @@ test-utils = ["dep:plain_hasher", "dep:hash-db"]
 bsc = [
     "reth-ethereum-forks/bsc",
     "revm/bsc",
+    "dep:include_dir",
+    "dep:lazy_static",
 ]
 
 [[bench]]
