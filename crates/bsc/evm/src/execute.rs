@@ -46,7 +46,8 @@ use revm_primitives::{
     BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
 };
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use tracing::{debug, log::info, trace};
+use std::time::Instant;
+use tracing::{debug, trace};
 
 const SNAP_CACHE_NUM: usize = 2048;
 const BLST_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
@@ -1365,15 +1366,21 @@ where
 
     fn execute_one(&mut self, input: Self::Input<'_>) -> Result<(), Self::Error> {
         let BlockExecutionInput { block, total_difficulty } = input;
+        let execute_start = Instant::now();
         let (receipts, _gas_used, snapshot) =
             self.executor.execute_and_verify(block, total_difficulty)?;
+        self.stats.execution_duration += execute_start.elapsed();
 
         // prepare the state according to the prune mode
+        let merge_start = Instant::now();
         let retention = self.batch_record.bundle_retention(block.number);
         self.executor.state.merge_transitions(retention);
+        self.stats.merge_transitions_duration += merge_start.elapsed();
 
         // store receipts in the set
+        let receipts_start = Instant::now();
         self.batch_record.save_receipts(receipts)?;
+        self.stats.receipt_root_duration += receipts_start.elapsed();
 
         // store snapshot
         if let Some(snapshot) = snapshot {
