@@ -15,9 +15,8 @@ use reth_bsc_consensus::{
     MAX_SYSTEM_REWARD, NATURALLY_JUSTIFIED_DIST, SYSTEM_REWARD_CONTRACT, SYSTEM_REWARD_PERCENT,
     SYSTEM_TXS_GAS,
 };
-use reth_db::{
-    models::parlia::{Snapshot, VoteAddress, CHECKPOINT_INTERVAL, MAX_ATTESTATION_EXTRA_LENGTH},
-    table::Compress,
+use reth_db::models::parlia::{
+    Snapshot, VoteAddress, CHECKPOINT_INTERVAL, MAX_ATTESTATION_EXTRA_LENGTH,
 };
 use reth_evm::{
     execute::{
@@ -31,7 +30,7 @@ use reth_interfaces::{
     provider::ProviderError,
 };
 use reth_primitives::{
-    address, b256, constants::SYSTEM_ADDRESS, hex, system_contracts::get_upgrade_system_contracts,
+    address, b256, constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts,
     Address, BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Header, PruneModes,
     Receipt, Receipts, Transaction, TransactionSigned, B256, U256,
 };

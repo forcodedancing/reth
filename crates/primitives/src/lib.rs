@@ -49,6 +49,7 @@ mod withdrawal;
 
 /// #[cfg(feature = "bsc")]
 pub mod system_contracts;
+mod blob_sidecar;
 
 pub use account::{Account, Bytecode};
 #[cfg(any(test, feature = "arbitrary"))]
@@ -106,6 +107,8 @@ pub use transaction::{
 };
 
 pub use withdrawal::{Withdrawal, Withdrawals};
+
+pub use blob_sidecar::{BlobSidecar, BlobSidecars};
 
 // Re-exports
 pub use self::ruint::UintTryTo;
