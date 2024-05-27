@@ -27,9 +27,9 @@ pub(crate) use crate::{
     net::{base_nodes, base_testnet_nodes, op_nodes, op_testnet_nodes},
 };
 
-
 #[cfg(feature = "bsc")]
 pub(crate) use crate::{
+    constants::EIP1559_INITIAL_BASE_FEE_FOR_BSC,
     net::{bsc_mainnet_nodes, bsc_testnet_nodes},
 };
 
@@ -76,7 +76,7 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Cancun, ForkCondition::Timestamp(1718863500)),
         ]),
         deposit_contract: None,
-        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
+        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::new(1, 1)),
         prune_delete_limit: 3500,
     }
         .into()
@@ -125,7 +125,7 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Cancun, ForkCondition::Timestamp(1713330442)),
         ]),
         deposit_contract: None,
-        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
+        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::new(1, 1)),
         prune_delete_limit: 3500,
     }
         .into()
@@ -675,7 +675,8 @@ impl ChainSpec {
     /// Returns `true` if this chain contains Bsc configuration.
     #[inline]
     pub fn is_bsc(&self) -> bool {
-        self.chain == Chain::from_named(NamedChain::BinanceSmartChain) || self.chain == Chain::from_named(NamedChain::BinanceSmartChainTestnet)
+        self.chain == Chain::from_named(NamedChain::BinanceSmartChain) ||
+            self.chain == Chain::from_named(NamedChain::BinanceSmartChainTestnet)
     }
 
     /// Returns `true` if this chain is Bsc mainnet.
@@ -760,8 +761,11 @@ impl ChainSpec {
     /// Get the initial base fee of the genesis block.
     pub fn initial_base_fee(&self) -> Option<u64> {
         // If the base fee is set in the genesis block, we use that instead of the default.
-        let genesis_base_fee =
-            self.genesis.base_fee_per_gas.map(|fee| fee as u64).unwrap_or(EIP1559_INITIAL_BASE_FEE);
+        let genesis_base_fee = if self.is_bsc() {
+            EIP1559_INITIAL_BASE_FEE_FOR_BSC
+        } else {
+            self.genesis.base_fee_per_gas.map(|fee| fee as u64).unwrap_or(EIP1559_INITIAL_BASE_FEE)
+        };
 
         // If London is activated at genesis, we set the initial base fee as per EIP-1559.
         self.fork(Hardfork::London).active_at_block(0).then_some(genesis_base_fee)

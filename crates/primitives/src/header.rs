@@ -19,6 +19,9 @@ use reth_codecs::{add_arbitrary_tests, derive_arbitrary, main_codec, Compact};
 use serde::{Deserialize, Serialize};
 use std::{mem, ops::Deref};
 
+#[cfg(feature = "bsc")]
+use crate::constants::EIP1559_INITIAL_BASE_FEE_FOR_BSC;
+
 /// Errors that can occur during header sanity checks.
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeaderError {
@@ -246,12 +249,16 @@ impl Header {
     ///
     /// Returns a `None` if no base fee is set, no EIP-1559 support
     pub fn next_block_base_fee(&self, base_fee_params: BaseFeeParams) -> Option<u64> {
-        Some(calc_next_block_base_fee(
-            self.gas_used as u128,
-            self.gas_limit as u128,
-            self.base_fee_per_gas? as u128,
-            base_fee_params,
-        ) as u64)
+        if cfg!(feature = "bsc") {
+            Some(EIP1559_INITIAL_BASE_FEE_FOR_BSC)
+        } else {
+            Some(calc_next_block_base_fee(
+                self.gas_used as u128,
+                self.gas_limit as u128,
+                self.base_fee_per_gas? as u128,
+                base_fee_params,
+            ) as u64)
+        }
     }
 
     /// Calculate excess blob gas for the next block according to the EIP-4844 spec.
@@ -819,7 +826,11 @@ impl SealedHeader {
                 .fork(Hardfork::London)
                 .transitions_at_block(self.number)
             {
-                constants::EIP1559_INITIAL_BASE_FEE
+                if cfg!(feature = "bsc") {
+                    EIP1559_INITIAL_BASE_FEE_FOR_BSC
+                } else {
+                    constants::EIP1559_INITIAL_BASE_FEE
+                }
             } else {
                 // This BaseFeeMissing will not happen as previous blocks are checked to have
                 // them.
@@ -847,6 +858,7 @@ impl SealedHeader {
     /// ensures that the `blob_gas_used` and `excess_blob_gas` fields exist in the child header, and
     /// that the `excess_blob_gas` field matches the expected `excess_blob_gas` calculated from the
     /// parent header fields.
+    //TODO: modify for bsc
     pub fn validate_4844_header_against_parent(
         &self,
         parent: &SealedHeader,

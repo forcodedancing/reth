@@ -19,7 +19,7 @@ pub const DIFF_INTURN: U256 = U256::from_limbs([2u64, 0, 0, 0]);
 /// Difficulty for NOTURN block
 pub const DIFF_NOTURN: U256 = U256::from_limbs([1u64, 0, 0, 0]);
 
-/// Reserved gas for system tx
+/// Reserved gas for system tx(no effect for a full node)
 pub const SYSTEM_TXS_GAS: u64 = 0;
 /// The reward percent to system
 pub const SYSTEM_REWARD_PERCENT: usize = 4;
