@@ -47,7 +47,7 @@ impl From<BatchBlockExecutionOutput> for BundleStateWithReceipts {
 impl From<BundleStateWithReceipts> for BatchBlockExecutionOutput {
     fn from(value: BundleStateWithReceipts) -> Self {
         let BundleStateWithReceipts { bundle, receipts, first_block } = value;
-        Self { bundle, receipts, first_block, snapshots: HashMap::new() }
+        Self { bundle, receipts, first_block, snapshots: Vec::new() }
     }
 }
 

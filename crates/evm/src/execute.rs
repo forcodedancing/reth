@@ -2,10 +2,9 @@
 
 use reth_db::models::parlia::Snapshot;
 use reth_interfaces::{executor::BlockExecutionError, provider::ProviderError};
-use reth_primitives::{BlockNumber, BlockWithSenders, PruneModes, Receipt, Receipts, B256, U256};
+use reth_primitives::{BlockNumber, BlockWithSenders, PruneModes, Receipt, Receipts, U256};
 use revm::db::BundleState;
 use revm_primitives::db::Database;
-use std::collections::HashMap;
 
 /// A general purpose executor trait that executes on an input (e.g. blocks) and produces an output
 /// (e.g. state changes and receipts).
@@ -106,7 +105,7 @@ pub struct BatchBlockExecutionOutput {
 
     // TODO: feature?
     /// Parlia snapshots
-    pub snapshots: HashMap<B256, Snapshot>,
+    pub snapshots: Vec<Snapshot>,
 }
 
 impl BatchBlockExecutionOutput {
@@ -115,7 +114,7 @@ impl BatchBlockExecutionOutput {
         bundle: BundleState,
         receipts: Receipts,
         first_block: BlockNumber,
-        snapshots: HashMap<B256, Snapshot>,
+        snapshots: Vec<Snapshot>,
     ) -> Self {
         Self { bundle, receipts, first_block, snapshots }
     }

@@ -30,7 +30,7 @@ use revm_primitives::{
     db::{Database, DatabaseCommit},
     BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tracing::debug;
 
 /// Provides executors to execute regular ethereum blocks
@@ -433,7 +433,7 @@ where
             self.executor.state.take_bundle(),
             self.batch_record.take_receipts(),
             self.batch_record.first_block().unwrap_or_default(),
-            HashMap::new(),
+            Vec::new(),
         )
     }
 

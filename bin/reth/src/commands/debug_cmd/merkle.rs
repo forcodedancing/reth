@@ -203,8 +203,8 @@ impl Command {
                 None,
                 OriginalValuesKnown::Yes,
             )?;
-            for (hash, snapshot) in snapshots {
-                provider_rw.save_parlia_snapshot(hash, snapshot)?;
+            for snap in snapshots {
+                provider_rw.save_parlia_snapshot(snap)?;
             }
 
             let checkpoint = Some(StageCheckpoint::new(block_number - 1));

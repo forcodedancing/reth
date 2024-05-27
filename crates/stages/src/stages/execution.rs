@@ -11,12 +11,7 @@ use reth_primitives::{
     },
     BlockNumber, Header, PruneModes, StaticFileSegment,
 };
-use reth_provider::{
-    providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
-    BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider,
-    LatestStateProviderRef, OriginalValuesKnown, ParliaSnapshotWriter, ProviderError, StateWriter,
-    StatsReader, TransactionVariant,
-};
+use reth_provider::{providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter}, BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider, LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriter, StatsReader, TransactionVariant, ParliaSnapshotWriter};
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
     BlockErrorKind, ExecInput, ExecOutput, MetricEvent, MetricEventsSender, Stage, StageError,
@@ -286,8 +281,8 @@ where
             static_file_producer,
             OriginalValuesKnown::Yes,
         )?;
-        for (hash, snapshot) in snapshots {
-            provider.save_parlia_snapshot(hash, snapshot)?;
+        for snap in snapshots {
+            provider.save_parlia_snapshot(snap)?;
         }
         let db_write_duration = time.elapsed();
         debug!(

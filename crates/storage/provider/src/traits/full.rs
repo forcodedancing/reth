@@ -3,7 +3,7 @@
 use crate::{
     AccountReader, BlockReaderIdExt, CanonStateSubscriptions, ChainSpecProvider, ChangeSetReader,
     DatabaseProviderFactory, EvmEnvProvider, HeaderProvider, ParliaSnapshotReader,
-    ParliaSnapshotWriter, StageCheckpointReader, StateProviderFactory, StaticFileProviderFactory,
+    StageCheckpointReader, StateProviderFactory, StaticFileProviderFactory,
 };
 use reth_db::database::Database;
 
@@ -21,7 +21,6 @@ pub trait FullProvider<DB: Database>:
     + StageCheckpointReader
     + HeaderProvider
     + ParliaSnapshotReader
-    + ParliaSnapshotWriter
     + Clone
     + Unpin
     + 'static
@@ -41,7 +40,6 @@ impl<T, DB: Database> FullProvider<DB> for T where
         + StageCheckpointReader
         + HeaderProvider
         + ParliaSnapshotReader
-        + ParliaSnapshotWriter
         + Clone
         + Unpin
         + 'static

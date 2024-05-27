@@ -2700,10 +2700,9 @@ impl<TX: DbTx> ParliaSnapshotReader for DatabaseProvider<TX> {
     }
 }
 
-impl<DB: Database> ParliaSnapshotWriter for DatabaseProviderRW<DB> {
-    fn save_parlia_snapshot(&self, _block_hash: B256, snapshot: Snapshot) -> ProviderResult<()> {
-        let mut snapshot_cursor = self.tx_ref().cursor_write::<tables::ParliaSnapshot>()?;
-        Ok(snapshot_cursor.upsert(snapshot.block_hash, snapshot).unwrap())
+impl<TX: DbTxMut> ParliaSnapshotWriter for DatabaseProvider<TX> {
+    fn save_parlia_snapshot(&self, snapshot: Snapshot) -> ProviderResult<()> {
+        Ok(self.tx.put::<tables::ParliaSnapshot>(snapshot.block_hash, snapshot)?)
     }
 }
 

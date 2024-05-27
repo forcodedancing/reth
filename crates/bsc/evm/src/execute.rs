@@ -121,7 +121,7 @@ where
             executor,
             batch_record: BlockBatchRecord::new(prune_modes),
             stats: BlockExecutorStats::default(),
-            snapshots: HashMap::new(),
+            snapshots: Vec::new(),
         }
     }
 }
@@ -597,7 +597,7 @@ where
                         }
                     }
                 }
-                state.insert(address, new_account);
+                HashMap::insert(state, address, new_account);
             }
         }
     }
@@ -656,7 +656,7 @@ where
                         }
                     }
                 }
-                state.insert(address, new_account);
+                HashMap::insert(state, address, new_account);
             }
         }
     }
@@ -801,9 +801,6 @@ where
         }
 
         if snap.block_number % CHECKPOINT_INTERVAL == 0 {
-            let bz = snap.clone().compress();
-            debug!(target: "snapshot", "number: {:?}, hash: {:?}, snapshot: {:?}",
-                snap.block_number, snap.block_hash, hex::encode(&bz));
             return Ok((receipts, gas_used, Some(snap.clone())));
         }
 
@@ -1772,7 +1769,7 @@ pub struct BscBatchExecutor<EvmConfig, DB, P> {
     /// Keeps track of the batch and record receipts based on the configured prune mode
     batch_record: BlockBatchRecord,
     stats: BlockExecutorStats,
-    snapshots: HashMap<B256, Snapshot>,
+    snapshots: Vec<Snapshot>,
 }
 
 impl<EvmConfig, DB, P> BscBatchExecutor<EvmConfig, DB, P> {
@@ -1818,7 +1815,7 @@ where
 
         // store snapshot
         if let Some(snapshot) = snapshot {
-            self.snapshots.insert(block.header.hash_slow(), snapshot);
+            self.snapshots.push(snapshot);
         }
 
         if self.batch_record.first_block().is_none() {
