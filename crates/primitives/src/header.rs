@@ -4,8 +4,8 @@ use crate::{
     basefee::calc_next_block_base_fee,
     constants,
     constants::{
-        ALLOWED_FUTURE_BLOCK_TIME_SECONDS, EMPTY_OMMER_ROOT_HASH, EMPTY_ROOT_HASH,
-        MINIMUM_GAS_LIMIT,
+        ALLOWED_FUTURE_BLOCK_TIME_SECONDS, EIP1559_INITIAL_BASE_FEE_FOR_BSC, EMPTY_OMMER_ROOT_HASH,
+        EMPTY_ROOT_HASH, MINIMUM_GAS_LIMIT,
     },
     eip4844::{calc_blob_gasprice, calculate_excess_blob_gas},
     keccak256, Address, BaseFeeParams, BlockHash, BlockNumHash, BlockNumber, Bloom, Bytes,
@@ -18,9 +18,6 @@ use proptest::prelude::*;
 use reth_codecs::{add_arbitrary_tests, derive_arbitrary, main_codec, Compact};
 use serde::{Deserialize, Serialize};
 use std::{mem, ops::Deref};
-
-#[cfg(feature = "bsc")]
-use crate::constants::EIP1559_INITIAL_BASE_FEE_FOR_BSC;
 
 /// Errors that can occur during header sanity checks.
 #[derive(Debug, PartialEq, Eq)]

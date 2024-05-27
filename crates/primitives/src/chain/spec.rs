@@ -1,5 +1,5 @@
 use crate::{
-    constants::{EIP1559_INITIAL_BASE_FEE, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
+    constants::{EIP1559_INITIAL_BASE_FEE, EIP1559_INITIAL_BASE_FEE_FOR_BSC, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
     holesky_nodes,
     net::{goerli_nodes, mainnet_nodes, sepolia_nodes},
     proofs::state_root_ref_unhashed,
@@ -29,7 +29,6 @@ pub(crate) use crate::{
 
 #[cfg(feature = "bsc")]
 pub(crate) use crate::{
-    constants::EIP1559_INITIAL_BASE_FEE_FOR_BSC,
     net::{bsc_mainnet_nodes, bsc_testnet_nodes},
 };
 
