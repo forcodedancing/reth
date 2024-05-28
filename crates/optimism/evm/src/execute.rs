@@ -193,6 +193,8 @@ where
             trace!(
                 target: "evm",
                 ?transaction,
+                ?result,
+                ?state,
                 "Executed transaction"
             );
 
