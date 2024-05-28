@@ -369,22 +369,22 @@ where
                 U256::from_str(
                     "0x0000000000000000000000000000000000000000000000000000000000000000",
                 )
-                    .unwrap(),
+                .unwrap(),
                 U256::from_str(
                     "0x5772617070656420424e42000000000000000000000000000000000000000016",
                 )
-                    .unwrap(),
+                .unwrap(),
             );
             // symbolSlot { Symbol: "wBNB" }
             w_bnb_storage.insert(
                 U256::from_str(
                     "0x0000000000000000000000000000000000000000000000000000000000000001",
                 )
-                    .unwrap(),
+                .unwrap(),
                 U256::from_str(
                     "0x57424e4200000000000000000000000000000000000000000000000000000008",
                 )
-                    .unwrap(),
+                .unwrap(),
             );
             // insert wBNB contract with storage
             self.db_mut().insert_account_with_storage(
