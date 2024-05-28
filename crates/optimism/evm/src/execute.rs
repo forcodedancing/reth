@@ -190,7 +190,7 @@ where
                 }
             })?;
 
-            trace!(
+            info!(
                 target: "evm",
                 ?transaction,
                 ?result,
