@@ -186,7 +186,7 @@ where
                 }
             })?;
 
-            info!(
+            trace!(
                 target: "evm",
                 ?transaction,
                 ?result,
