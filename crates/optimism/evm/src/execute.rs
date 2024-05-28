@@ -30,7 +30,7 @@ use revm_primitives::{
     BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
 };
 use std::sync::Arc;
-use tracing::{debug, trace};
+use tracing::{info, debug, trace};
 
 /// Provides executors to execute regular ethereum blocks
 #[derive(Debug, Clone)]
