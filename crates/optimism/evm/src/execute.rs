@@ -1,5 +1,7 @@
 //! Optimism block executor.
 
+use std::collections::HashMap;
+use std::str::FromStr;
 use crate::{
     l1::ensure_create2_deployer, verify::verify_receipts, OptimismBlockExecutionError,
     OptimismEvmConfig,
@@ -15,20 +17,14 @@ use reth_interfaces::{
     executor::{BlockExecutionError, BlockValidationError},
     provider::ProviderError,
 };
-use reth_primitives::{
-    BlockNumber, BlockWithSenders, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt,
-    Receipts, TxType, Withdrawals, U256,
-};
+use reth_primitives::{BlockNumber, BlockWithSenders, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, TxType, Withdrawals, U256, Address};
 use reth_revm::{
     batch::{BlockBatchRecord, BlockExecutorStats},
     db::states::bundle_state::BundleRetention,
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
     Evm, State,
 };
-use revm_primitives::{
-    db::{Database, DatabaseCommit},
-    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
-};
+use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, AccountInfo, Account, AccountStatus};
 use std::sync::Arc;
 use tracing::{info, debug, trace};
 
@@ -360,46 +356,33 @@ where
         );
 
         #[cfg(all(feature = "optimism", feature = "opbnb"))]
-        if self.chain_spec.fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
+        if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             // WBNBContract WBNB preDeploy contract address
             let w_bnb_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
-            let mut w_bnb_storage = PlainStorage::new();
-            // insert storage for wBNB contract
-            // nameSlot { Name: "Wrapped BNB" }
-            w_bnb_storage.insert(
-                U256::from_str(
-                    "0x0000000000000000000000000000000000000000000000000000000000000000",
-                )
-                    .unwrap(),
-                U256::from_str(
-                    "0x5772617070656420424e42000000000000000000000000000000000000000016",
-                )
-                    .unwrap(),
-            );
-            // symbolSlot { Symbol: "wBNB" }
-            w_bnb_storage.insert(
-                U256::from_str(
-                    "0x0000000000000000000000000000000000000000000000000000000000000001",
-                )
-                    .unwrap(),
-                U256::from_str(
-                    "0x57424e4200000000000000000000000000000000000000000000000000000008",
-                )
-                    .unwrap(),
-            );
             // insert wBNB contract with storage
-            self.db_mut().insert_account_with_storage(
+            self.state.insert_account_with_storage(
                 w_bnb_contract_address,
                 AccountInfo::default(),
-                w_bnb_storage,
+                HashMap::from([
+                    // nameSlot { Name: "Wrapped BNB" }
+                    (U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(), U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap()),
+                    // symbolSlot { Symbol: "wBNB" }
+                    (U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(), U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap())
+                ])
             );
             // GovernanceToken contract address
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
             // destruct the governance token contract
-            self.evm
-                .selfdestruct(governance_token_contract_address, governance_token_contract_address);
+            self.state.commit(HashMap::from([(
+                governance_token_contract_address,
+                Account {
+                    status: AccountStatus::Touched | AccountStatus::SelfDestructed,
+                    info: AccountInfo::default(),
+                    storage: HashMap::default(),
+                },
+            )]));
         }
 
         // increment balances

@@ -36,3 +36,7 @@ optimism = [
     "reth-interfaces/optimism",
     "revm-primitives/optimism",
 ]
+opbnb = [
+    "reth-primitives/opbnb",
+    "revm-primitives/opbnb",
+]
