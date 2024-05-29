@@ -365,14 +365,14 @@ where
             // GovernanceToken contract address
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
-            let w_bnb_contract_account = self.state.bundle_state.account(&w_bnb_contract_address).unwrap().clone();
-            let governance_token_contract_account = self.state.bundle_state.account(&governance_token_contract_address).unwrap().clone();
+            let w_bnb_contract_account = self.state.load_cache_account(w_bnb_contract_address).map_err(|err|err)?.clone();
+            let governance_token_contract_account = self.state.load_cache_account(governance_token_contract_address).map_err(|err|err)?.clone();
             self.state.bundle_state.extend_state(HashMap::from([
                 (
                     w_bnb_contract_address,
                     BundleAccount{
-                        info: w_bnb_contract_account.info.clone(),
-                        original_info: w_bnb_contract_account.original_info.clone(),
+                        info: w_bnb_contract_account.account_info().clone(),
+                        original_info: w_bnb_contract_account.account_info().clone(),
                         storage: HashMap::from([
                             // nameSlot { Name: "Wrapped BNB" }
                             (
@@ -392,7 +392,7 @@ where
                     governance_token_contract_address,
                     BundleAccount{
                         info: None,
-                        original_info: governance_token_contract_account.original_info.clone(),
+                        original_info: governance_token_contract_account.account_info().clone(),
                         storage: HashMap::new(),
                         status: BundleAccountStatus::Destroyed
                     }
