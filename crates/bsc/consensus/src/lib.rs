@@ -38,14 +38,14 @@ mod util;
 pub use util::*;
 mod constants;
 pub use constants::*;
-
-pub mod contract_upgrade;
 mod feynman_fork;
 pub use feynman_fork::*;
 mod error;
 pub use error::ParliaConsensusError;
 mod go_rng;
 pub use go_rng::{RngSource, Shuffle};
+mod abi;
+use abi::*;
 
 const RECOVERED_PROPOSER_CACHE_NUM: usize = 4096;
 
@@ -62,11 +62,12 @@ pub struct ParliaConfig {
 
 impl Default for ParliaConfig {
     fn default() -> Self {
-        Self { epoch: 300, period: 15 }
+        Self { epoch: 200, period: 3 }
     }
 }
 
 /// BSC parlia consensus implementation
+#[derive(Clone)]
 pub struct Parlia {
     chain_spec: Arc<ChainSpec>,
     epoch: u64,
@@ -85,11 +86,11 @@ impl Default for Parlia {
 
 impl Parlia {
     pub fn new(chain_spec: Arc<ChainSpec>, cfg: ParliaConfig) -> Self {
-        let validator_abi = load_abi_from_file("./res/validator_set.json").unwrap();
+        let validator_abi = serde_json::from_str(*VALIDATOR_SET_ABI).unwrap();
         let validator_abi_before_luban =
-            load_abi_from_file("./res/validator_set_before_luban.json").unwrap();
-        let slash_abi = load_abi_from_file("./res/slash.json").unwrap();
-        let stake_hub_abi = load_abi_from_file("./res/stake_hub.json").unwrap();
+            serde_json::from_str(*VALIDATOR_SET_ABI_BEFORE_LUBAN).unwrap();
+        let slash_abi = serde_json::from_str(*SLASH_INDICATOR_ABI).unwrap();
+        let stake_hub_abi = serde_json::from_str(*STAKE_HUB_ABI).unwrap();
 
         Self {
             chain_spec,
@@ -115,14 +116,51 @@ impl Parlia {
         &self.chain_spec
     }
 
-    pub fn is_on_feynman(&self, timestamp: u64, parent_timestamp: u64) -> bool {
-        self.chain_spec.fork(Hardfork::Feynman).active_at_timestamp(timestamp) &&
-            !self.chain_spec.fork(Hardfork::Feynman).active_at_timestamp(parent_timestamp)
+    /// Convenience method to check if [Hardfork::Ramanujan] is active at a given block.
+    pub fn is_ramanujan(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Ramanujan, block_number)
     }
 
+    /// Convenience method to check if [Hardfork::Euler] is active at a given block.
+    pub fn is_euler(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Euler, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Planck] is active at a given block.
+    pub fn is_planck(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Planck, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Luban] is firstly active at a given block.
     pub fn is_on_luban(&self, block_number: BlockNumber) -> bool {
-        self.chain_spec.fork(Hardfork::Luban).active_at_block(block_number) &&
-            !self.chain_spec.fork(Hardfork::Luban).active_at_block(block_number - 1)
+        self.chain_spec.fork(Hardfork::Luban).transitions_at_block(block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Luban] is active at a given block.
+    pub fn is_luban(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Luban, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Plato] is active at a given block.
+    pub fn is_plato(&self, block_number: BlockNumber) -> bool {
+        self.chain_spec.is_fork_active_at_block(Hardfork::Plato, block_number)
+    }
+
+    /// Convenience method to check if [Hardfork::Kepler] is active at a given timestamp.
+    pub fn is_kepler(&self, timestamp: u64) -> bool {
+        self.chain_spec.is_fork_active_at_timestamp(Hardfork::Kepler, timestamp)
+    }
+
+    /// Convenience method to check if [Hardfork::Feynman] is firstly active at a given timestamp.
+    pub fn is_on_feynman(&self, timestamp: u64, parent_timestamp: u64) -> bool {
+        self.chain_spec
+            .fork(Hardfork::Feynman)
+            .transitions_at_timestamp(timestamp, parent_timestamp)
+    }
+
+    /// Convenience method to check if [Hardfork::Feynman] is active at a given timestamp.
+    pub fn is_feynman(&self, timestamp: u64) -> bool {
+        self.chain_spec.is_fork_active_at_timestamp(Hardfork::Feynman, timestamp)
     }
 
     pub fn recover_proposer(&self, header: &Header) -> Result<Address, ParliaConsensusError> {
@@ -147,11 +185,8 @@ impl Parlia {
         let signature = RecoverableSignature::from_compact(sig, rec)
             .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
-        let mut sig_hash_header = header.clone();
-        sig_hash_header.extra_data =
-            Bytes::copy_from_slice(&header.extra_data[..header.extra_data.len() - EXTRA_SEAL_LEN]);
         let message = Message::from_digest_slice(
-            hash_with_chain_id(&sig_hash_header, self.chain_spec.chain.id()).as_slice(),
+            hash_with_chain_id(header, self.chain_spec.chain.id()).as_slice(),
         )
         .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
@@ -169,9 +204,13 @@ impl Parlia {
         &self,
         header: &Header,
     ) -> Result<(Vec<Address>, Option<HashMap<Address, ValidatorInfo>>), ParliaConsensusError> {
-        let val_bytes = self.get_validator_bytes_from_header(header)?;
+        let val_bytes = self.get_validator_bytes_from_header(header).ok_or_else(|| {
+            ParliaConsensusError::InvalidHeaderExtraLen {
+                header_extra_len: header.extra_data.len() as u64,
+            }
+        })?;
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             let count = val_bytes.len() / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN;
             let mut vals = Vec::with_capacity(count);
             for i in 0..count {
@@ -210,7 +249,13 @@ impl Parlia {
         &self,
         header: &Header,
     ) -> Result<Option<VoteAttestation>, ParliaConsensusError> {
-        self.check_header_extra_len(header)?;
+        if header.extra_data.len() <= EXTRA_VANITY_LEN + EXTRA_SEAL_LEN {
+            return Ok(None);
+        }
+
+        if !self.is_luban(header.number) {
+            return Ok(None);
+        }
 
         let mut raw;
         let extra_len = header.extra_data.len();
@@ -231,27 +276,32 @@ impl Parlia {
         ))
     }
 
-    pub fn get_validator_bytes_from_header(
-        &self,
-        header: &Header,
-    ) -> Result<Vec<u8>, ParliaConsensusError> {
-        self.check_header_extra_len(header)?;
-
-        if header.number % self.epoch != 0 {
-            return Err(ParliaConsensusError::NotInEpoch { block_number: header.number });
+    pub fn get_validator_bytes_from_header(&self, header: &Header) -> Option<Vec<u8>> {
+        let extra_len = header.extra_data.len();
+        if header.extra_data.len() < EXTRA_VANITY_LEN + EXTRA_SEAL_LEN {
+            return None;
         }
 
-        let extra_len = header.extra_data.len();
+        if !self.is_luban(header.number) {
+            if header.number % self.epoch != 0 &&
+                (extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN) %
+                    EXTRA_VALIDATOR_LEN_BEFORE_LUBAN !=
+                    0
+            {
+                return None;
+            }
+            return Some(header.extra_data[EXTRA_VANITY_LEN..extra_len - EXTRA_SEAL_LEN].to_vec());
+        }
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
-            return Ok(header.extra_data[EXTRA_VANITY_LEN..extra_len - EXTRA_SEAL_LEN].to_vec());
+        if header.number % self.epoch != 0 {
+            return None;
         }
 
         let count = header.extra_data[EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM - 1] as usize;
         let start = EXTRA_VANITY_LEN_WITH_VALIDATOR_NUM;
         let end = start + count * EXTRA_VALIDATOR_LEN;
 
-        Ok(header.extra_data[start..end].to_vec())
+        Some(header.extra_data[start..end].to_vec())
     }
 
     pub fn back_off_time(&self, snap: &Snapshot, header: &Header) -> u64 {
@@ -270,7 +320,7 @@ impl Parlia {
         let mut rng = RngSource::new(snap.block_number as i64);
         let validator_count = snap.validators.len();
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_planck(header.number) {
             // select a random step for delay, range 0~(proposer_count-1)
             let mut backoff_steps = Vec::new();
             for i in 0..validator_count {
@@ -329,7 +379,7 @@ impl Parlia {
             return Ok(());
         }
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             if (extra_len - EXTRA_SEAL_LEN - EXTRA_VANITY_LEN) / EXTRA_VALIDATOR_LEN_BEFORE_LUBAN ==
                 0
             {
@@ -380,7 +430,7 @@ impl Parlia {
     }
 
     pub fn get_recently_proposal_limit(&self, header: &Header, validator_count: u64) -> u64 {
-        if self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if self.is_luban(header.number) {
             validator_count * 2 / 3 + 1
         } else {
             validator_count / 2 + 1
@@ -399,7 +449,7 @@ impl Parlia {
 
         let extra_len = header.extra_data.len();
 
-        if !self.chain_spec.fork(Hardfork::Luban).active_at_block(header.number) {
+        if !self.is_luban(header.number) {
             return Ok(extra_len - EXTRA_VANITY_LEN - EXTRA_SEAL_LEN);
         }
 
@@ -573,7 +623,7 @@ impl Parlia {
         &self,
         block_number: BlockNumber,
     ) -> (Address, Bytes) {
-        let function = if self.chain_spec.fork(Hardfork::Euler).active_at_block(block_number) {
+        let function = if self.is_euler(block_number) {
             self.validator_abi_before_luban
                 .function("getMiningValidators")
                 .unwrap()
@@ -591,7 +641,14 @@ impl Parlia {
             self.validator_abi_before_luban.function("getValidators").unwrap().first().unwrap();
         let output = function.abi_decode_output(data, true).unwrap();
 
-        output.into_iter().map(|val| val.as_address().unwrap()).collect()
+        output
+            .first()
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .into_iter()
+            .map(|val| val.as_address().unwrap())
+            .collect()
     }
 
     pub fn get_current_validators(&self) -> (Address, Bytes) {
@@ -801,11 +858,19 @@ mod tests {
     use super::*;
     use reth_primitives::{address, hex};
 
+    // To make sure the abi is correct
+    #[test]
+    fn new_parlia() {
+        let parlia = Parlia::new(Arc::new(ChainSpec::default()), ParliaConfig::default());
+        assert_eq!(parlia.epoch(), 300);
+        assert_eq!(parlia.period(), 15);
+    }
+
     #[test]
     fn abi_encode() {
         let expected = "63a036b500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
-        let stake_hub_abi = load_abi_from_file("./res/stake_hub.json").unwrap();
+        let stake_hub_abi: JsonAbi = serde_json::from_str(*STAKE_HUB_ABI).unwrap();
         let function = stake_hub_abi.function("getValidatorElectionInfo").unwrap().first().unwrap();
         let input = function
             .abi_encode_input(&[DynSolValue::from(U256::from(0)), DynSolValue::from(U256::from(0))])
@@ -826,7 +891,7 @@ mod tests {
         let output_str = "000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c08b5542d177ac6686946920409741463a15dddb000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000303c2438a4113804bf99e3849ef31887c0f880a0feb92f356f58fbd023a82f5311fc87a5883a662e9ebbbefc90bf13aa5300000000000000000000000000000000";
         let output = hex::decode(output_str).unwrap();
 
-        let stake_hub_abi = load_abi_from_file("./res/stake_hub.json").unwrap();
+        let stake_hub_abi: JsonAbi = serde_json::from_str(*STAKE_HUB_ABI).unwrap();
         let function = stake_hub_abi.function("getValidatorElectionInfo").unwrap().first().unwrap();
         let output = function.abi_decode_output(&output, true).unwrap();
 

@@ -38,7 +38,7 @@ pub struct BundleStateWithReceipts {
 // TODO(mattsse): unify the types, currently there's a cyclic dependency between
 impl From<BatchBlockExecutionOutput> for BundleStateWithReceipts {
     fn from(value: BatchBlockExecutionOutput) -> Self {
-        let BatchBlockExecutionOutput { bundle, receipts, first_block } = value;
+        let BatchBlockExecutionOutput { bundle, receipts, first_block, .. } = value;
         Self { bundle, receipts, first_block }
     }
 }
@@ -47,7 +47,7 @@ impl From<BatchBlockExecutionOutput> for BundleStateWithReceipts {
 impl From<BundleStateWithReceipts> for BatchBlockExecutionOutput {
     fn from(value: BundleStateWithReceipts) -> Self {
         let BundleStateWithReceipts { bundle, receipts, first_block } = value;
-        Self { bundle, receipts, first_block }
+        Self { bundle, receipts, first_block, snapshots: Vec::new() }
     }
 }
 

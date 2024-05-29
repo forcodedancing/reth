@@ -1,8 +1,9 @@
 //! BSC Node types config.
 
-use crate::{EthEngineTypes, EthEvmConfig};
+use crate::EthEngineTypes;
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
-use reth_evm_ethereum::execute::EthExecutorProvider;
+use reth_bsc_consensus::ParliaConfig;
+use reth_evm_bsc::{BscEvmConfig, BscExecutorProvider};
 use reth_network::NetworkHandle;
 use reth_node_builder::{
     components::{
@@ -76,16 +77,18 @@ impl<Node> ExecutorBuilder<Node> for BscExecutorBuilder
 where
     Node: FullNodeTypes,
 {
-    type EVM = EthEvmConfig;
-    type Executor = EthExecutorProvider<Self::EVM>; // TODO: should be bsc executor provider
+    type EVM = BscEvmConfig;
+
+    type Executor = BscExecutorProvider<Node::Provider, Self::EVM>;
 
     async fn build_evm(
         self,
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<(Self::EVM, Self::Executor)> {
         let chain_spec = ctx.chain_spec();
-        let evm_config = EthEvmConfig::default();
-        let executor = EthExecutorProvider::new(chain_spec, evm_config);
+        let evm_config = BscEvmConfig::default();
+        //  TODO: parlia config
+        let executor = BscExecutorProvider::new(chain_spec, evm_config, ParliaConfig::default(), ctx.provider().clone());
 
         Ok((evm_config, executor))
     }

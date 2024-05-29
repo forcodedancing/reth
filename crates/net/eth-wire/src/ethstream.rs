@@ -12,7 +12,7 @@ use futures::{ready, Sink, SinkExt, StreamExt};
 use pin_project::pin_project;
 use reth_primitives::{
     bytes::{Bytes, BytesMut},
-    ForkFilter, GotExpected,
+    ForkFilter, GotExpected
 };
 use std::{
     pin::Pin,

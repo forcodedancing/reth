@@ -19,7 +19,8 @@ reth-interfaces.workspace = true
 reth-db = { workspace = true, features = ["test-utils"] }
 reth-provider = { workspace = true, features = ["test-utils"] }
 reth-bsc-consensus.workspace = true
-revm.workspace = true
+
+# Revm
 revm-primitives.workspace = true
 
 # misc
@@ -40,5 +41,3 @@ bsc = [
     "reth-primitives/bsc",
     "revm-primitives/bsc",
 ]
-#    "reth-provider/bsc",
-#    "reth-interfaces/bsc",

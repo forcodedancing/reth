@@ -29,7 +29,7 @@ use revm_primitives::{
     db::{Database, DatabaseCommit},
     BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, trace};
 
 /// Provides executors to execute regular ethereum blocks
@@ -76,8 +76,6 @@ where
     type Executor<DB: Database<Error = ProviderError>> = OpBlockExecutor<EvmConfig, DB>;
 
     type BatchExecutor<DB: Database<Error = ProviderError>> = OpBatchExecutor<EvmConfig, DB>;
-
-    type ExtraProvider = ();
 
     fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
     where
@@ -454,6 +452,7 @@ where
             self.executor.state.take_bundle(),
             self.batch_record.take_receipts(),
             self.batch_record.first_block().unwrap_or_default(),
+            Vec::new(),
         )
     }
 

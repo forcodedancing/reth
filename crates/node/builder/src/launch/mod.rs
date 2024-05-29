@@ -40,6 +40,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub mod common;
 pub use common::LaunchContext;
+use reth_bsc_consensus::{Parlia, ParliaConfig};
 
 /// A general purpose trait that launches a new node of any kind.
 ///
@@ -113,10 +114,14 @@ where
             });
 
         // setup the consensus instance
-        let consensus: Arc<dyn Consensus> = if ctx.is_dev() {
-            Arc::new(AutoSealConsensus::new(ctx.chain_spec()))
+        let consensus: Arc<dyn Consensus> = if cfg!(feature = "bsc") {
+            Arc::new(Parlia::new(ctx.chain_spec(), ParliaConfig::default()))
         } else {
-            Arc::new(EthBeaconConsensus::new(ctx.chain_spec()))
+            if ctx.is_dev() {
+                Arc::new(AutoSealConsensus::new(ctx.chain_spec()))
+            } else {
+                Arc::new(EthBeaconConsensus::new(ctx.chain_spec()))
+            }
         };
 
         debug!(target: "reth::cli", "Spawning stages metrics listener task");

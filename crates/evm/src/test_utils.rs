@@ -28,8 +28,6 @@ impl BlockExecutorProvider for MockExecutorProvider {
 
     type BatchExecutor<DB: Database<Error = ProviderError>> = Self;
 
-    type ExtraProvider = ();
-
     fn executor<DB>(&self, _: DB) -> Self::Executor<DB>
     where
         DB: Database<Error = ProviderError>,

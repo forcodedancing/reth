@@ -30,21 +30,21 @@ use reth_interfaces::{
     provider::ProviderError,
 };
 use reth_primitives::{
-    constants::SYSTEM_ADDRESS, Address, BlockNumber, BlockWithSenders, Bytes, ChainSpec,
-    GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, Transaction, TransactionSigned,
-    B256, U256,
+    address, b256, constants::SYSTEM_ADDRESS, system_contracts::get_upgrade_system_contracts,
+    Address, BlockNumber, BlockWithSenders, Bytes, ChainSpec, GotExpected, Header, PruneModes,
+    Receipt, Receipts, Transaction, TransactionSigned, B256, U256,
 };
 use reth_provider::ParliaProvider;
 use reth_revm::{
     batch::{BlockBatchRecord, BlockExecutorStats},
-    db::states::bundle_state::BundleRetention,
+    db::{states::bundle_state::BundleRetention, AccountStatus},
     Evm, State,
 };
 use revm_primitives::{
     db::{Database, DatabaseCommit},
     BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, TransactTo,
 };
-use std::{collections::HashMap, marker::PhantomData, num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, str::FromStr, sync::Arc, time::Instant};
 use tracing::{debug, trace};
 
 const SNAP_CACHE_NUM: usize = 2048;
@@ -61,14 +61,7 @@ pub struct BscExecutorProvider<P, EvmConfig = BscEvmConfig> {
     chain_spec: Arc<ChainSpec>,
     evm_config: EvmConfig,
     parlia_config: ParliaConfig,
-    _marker: PhantomData<P>,
-}
-
-impl<P> BscExecutorProvider<P> {
-    /// Creates a new default bsc executor provider.
-    pub fn bsc(chain_spec: Arc<ChainSpec>) -> Self {
-        Self::new(chain_spec, Default::default(), ParliaConfig::default())
-    }
+    provider: P,
 }
 
 impl<P, EvmConfig> BscExecutorProvider<P, EvmConfig> {
@@ -77,16 +70,18 @@ impl<P, EvmConfig> BscExecutorProvider<P, EvmConfig> {
         chain_spec: Arc<ChainSpec>,
         evm_config: EvmConfig,
         parlia_config: ParliaConfig,
+        provider: P,
     ) -> Self {
-        Self { chain_spec, evm_config, parlia_config, _marker: PhantomData::<P> }
+        Self { chain_spec, evm_config, parlia_config, provider }
     }
 }
 
 impl<P, EvmConfig> BscExecutorProvider<P, EvmConfig>
 where
+    P: Clone,
     EvmConfig: ConfigureEvm,
 {
-    fn bsc_executor<DB>(&self, db: DB, provider: P) -> BscBlockExecutor<EvmConfig, DB, P>
+    fn bsc_executor<DB>(&self, db: DB) -> BscBlockExecutor<EvmConfig, DB, P>
     where
         DB: Database<Error = ProviderError>,
     {
@@ -95,7 +90,7 @@ where
             self.evm_config.clone(),
             self.parlia_config.clone(),
             State::builder().with_database(db).with_bundle_update().without_state_clear().build(),
-            provider,
+            self.provider.clone(),
         )
     }
 }
@@ -109,47 +104,23 @@ where
 
     type BatchExecutor<DB: Database<Error = ProviderError>> = BscBatchExecutor<EvmConfig, DB, P>;
 
-    type ExtraProvider = P;
-
-    fn executor<DB>(&self, _db: DB) -> Self::Executor<DB>
+    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
     where
         DB: Database<Error = ProviderError>,
     {
-        panic!("Use `executor_with_provider_rw` instead")
+        self.bsc_executor(db)
     }
 
-    fn executor_with_provider_rw<DB>(
-        &self,
-        db: DB,
-        extra_provider: Self::ExtraProvider,
-    ) -> Self::Executor<DB>
+    fn batch_executor<DB>(&self, db: DB, prune_modes: PruneModes) -> Self::BatchExecutor<DB>
     where
         DB: Database<Error = ProviderError>,
     {
-        self.bsc_executor(db, extra_provider)
-    }
-
-    fn batch_executor<DB>(&self, _db: DB, _prune_modes: PruneModes) -> Self::BatchExecutor<DB>
-    where
-        DB: Database<Error = ProviderError>,
-    {
-        panic!("Use `batch_executor_with_provider_rw` instead")
-    }
-
-    fn batch_executor_with_provider_rw<DB>(
-        &self,
-        db: DB,
-        prune_modes: PruneModes,
-        extra_provider: Self::ExtraProvider,
-    ) -> Self::BatchExecutor<DB>
-    where
-        DB: Database<Error = ProviderError>,
-    {
-        let executor = self.bsc_executor(db, extra_provider);
+        let executor = self.bsc_executor(db);
         BscBatchExecutor {
             executor,
             batch_record: BlockBatchRecord::new(prune_modes),
             stats: BlockExecutorStats::default(),
+            snapshots: Vec::new(),
         }
     }
 }
@@ -190,14 +161,14 @@ where
         let mut system_txs = Vec::with_capacity(2); // Normally there are 2 system transactions.
         let mut receipts = Vec::with_capacity(block.body.len());
         for (sender, transaction) in block.transactions_with_sender() {
-            if is_system_transaction(transaction, &block.header) {
+            if is_system_transaction(transaction, *sender, &block.header) {
                 system_txs.push(transaction.clone());
-                continue
+                continue;
             }
             // systemTxs should be always at the end of block.
             if self.chain_spec.is_cancun_active_at_timestamp(block.timestamp) {
                 if system_txs.len() > 0 {
-                    return Err(BscBlockExecutionError::UnexpectedNormalTx.into())
+                    return Err(BscBlockExecutionError::UnexpectedNormalTx.into());
                 }
             }
 
@@ -209,13 +180,13 @@ where
                     transaction_gas_limit: transaction.gas_limit(),
                     block_available_gas,
                 }
-                .into())
+                .into());
             }
 
             EvmConfig::fill_tx_env(evm.tx_mut(), transaction, *sender);
 
             // Execute transaction.
-            let ResultAndState { result, state } = evm.transact().map_err(move |err| {
+            let ResultAndState { result, mut state } = evm.transact().map_err(move |err| {
                 // Ensure hash is calculated for error log, if not already done
                 BlockValidationError::EVM {
                     hash: transaction.recalculate_hash(),
@@ -228,6 +199,9 @@ where
                 ?transaction,
                 "Executed transaction"
             );
+
+            self.patch_geth_hot_fix_mainnet(&block.header, transaction, &mut state);
+            self.patch_geth_hot_fix_chapel(&block.header, transaction, &mut state);
 
             evm.db_mut().commit(state);
 
@@ -252,6 +226,438 @@ where
         drop(evm);
 
         Ok((system_txs, receipts, cumulative_gas_used))
+    }
+
+    fn patch_geth_hot_fix_mainnet(
+        &self,
+        header: &Header,
+        transaction: &TransactionSigned,
+        state: &mut revm_primitives::State,
+    ) {
+        let patches = vec![
+            // patch 1: BlockNum 33851236, txIndex 89
+            (
+                b256!("022296e50021d7225b75f3873e7bc5a2bf6376a08079b4368f9dee81946d623b"),
+                b256!("7eba4edc7c1806d6ee1691d43513838931de5c94f9da56ec865721b402f775b0"),
+                address!("00000000001f8b68515EfB546542397d3293CCfd"),
+                HashMap::from([
+                    (
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x00000000000000000000000052db206170b430da8223651d28830e56ba3cdc04",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000002",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x000000000000000000000000bb45f138499734bf5c0948d490c65903676ea1de",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x65c95177950b486c2071bf2304da1427b9136564150fb97266ffb318b03a71cc",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x245e58a02bec784ccbdb9e022a84af83227a4125a22a5e68fcc596c7e436434e",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x1c4534c86090a60a9120f34c7b15254913c00bda3d4b276d6edb65c9f48a913f",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000004",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000019",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x8a35acfbc15ff81a39ae7d344fd709f28e8600b4aa8c65c6b64bfe7fe36bd1b4",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x8a35acfbc15ff81a39ae7d344fd709f28e8600b4aa8c65c6b64bfe7fe36bd1b5",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x8a35acfbc15ff81a39ae7d344fd709f28e8600b4aa8c65c6b64bfe7fe36bd1b6",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000005",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x00000000000000000000000000000000000000000000000000000000000fc248",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000006",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x00000000000000000000000000000000000000000000000000000000000fc132",
+                        )
+                        .unwrap(),
+                    ),
+                ]),
+            ),
+            // patch 2: BlockNum 33851236, txIndex 90
+            (
+                b256!("022296e50021d7225b75f3873e7bc5a2bf6376a08079b4368f9dee81946d623b"),
+                b256!("5217324f0711af744fe8e12d73f13fdb11805c8e29c0c095ac747b7e4563e935"),
+                address!("00000000001f8b68515EfB546542397d3293CCfd"),
+                HashMap::from([
+                    (
+                        U256::from_str(
+                            "0xbcfc62ca570bdb58cf9828ac51ae8d7e063a1cc0fa1aee57691220a7cd78b1c8",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x30dce49ce1a4014301bf21aad0ee16893e4dcc4a4e4be8aa10e442dd13259837",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xc0582628d787ee16fe03c8e5b5f5644d3b81989686f8312280b7a1f733145525",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xfca5cf22ff2e8d58aece8e4370cce33cd0144d48d00f40a5841df4a42527694b",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xb189302b37865d2ae522a492ff1f61a5addc1db44acbdcc4b6814c312c815f46",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xfe1f1986775fc2ac905aeaecc7b1aa8b0d6722b852c90e26edacd2dac7382489",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x36052a8ddb27fecd20e2e09da15494a0f2186bf8db36deebbbe701993f8c4aae",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x4959a566d8396b889ff4bc20e18d2497602e01e5c6013af5af7a7c4657ece3e2",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xe0b5aeb100569add952966f803cb67aca86dc6ec8b638f5a49f9e0760efa9a7a",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x632467ad388b91583f956f76488afc42846e283c962cbb215d288033ffc4fb71",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x9ad4e69f52519f7b7b8ee5ae3326d57061b429428ea0c056dd32e7a7102e79a7",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x35e130c7071699eae5288b12374ef157a15e4294e2b3a352160b7c1cd4641d82",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xa0d8279f845f63979dc292228adfa0bda117de27e44d90ac2adcd44465b225e7",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x9a100b70ffda9ed9769becdadca2b2936b217e3da4c9b9817bad30d85eab25ff",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x28d67156746295d901005e2d95ce589e7093decb638f8c132d9971fd0a37e176",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x297c4e115b5df76bcd5a1654b8032661680a1803e30a0774cb42bb01891e6d97",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x5f71b88f1032d27d8866948fc9c49525f3e584bdd52a66de6060a7b1f767326f",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xe6d8ddf6a0bbeb4840f48f0c4ffda9affa4675354bdb7d721235297f5a094f54",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x30ba10aef6238bf19667aaa988b18b72adb4724c016e19eb64bbb52808d1a842",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0x9c6806a4d6a99e4869b9a4aaf80b0a3bf5f5240a1d6032ed82edf0e86f2a2467",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xe8480d613bbf3b979aee2de4487496167735bb73df024d988e1795b3c7fa559a",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                    (
+                        U256::from_str(
+                            "0xebfaec01f898f7f0e2abdb4b0aee3dfbf5ec2b287b1e92f9b62940f85d5f5bac",
+                        )
+                        .unwrap(),
+                        U256::from_str(
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        )
+                        .unwrap(),
+                    ),
+                ]),
+            ),
+        ];
+
+        for (block_hash, tx_hash, address, storage) in patches {
+            if header.hash_slow() == block_hash && transaction.recalculate_hash() == tx_hash {
+                let account = state.get(&address).unwrap();
+                let mut new_account = account.clone();
+                for (k, v) in storage {
+                    for (&index, slot) in &account.storage {
+                        if index == k {
+                            let mut slot = slot.clone();
+                            slot.present_value = v;
+                            new_account.storage.insert(index, slot);
+                        }
+                    }
+                }
+                HashMap::insert(state, address, new_account);
+            }
+        }
+    }
+
+    fn patch_geth_hot_fix_chapel(
+        &self,
+        header: &Header,
+        transaction: &TransactionSigned,
+        state: &mut revm_primitives::State,
+    ) {
+        let patches = vec![
+            // patch 1: BlockNum 35547779, txIndex 196
+            (
+                b256!("1237cb09a7d08c187a78e777853b70be28a41bb188c5341987408623c1a4f4aa"),
+                b256!("7ce9a3cf77108fcc85c1e84e88e363e3335eca515dfcf2feb2011729878b13a7"),
+                address!("89791428868131eb109e42340ad01eb8987526b2"),
+                HashMap::from([(
+                    U256::from_str(
+                        "0xf1e9242398de526b8dd9c25d38e65fbb01926b8940377762d7884b8b0dcdc3b0",
+                    )
+                    .unwrap(),
+                    U256::from_str(
+                        "0x0000000000000000000000000000000000000000000000f6a7831804efd2cd0a",
+                    )
+                    .unwrap(),
+                )]),
+            ),
+            // patch 2: BlockNum 35548081, txIndex 486
+            (
+                b256!("cdd38b3681c8f3f1da5569a893231466ab35f47d58ba85dbd7d9217f304983bf"),
+                b256!("e3895eb95605d6b43ceec7876e6ff5d1c903e572bf83a08675cb684c047a695c"),
+                address!("89791428868131eb109e42340ad01eb8987526b2"),
+                HashMap::from([(
+                    U256::from_str(
+                        "0xf1e9242398de526b8dd9c25d38e65fbb01926b8940377762d7884b8b0dcdc3b0",
+                    )
+                    .unwrap(),
+                    U256::from_str(
+                        "0x0000000000000000000000000000000000000000000000114be8ecea72b64003",
+                    )
+                    .unwrap(),
+                )]),
+            ),
+        ];
+
+        for (block_hash, tx_hash, address, storage) in patches {
+            if header.hash_slow() == block_hash && transaction.recalculate_hash() == tx_hash {
+                let account = state.get(&address).unwrap();
+                let mut new_account = account.clone();
+                for (k, v) in storage {
+                    for (&index, slot) in &account.storage {
+                        if index == k {
+                            let mut slot = slot.clone();
+                            slot.present_value = v;
+                            new_account.storage.insert(index, slot);
+                        }
+                    }
+                }
+                HashMap::insert(state, address, new_account);
+            }
+        }
     }
 }
 
@@ -335,17 +741,21 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
-    ) -> Result<(Vec<Receipt>, u64), BlockExecutionError> {
-        // 1. prepare state on new block
-        self.on_new_block(&block.header)?;
+    ) -> Result<(Vec<Receipt>, u64, Option<Snapshot>), BlockExecutionError> {
+        // 1. get parent header and snapshot
+        let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
+        let ref snap = self.snapshot(parent, None)?;
 
-        // 2. configure the evm and execute normal transactions
+        // 2. prepare state on new block
+        self.on_new_block(&block.header, parent, snap)?;
+
+        // 3. configure the evm and execute normal transactions
         let env = self.evm_env_for_block(&block.header, total_difficulty);
 
-        if !self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
-            let _parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
+        if !self.parlia.is_feynman(block.timestamp) {
+            let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
-            todo!()
+            self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
         }
 
         let (mut system_txs, mut receipts, mut gas_used) = {
@@ -353,8 +763,16 @@ where
             self.executor.execute_pre_and_transactions(block, evm)
         }?;
 
-        // 3. apply post execution changes
-        self.post_execution(block, &mut system_txs, &mut receipts, &mut gas_used, env.clone())?;
+        // 4. apply post execution changes
+        self.post_execution(
+            block,
+            parent,
+            snap,
+            &mut system_txs,
+            &mut receipts,
+            &mut gas_used,
+            env.clone(),
+        )?;
 
         // Check if gas used matches the value set in header.
         if block.gas_used != gas_used {
@@ -381,34 +799,41 @@ where
             };
         }
 
-        Ok((receipts, gas_used))
+        if snap.block_number % CHECKPOINT_INTERVAL == 0 {
+            return Ok((receipts, gas_used, Some(snap.clone())));
+        }
+
+        Ok((receipts, gas_used, None))
     }
 
     /// Apply settings and verify headers before a new block is executed.
-    pub(crate) fn on_new_block(&mut self, header: &Header) -> Result<(), BlockExecutionError> {
+    pub(crate) fn on_new_block(
+        &mut self,
+        header: &Header,
+        parent: &Header,
+        snap: &Snapshot,
+    ) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
         let state_clear_flag = self.chain_spec().is_spurious_dragon_active_at_block(header.number);
         self.state.set_state_clear_flag(state_clear_flag);
 
-        self.verify_cascading_fields(header)
+        self.verify_cascading_fields(header, parent, snap)
     }
 
     /// Apply post execution state changes, including system txs and other state change.
     pub fn post_execution(
         &mut self,
         block: &BlockWithSenders,
+        parent: &Header,
+        snap: &Snapshot,
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
-        // evm: &mut Evm<'_, Ext, &mut State<DB>>,
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let number = block.number;
         let validator = block.beneficiary;
         let header = &block.header;
-
-        let ref parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
-        let ref snap = self.snapshot(header, Some(parent))?;
 
         //TODO: isMajorityFork ?
 
@@ -424,9 +849,10 @@ where
             )?;
         }
 
-        if self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(block.timestamp) {
+        if self.parlia.is_feynman(block.timestamp) {
+            let parent = self.get_header_by_hash(block.number - 1, block.parent_hash)?;
             // apply system contract upgrade
-            todo!()
+            self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
         }
 
         if self.parlia.is_on_feynman(block.timestamp, parent.timestamp) {
@@ -443,7 +869,7 @@ where
         if block.difficulty != DIFF_INTURN {
             let spoiled_val = snap.inturn_validator();
             let signed_recently: bool;
-            if self.parlia.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+            if self.parlia.is_plato(number) {
                 signed_recently = snap.sign_recently(spoiled_val);
             } else {
                 signed_recently = snap
@@ -468,7 +894,7 @@ where
 
         self.distribute_incoming(header, system_txs, receipts, cumulative_gas_used, env.clone())?;
 
-        if self.parlia.chain_spec().fork(Hardfork::Plato).active_at_block(number) {
+        if self.parlia.is_plato(number) {
             self.distribute_finality_reward(
                 header,
                 system_txs,
@@ -479,7 +905,7 @@ where
         }
 
         // update validator set after Feynman upgrade
-        if self.parlia.chain_spec().fork(Hardfork::Feynman).active_at_timestamp(header.timestamp) &&
+        if self.parlia.is_feynman(header.timestamp) &&
             is_breathe_block(parent.timestamp, header.timestamp)
         {
             if !self.parlia.is_on_feynman(header.timestamp, parent.timestamp) {
@@ -494,20 +920,18 @@ where
         }
 
         if !system_txs.is_empty() {
-            return Err(BscBlockExecutionError::UnexpectedSystemTx.into())
+            return Err(BscBlockExecutionError::UnexpectedSystemTx.into());
         }
 
         Ok(())
     }
 
-    fn verify_cascading_fields(&self, header: &Header) -> Result<(), BlockExecutionError> {
-        if header.number == 0 {
-            return Ok(());
-        }
-
-        let ref parent = self.get_header_by_hash(header.number - 1, header.parent_hash)?;
-        let ref snap = self.snapshot(header, Some(parent))?;
-
+    fn verify_cascading_fields(
+        &self,
+        header: &Header,
+        parent: &Header,
+        snap: &Snapshot,
+    ) -> Result<(), BlockExecutionError> {
         self.verify_block_time_for_ramanujan(snap, header, parent)?;
         self.verify_vote_attestation(snap, header, parent)?;
         self.verify_seal(snap, header)?;
@@ -521,7 +945,7 @@ where
         header: &Header,
         parent: &Header,
     ) -> Result<(), BlockExecutionError> {
-        if self.parlia.chain_spec().fork(Hardfork::Ramanujan).active_at_block(header.number) {
+        if self.parlia.is_ramanujan(header.number) {
             if header.timestamp <
                 parent.timestamp +
                     self.parlia.period() +
@@ -633,7 +1057,7 @@ where
             return match err {
                 BLST_ERROR::BLST_SUCCESS => Ok(()),
                 _ => Err(BscBlockExecutionError::BLSTInnerError.into()),
-            }
+            };
         }
 
         Ok(())
@@ -663,7 +1087,7 @@ where
                 // out
                 let limit =
                     self.parlia.get_recently_proposal_limit(header, snap.validators.len() as u64);
-                if *seen > block_number - limit {
+                if block_number < limit || *seen > block_number - limit {
                     return Err(BscBlockExecutionError::SignerOverLimit { proposer }.into());
                 }
             }
@@ -755,29 +1179,34 @@ where
         // apply skip headers
         skip_headers.reverse();
         for header in skip_headers.iter() {
+            let (new_validators, bls_keys) = if header.number > 0 &&
+                header.number % self.parlia.epoch() == (snap.validators.len() / 2) as u64
+            {
+                // change validator set
+                let checkpoint_header =
+                    self.find_ancient_header(header, (snap.validators.len() / 2) as u64)?;
+
+                self.parlia.parse_validators_from_header(&checkpoint_header).map_err(|err| {
+                    BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
+                })?
+            } else {
+                (Vec::new(), None)
+            };
+
             let validator = self.parlia.recover_proposer(header).map_err(|err| {
                 BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
             })?;
-            let (next_validators, bls_keys) =
-                self.parlia.parse_validators_from_header(header).map_err(|err| {
-                    BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
-                })?;
             let attestation =
                 self.parlia.get_vote_attestation_from_header(header).map_err(|err| {
                     BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
                 })?;
+
             snap = snap
-                .apply(validator, header, next_validators, bls_keys, attestation)
+                .apply(validator, header, new_validators, bls_keys, attestation)
                 .ok_or_else(|| BscBlockExecutionError::ApplySnapshotFailed)?;
         }
 
         cache.put(snap.block_hash, snap.clone());
-        if snap.block_number % CHECKPOINT_INTERVAL == 0 {
-            self.provider
-                .save_parlia_snapshot(snap.block_hash, snap.clone())
-                .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?;
-        }
-
         Ok(snap)
     }
 
@@ -791,7 +1220,8 @@ where
             if snap.block_number - snap.vote_data.target_number > NATURALLY_JUSTIFIED_DIST {
                 return self.find_ancient_header(header, NATURALLY_JUSTIFIED_DIST);
             }
-            return self.get_header_by_hash(snap.vote_data.target_number, snap.vote_data.target_hash)
+            return self
+                .get_header_by_hash(snap.vote_data.target_number, snap.vote_data.target_hash);
         }
 
         // If there is no vote justified block, then return root block or naturally justified block.
@@ -836,7 +1266,7 @@ where
             Ok(header)
         } else {
             Err(BscBlockExecutionError::UnknownHeader { block_number, hash }.into())
-        }
+        };
     }
 
     fn verify_validators(
@@ -845,34 +1275,37 @@ where
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         let number = header.number;
+        if number % self.parlia().epoch() != 0 {
+            return Ok(())
+        };
+
         let (mut validators, mut vote_addrs_map) = self.get_current_validators(number, env.clone());
-
         validators.sort();
+
         let validator_num = validators.len();
-        let validator_bytes =
-            if self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
-                let mut validator_bytes = Vec::new();
-                for v in validators {
-                    validator_bytes.extend_from_slice(v.as_ref());
-                }
+        let validator_bytes = if !self.parlia.is_luban(number) {
+            let mut validator_bytes = Vec::new();
+            for v in validators {
+                validator_bytes.extend_from_slice(v.as_ref());
+            }
 
-                validator_bytes
-            } else {
-                if self.parlia.is_on_luban(number) {
-                    vote_addrs_map = Vec::with_capacity(validator_num);
-                    for _ in 0..validator_num {
-                        vote_addrs_map.push(VoteAddress::default());
-                    }
+            validator_bytes
+        } else {
+            if self.parlia.is_on_luban(number) {
+                vote_addrs_map = Vec::with_capacity(validator_num);
+                for _ in 0..validator_num {
+                    vote_addrs_map.push(VoteAddress::default());
                 }
+            }
 
-                let mut validator_bytes = Vec::new();
-                for i in 0..validator_num {
-                    validator_bytes.extend_from_slice(validators[i].as_ref());
-                    validator_bytes.extend_from_slice(vote_addrs_map[i].as_ref());
-                }
+            let mut validator_bytes = Vec::new();
+            for i in 0..validator_num {
+                validator_bytes.extend_from_slice(validators[i].as_ref());
+                validator_bytes.extend_from_slice(vote_addrs_map[i].as_ref());
+            }
 
-                validator_bytes
-            };
+            validator_bytes
+        };
 
         if !validator_bytes.as_slice().eq(self
             .parlia
@@ -880,7 +1313,7 @@ where
             .unwrap()
             .as_slice())
         {
-            return Err(BscBlockExecutionError::InvalidValidators.into())
+            return Err(BscBlockExecutionError::InvalidValidators.into());
         }
 
         Ok(())
@@ -891,7 +1324,7 @@ where
         number: BlockNumber,
         env: EnvWithHandlerCfg,
     ) -> (Vec<Address>, Vec<VoteAddress>) {
-        if self.parlia.chain_spec().fork(Hardfork::Luban).active_at_block(number) {
+        if !self.parlia.is_luban(number) {
             let (to, data) = self.parlia.get_current_validators_before_luban(number);
             let output = self.eth_call(to, data, env.clone()).unwrap();
 
@@ -981,20 +1414,34 @@ where
     ) -> Result<(), BlockExecutionError> {
         let validator = header.beneficiary;
 
-        let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
-        let mut block_reward = *evm.db_mut().drain_balances([SYSTEM_ADDRESS])?.first().unwrap();
+        let system_account = self
+            .state
+            .load_cache_account(SYSTEM_ADDRESS)
+            .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?;
+        if system_account.status == AccountStatus::LoadedNotExisting ||
+            system_account.status == AccountStatus::DestroyedAgain
+        {
+            return Ok(());
+        }
+        let (mut block_reward, transition) = system_account.drain_balance();
+        if let Some(s) = self.state.transition_state.as_mut() {
+            s.add_transitions(vec![(SYSTEM_ADDRESS, transition)]);
+        }
+        if block_reward == 0 {
+            return Ok(());
+        }
+
         let mut balance_increment = HashMap::new();
         balance_increment.insert(validator, block_reward);
-        evm.db_mut()
+        self.state
             .increment_balances(balance_increment)
             .map_err(|_| BlockValidationError::IncrementBalanceFailed)?;
 
         let system_reward_balance =
-            evm.db_mut().basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap().balance;
-        drop(evm);
+            self.state.basic(*SYSTEM_REWARD_CONTRACT).unwrap().unwrap_or_default().balance;
 
-        if !self.parlia.chain_spec().fork(Hardfork::Kepler).active_at_timestamp(header.timestamp) {
-            if system_reward_balance > U256::from(MAX_SYSTEM_REWARD) {
+        if !self.parlia.is_kepler(header.timestamp) {
+            if system_reward_balance < U256::from(MAX_SYSTEM_REWARD) {
                 let reward_to_system = block_reward >> SYSTEM_REWARD_PERCENT;
                 if reward_to_system > 0 {
                     self.transact_system_tx(
@@ -1032,7 +1479,7 @@ where
         env: EnvWithHandlerCfg,
     ) -> Result<(), BlockExecutionError> {
         if header.number % self.parlia.epoch() != 0 {
-            return Ok(())
+            return Ok(());
         }
 
         let validator = header.beneficiary;
@@ -1050,7 +1497,11 @@ where
                     attestation.data.target_number,
                     attestation.data.target_hash,
                 )?;
-                let snap = self.snapshot(&justified_header, None)?;
+                let parent = self.get_header_by_hash(
+                    justified_header.number - 1,
+                    justified_header.parent_hash,
+                )?;
+                let snap = self.snapshot(&parent, None)?;
                 let validators = &snap.validators;
                 let validators_bit_set = BitSet::from_u64(attestation.vote_address_set);
                 if validators_bit_set.count() as usize > validators.len() {
@@ -1135,6 +1586,40 @@ where
         Ok(())
     }
 
+    /// Upgrade system contracts based on the hardfork rules.
+    fn upgrade_system_contracts(
+        &mut self,
+        block_number: BlockNumber,
+        block_time: u64,
+        parent_block_time: u64,
+    ) -> Result<bool, BscBlockExecutionError> {
+        if let Ok(contracts) = get_upgrade_system_contracts(
+            &self.parlia.chain_spec(),
+            block_number,
+            block_time,
+            parent_block_time,
+        ) {
+            for (k, v) in contracts {
+                let account = self.state.load_cache_account(k).map_err(|err| {
+                    BscBlockExecutionError::ProviderInnerError { error: err.into() }
+                })?;
+
+                let mut new_info = account.account_info().unwrap_or_default();
+                new_info.code_hash = v.clone().unwrap().hash_slow();
+                new_info.code = v;
+                let transition = account.change(new_info, HashMap::new());
+
+                if let Some(s) = self.state.transition_state.as_mut() {
+                    s.add_transitions(vec![(k, transition)]);
+                }
+            }
+
+            Ok(true)
+        } else {
+            Err(BscBlockExecutionError::SystemContractUpgradeError)
+        }
+    }
+
     fn eth_call(
         &mut self,
         to: Address,
@@ -1171,7 +1656,7 @@ where
         })?;
 
         if !result.is_success() {
-            return Err(BscBlockExecutionError::EthCallFailed.into())
+            return Err(BscBlockExecutionError::EthCallFailed.into());
         }
 
         let output = result.output().ok_or_else(|| BscBlockExecutionError::EthCallFailed)?;
@@ -1189,7 +1674,7 @@ where
     ) -> Result<(), BlockExecutionError> {
         let mut evm = self.executor.evm_config.evm_with_env(&mut self.state, env);
 
-        let nonce = evm.db_mut().basic(sender).unwrap().unwrap().nonce;
+        let nonce = evm.db_mut().basic(sender).unwrap().unwrap_or_default().nonce;
         transaction.set_nonce(nonce);
         let hash = transaction.signature_hash();
         if hash != system_txs[0].signature_hash() {
@@ -1244,6 +1729,7 @@ where
         Ok(())
     }
 }
+
 impl<EvmConfig, DB, P> Executor<DB> for BscBlockExecutor<EvmConfig, DB, P>
 where
     EvmConfig: ConfigureEvm,
@@ -1263,12 +1749,12 @@ where
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
         let BlockExecutionInput { block, total_difficulty } = input;
-        let (receipts, gas_used) = self.execute_and_verify(block, total_difficulty)?;
+        let (receipts, gas_used, snapshot) = self.execute_and_verify(block, total_difficulty)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
 
-        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, gas_used })
+        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, gas_used, snapshot })
     }
 }
 
@@ -1282,6 +1768,7 @@ pub struct BscBatchExecutor<EvmConfig, DB, P> {
     /// Keeps track of the batch and record receipts based on the configured prune mode
     batch_record: BlockBatchRecord,
     stats: BlockExecutorStats,
+    snapshots: Vec<Snapshot>,
 }
 
 impl<EvmConfig, DB, P> BscBatchExecutor<EvmConfig, DB, P> {
@@ -1309,14 +1796,26 @@ where
 
     fn execute_one(&mut self, input: Self::Input<'_>) -> Result<(), Self::Error> {
         let BlockExecutionInput { block, total_difficulty } = input;
-        let (receipts, _gas_used) = self.executor.execute_and_verify(block, total_difficulty)?;
+        let execute_start = Instant::now();
+        let (receipts, _gas_used, snapshot) =
+            self.executor.execute_and_verify(block, total_difficulty)?;
+        self.stats.execution_duration += execute_start.elapsed();
 
         // prepare the state according to the prune mode
+        let merge_start = Instant::now();
         let retention = self.batch_record.bundle_retention(block.number);
         self.executor.state.merge_transitions(retention);
+        self.stats.merge_transitions_duration += merge_start.elapsed();
 
         // store receipts in the set
+        let receipts_start = Instant::now();
         self.batch_record.save_receipts(receipts)?;
+        self.stats.receipt_root_duration += receipts_start.elapsed();
+
+        // store snapshot
+        if let Some(snapshot) = snapshot {
+            self.snapshots.push(snapshot);
+        }
 
         if self.batch_record.first_block().is_none() {
             self.batch_record.set_first_block(block.number);
@@ -1332,6 +1831,7 @@ where
             self.executor.state.take_bundle(),
             self.batch_record.take_receipts(),
             self.batch_record.first_block().unwrap_or_default(),
+            self.snapshots,
         )
     }
 

@@ -14,7 +14,7 @@ use reth_primitives::{
 };
 use reth_revm::{inspector_handle_register, Database, Evm, EvmBuilder, GetInspector};
 
-mod execute;
+pub mod execute;
 pub use execute::*;
 
 mod error;
@@ -50,6 +50,9 @@ impl ConfigureEvmEnv for BscEvmConfig {
 
         cfg_env.chain_id = chain_spec.chain().id();
         cfg_env.perf_analyse_created_bytecodes = AnalysisKind::Analyse;
+
+        // TODO: remove it later, system eth_call will fail
+        cfg_env.disable_block_gas_limit = true;
 
         cfg_env.handler_cfg.spec_id = spec_id;
         cfg_env.handler_cfg.is_bsc = chain_spec.is_bsc();

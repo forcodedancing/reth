@@ -6666,7 +6666,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9554e3ab233f0a932403704f1a1d08c30d5ccd931adfdfa1e8b5a19b52c1d55a"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.60",
@@ -7722,6 +7722,7 @@ version = "0.2.0-beta.7"
 dependencies = [
  "futures-util",
  "parking_lot 0.12.2",
+ "reth-db",
  "reth-interfaces",
  "reth-primitives",
  "revm",
@@ -7744,7 +7745,6 @@ dependencies = [
  "reth-primitives",
  "reth-provider",
  "reth-revm",
- "revm",
  "revm-primitives",
  "thiserror",
  "tracing",
@@ -8049,12 +8049,12 @@ dependencies = [
  "futures-util",
  "reth",
  "reth-basic-payload-builder",
+ "reth-bsc-consensus",
  "reth-db",
  "reth-e2e-test-utils",
  "reth-ethereum-engine-primitives",
  "reth-ethereum-payload-builder",
  "reth-evm-bsc",
- "reth-evm-ethereum",
  "reth-exex",
  "reth-network",
  "reth-node-api",
@@ -8082,6 +8082,7 @@ dependencies = [
  "reth-auto-seal-consensus",
  "reth-beacon-consensus",
  "reth-blockchain-tree",
+ "reth-bsc-consensus",
  "reth-config",
  "reth-consensus",
  "reth-db",
@@ -8636,7 +8637,6 @@ version = "0.2.0-beta.7"
 dependencies = [
  "alloy-rlp",
  "assert_matches",
- "cfg-if",
  "criterion",
  "futures-util",
  "itertools 0.12.1",
@@ -8852,7 +8852,7 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "8.0.0"
-source = "git+https://github.com/bnb-chain/revm.git?rev=d99a54e461d6e6506fc6707ed1d2547915bbf943#d99a54e461d6e6506fc6707ed1d2547915bbf943"
+source = "git+https://github.com/bnb-chain/revm.git?rev=a5e76448cfa36a03762cbf91bd5a5040c2f49f17#a5e76448cfa36a03762cbf91bd5a5040c2f49f17"
 dependencies = [
  "auto_impl",
  "cfg-if",
@@ -8884,7 +8884,7 @@ dependencies = [
 [[package]]
 name = "revm-interpreter"
 version = "4.0.0"
-source = "git+https://github.com/bnb-chain/revm.git?rev=d99a54e461d6e6506fc6707ed1d2547915bbf943#d99a54e461d6e6506fc6707ed1d2547915bbf943"
+source = "git+https://github.com/bnb-chain/revm.git?rev=a5e76448cfa36a03762cbf91bd5a5040c2f49f17#a5e76448cfa36a03762cbf91bd5a5040c2f49f17"
 dependencies = [
  "revm-primitives",
  "serde",
@@ -8893,7 +8893,7 @@ dependencies = [
 [[package]]
 name = "revm-precompile"
 version = "6.0.0"
-source = "git+https://github.com/bnb-chain/revm.git?rev=d99a54e461d6e6506fc6707ed1d2547915bbf943#d99a54e461d6e6506fc6707ed1d2547915bbf943"
+source = "git+https://github.com/bnb-chain/revm.git?rev=a5e76448cfa36a03762cbf91bd5a5040c2f49f17#a5e76448cfa36a03762cbf91bd5a5040c2f49f17"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -8919,7 +8919,7 @@ dependencies = [
 [[package]]
 name = "revm-primitives"
 version = "3.1.1"
-source = "git+https://github.com/bnb-chain/revm.git?rev=d99a54e461d6e6506fc6707ed1d2547915bbf943#d99a54e461d6e6506fc6707ed1d2547915bbf943"
+source = "git+https://github.com/bnb-chain/revm.git?rev=a5e76448cfa36a03762cbf91bd5a5040c2f49f17#a5e76448cfa36a03762cbf91bd5a5040c2f49f17"
 dependencies = [
  "alloy-primitives",
  "auto_impl",

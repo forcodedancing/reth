@@ -490,17 +490,23 @@ where
     fn on_peer_message(&mut self, peer_id: PeerId, msg: PeerMessage) {
         match msg {
             PeerMessage::NewBlockHashes(hashes) => {
-                self.within_pow_or_disconnect(peer_id, |this| {
-                    // update peer's state, to track what blocks this peer has seen
-                    this.swarm.state_mut().on_new_block_hashes(peer_id, hashes.0)
-                })
+                #[cfg(not(feature = "bsc"))]
+                {
+                    self.within_pow_or_disconnect(peer_id, |this| {
+                        // update peer's state, to track what blocks this peer has seen
+                        this.swarm.state_mut().on_new_block_hashes(peer_id, hashes.0)
+                    });
+                }
             }
             PeerMessage::NewBlock(block) => {
-                self.within_pow_or_disconnect(peer_id, move |this| {
-                    this.swarm.state_mut().on_new_block(peer_id, block.hash);
-                    // start block import process
-                    this.block_import.on_new_block(peer_id, block);
-                });
+                #[cfg(not(feature = "bsc"))]
+                {
+                    self.within_pow_or_disconnect(peer_id, move |this| {
+                        this.swarm.state_mut().on_new_block(peer_id, block.hash);
+                        // start block import process
+                        this.block_import.on_new_block(peer_id, block);
+                    });
+                }
             }
             PeerMessage::PooledTransactions(msg) => {
                 self.notify_tx_manager(NetworkTransactionEvent::IncomingPooledTransactionHashes {

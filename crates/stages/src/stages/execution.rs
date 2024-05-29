@@ -11,12 +11,7 @@ use reth_primitives::{
     },
     BlockNumber, Header, PruneModes, StaticFileSegment,
 };
-use reth_provider::{
-    providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
-    BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider,
-    LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriter, StatsReader,
-    TransactionVariant,
-};
+use reth_provider::{providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter}, BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider, LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriter, StatsReader, TransactionVariant, ParliaSnapshotWriter};
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
     BlockErrorKind, ExecInput, ExecOutput, MetricEvent, MetricEventsSender, Stage, StageError,
@@ -183,13 +178,7 @@ where
             provider.tx_ref(),
             provider.static_file_provider().clone(),
         ));
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "bsc")] {
-                let mut executor = self.executor_provider.batch_executor_with_provider_rw(db, prune_modes, provider);
-            } else {
-                let mut executor = self.executor_provider.batch_executor(db, prune_modes);
-            }
-        }
+        let mut executor = self.executor_provider.batch_executor(db, prune_modes);
         executor.set_tip(max_block);
 
         // Progress tracking
@@ -204,19 +193,6 @@ where
         // Execute block range
         let mut cumulative_gas = 0;
         let batch_start = Instant::now();
-
-        // TODO bsc
-        // let mut parent_block_timestamp = 0u64;
-        // // get parent block timestamp for execution
-        // if start_block > 0 {
-        //     let parent_block_number = start_block - 1 as u64;
-        //     let parent_header = match static_file_provider.header_by_number(parent_block_number) {
-        //         Ok(Some(header)) => header,
-        //         _ => return Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.into()))),
-        //     };
-        //     parent_block_timestamp = parent_header.timestamp;
-        // }
-
 
         let mut blocks = Vec::new();
         for block_number in start_block..=max_block {
@@ -257,10 +233,6 @@ where
             stage_progress = block_number;
             stage_checkpoint.progress.processed += block.gas_used;
 
-            // TODO bsc
-            // // Update parent block timestamp for next block
-            // parent_block_timestamp = block.header.timestamp;
-
             // If we have ExEx's we need to save the block in memory for later
             if self.exex_manager_handle.has_exexs() {
                 blocks.push(block);
@@ -278,7 +250,8 @@ where
             }
         }
         let time = Instant::now();
-        let BatchBlockExecutionOutput { bundle, receipts, first_block } = executor.finalize();
+        let BatchBlockExecutionOutput { bundle, receipts, first_block, snapshots } =
+            executor.finalize();
         let state = BundleStateWithReceipts::new(bundle, receipts, first_block);
         let write_preparation_duration = time.elapsed();
 
@@ -308,6 +281,9 @@ where
             static_file_producer,
             OriginalValuesKnown::Yes,
         )?;
+        for snap in snapshots {
+            provider.save_parlia_snapshot(snap)?;
+        }
         let db_write_duration = time.elapsed();
         debug!(
             target: "sync::stages::execution",

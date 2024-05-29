@@ -1,5 +1,5 @@
 use crate::{
-    constants::{EIP1559_INITIAL_BASE_FEE, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
+    constants::{EIP1559_INITIAL_BASE_FEE, EIP1559_INITIAL_BASE_FEE_FOR_BSC, EMPTY_RECEIPTS, EMPTY_TRANSACTIONS, EMPTY_WITHDRAWALS},
     holesky_nodes,
     net::{goerli_nodes, mainnet_nodes, sepolia_nodes},
     proofs::state_root_ref_unhashed,
@@ -27,7 +27,6 @@ pub(crate) use crate::{
     net::{base_nodes, base_testnet_nodes, op_nodes, op_testnet_nodes},
 };
 
-
 #[cfg(feature = "bsc")]
 pub(crate) use crate::{
     net::{bsc_mainnet_nodes, bsc_testnet_nodes},
@@ -47,7 +46,6 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
             (Hardfork::Homestead, ForkCondition::Block(0)),
-            (Hardfork::Dao, ForkCondition::Block(0)),
             (Hardfork::Tangerine, ForkCondition::Block(0)),
             (Hardfork::SpuriousDragon, ForkCondition::Block(0)),
             (Hardfork::Byzantium, ForkCondition::Block(0)),
@@ -69,14 +67,15 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Berlin, ForkCondition::Block(31302048)),
             (Hardfork::London, ForkCondition::Block(31302048)),
             (Hardfork::Hertz, ForkCondition::Block(31302048)),
-            (Hardfork::Hertzfix, ForkCondition::Block(34140700)),
+            (Hardfork::HertzFix, ForkCondition::Block(34140700)),
             (Hardfork::Shanghai, ForkCondition::Timestamp(1705996800)),
             (Hardfork::Kepler, ForkCondition::Timestamp(1705996800)),
             (Hardfork::Feynman, ForkCondition::Timestamp(1713419340)),
             (Hardfork::FeynmanFix, ForkCondition::Timestamp(1713419340)),
+            (Hardfork::Cancun, ForkCondition::Timestamp(1718863500)),
         ]),
         deposit_contract: None,
-        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
+        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::new(1, 1)),
         prune_delete_limit: 3500,
     }
         .into()
@@ -86,7 +85,7 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
 #[cfg(feature = "bsc")]
 pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     ChainSpec {
-        chain: Chain::from_named(NamedChain::BinanceSmartChain),
+        chain: Chain::from_named(NamedChain::BinanceSmartChainTestnet),
         genesis: serde_json::from_str(include_str!("../../res/genesis/bsc_testnet.json"))
             .expect("Can't deserialize BSC Testnet genesis json"),
         genesis_hash: Some(b256!(
@@ -96,7 +95,6 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         hardforks: BTreeMap::from([
             (Hardfork::Frontier, ForkCondition::Block(0)),
             (Hardfork::Homestead, ForkCondition::Block(0)),
-            (Hardfork::Dao, ForkCondition::Block(0)),
             (Hardfork::Tangerine, ForkCondition::Block(0)),
             (Hardfork::SpuriousDragon, ForkCondition::Block(0)),
             (Hardfork::Byzantium, ForkCondition::Block(0)),
@@ -118,7 +116,7 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Berlin, ForkCondition::Block(31103030)),
             (Hardfork::London, ForkCondition::Block(31103030)),
             (Hardfork::Hertz, ForkCondition::Block(31103030)),
-            (Hardfork::Hertzfix, ForkCondition::Block(35682300)),
+            (Hardfork::HertzFix, ForkCondition::Block(35682300)),
             (Hardfork::Shanghai, ForkCondition::Timestamp(1702972800)),
             (Hardfork::Kepler, ForkCondition::Timestamp(1702972800)),
             (Hardfork::Feynman, ForkCondition::Timestamp(1710136800)),
@@ -126,12 +124,11 @@ pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
             (Hardfork::Cancun, ForkCondition::Timestamp(1713330442)),
         ]),
         deposit_contract: None,
-        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
+        base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::new(1, 1)),
         prune_delete_limit: 3500,
     }
         .into()
 });
-
 
 /// The Ethereum mainnet spec
 pub static MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
@@ -677,15 +674,14 @@ impl ChainSpec {
     /// Returns `true` if this chain contains Bsc configuration.
     #[inline]
     pub fn is_bsc(&self) -> bool {
-        // TODO: self.chain.is_bsc()
-        self.chain.is_optimism()
+        self.chain == Chain::from_named(NamedChain::BinanceSmartChain) ||
+            self.chain == Chain::from_named(NamedChain::BinanceSmartChainTestnet)
     }
 
     /// Returns `true` if this chain is Bsc mainnet.
     #[inline]
     pub fn is_bsc_mainnet(&self) -> bool {
-        // TODO: self.chain == Chain::bsc_mainnet()
-        self.chain == Chain::optimism_mainnet()
+        self.chain == Chain::from_named(NamedChain::BinanceSmartChain)
     }
 
     /// Returns `true` if this chain contains Optimism configuration.
@@ -764,8 +760,11 @@ impl ChainSpec {
     /// Get the initial base fee of the genesis block.
     pub fn initial_base_fee(&self) -> Option<u64> {
         // If the base fee is set in the genesis block, we use that instead of the default.
-        let genesis_base_fee =
-            self.genesis.base_fee_per_gas.map(|fee| fee as u64).unwrap_or(EIP1559_INITIAL_BASE_FEE);
+        let genesis_base_fee = if self.is_bsc() {
+            EIP1559_INITIAL_BASE_FEE_FOR_BSC
+        } else {
+            self.genesis.base_fee_per_gas.map(|fee| fee as u64).unwrap_or(EIP1559_INITIAL_BASE_FEE)
+        };
 
         // If London is activated at genesis, we set the initial base fee as per EIP-1559.
         self.fork(Hardfork::London).active_at_block(0).then_some(genesis_base_fee)
@@ -1656,7 +1655,7 @@ impl Display for DisplayHardforks {
         format(
             "Pre-merge hard forks (block based)",
             &self.pre_merge,
-            self.with_merge.is_empty(),
+            self.with_merge.is_empty() && self.post_merge.is_empty(),
             f,
         )?;
 

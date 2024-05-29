@@ -13,5 +13,5 @@ pub trait ParliaSnapshotReader: Send + Sync {
 #[auto_impl::auto_impl(&, Arc)]
 pub trait ParliaSnapshotWriter: Send + Sync {
     /// Save snapshot.
-    fn save_parlia_snapshot(&self, block_hash: B256, snapshot: Snapshot) -> ProviderResult<()>;
+    fn save_parlia_snapshot(&self, snapshot: Snapshot) -> ProviderResult<()>;
 }

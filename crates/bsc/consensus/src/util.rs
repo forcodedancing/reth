@@ -4,9 +4,7 @@ use reth_primitives::{
 };
 
 use crate::EXTRA_SEAL_LEN;
-use alloy_json_abi::JsonAbi;
 use alloy_rlp::Encodable;
-use serde_json::Error;
 use std::str::FromStr;
 
 lazy_static! {
@@ -19,8 +17,8 @@ lazy_static! {
     pub static ref RELAYER_INCENTIVIZE_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000001005").unwrap();
     pub static ref RELAYER_HUB_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000001006").unwrap();
     pub static ref GOV_HUB_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000001007").unwrap();
-    pub static ref CROSS_CHAIN_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000001008").unwrap();
-    pub static ref TOKEN_MANAGER_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000002000").unwrap();
+    pub static ref TOKEN_MANAGER_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000001008").unwrap();
+    pub static ref CROSS_CHAIN_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000002000").unwrap();
     pub static ref STAKING_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000002001").unwrap();
     pub static ref STAKE_HUB_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000002002").unwrap();
     pub static ref STAKE_CREDIT_CONTRACT: Address =  Address::from_str("0x0000000000000000000000000000000000002003").unwrap();
@@ -60,9 +58,12 @@ pub fn is_breathe_block(last_block_time: u64, block_time: u64) -> bool {
     last_block_time != 0 && !is_same_day_in_utc(last_block_time, block_time)
 }
 
-pub fn is_system_transaction(tx: &TransactionSigned, header: &Header) -> bool {
+pub fn is_system_transaction(tx: &TransactionSigned, sender: Address, header: &Header) -> bool {
     if let Some(to) = tx.to() {
-        if to == header.beneficiary && is_invoke_system_contract(&to) && tx.max_fee_per_gas() == 0 {
+        if sender == header.beneficiary &&
+            is_invoke_system_contract(&to) &&
+            tx.max_fee_per_gas() == 0
+        {
             return true;
         }
     }
@@ -73,12 +74,6 @@ pub fn is_system_transaction(tx: &TransactionSigned, header: &Header) -> bool {
 /// whether the contract is system or not
 pub fn is_invoke_system_contract(addr: &Address) -> bool {
     SYSTEM_CONTRACTS.contains(addr)
-}
-
-pub fn load_abi_from_file(path: &str) -> Result<JsonAbi, Error> {
-    let json = std::fs::read_to_string(path).unwrap();
-    let abi: JsonAbi = serde_json::from_str(&json)?;
-    Ok(abi)
 }
 
 pub fn hash_with_chain_id(header: &Header, chain_id: u64) -> B256 {

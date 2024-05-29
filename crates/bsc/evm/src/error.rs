@@ -147,6 +147,10 @@ pub enum BscBlockExecutionError {
         #[source]
         error: Box<ParliaConsensusError>,
     },
+
+    /// Error when failed to execute system contract upgrade
+    #[error("system contract upgrade error")]
+    SystemContractUpgradeError,
 }
 
 impl From<BscBlockExecutionError> for BlockExecutionError {
