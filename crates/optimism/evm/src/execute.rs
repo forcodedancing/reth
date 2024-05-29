@@ -392,7 +392,7 @@ where
                     governance_token_contract_address,
                     BundleAccount{
                         info: None,
-                        original_info: governance_token_contract_account.account_info().clone(),
+                        original_info: None,
                         storage: HashMap::new(),
                         status: BundleAccountStatus::Destroyed
                     }
