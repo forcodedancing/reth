@@ -263,8 +263,11 @@ impl PendingBlockEnv {
             parent_beacon_block_root,
         };
 
+        // TODO: add sidecars
+        let sidecars = None;
+
         // seal the block
-        let block = Block { header, body: executed_txs, ommers: vec![], withdrawals };
+        let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, sidecars };
         Ok(SealedBlockWithSenders { block: block.seal_slow(), senders })
     }
 }

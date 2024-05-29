@@ -201,6 +201,7 @@ where
                                 body: transactions,
                                 ommers,
                                 withdrawals,
+                                sidecars: None
                             };
                             let sealed_block = block.seal_slow();
 

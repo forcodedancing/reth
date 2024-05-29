@@ -788,7 +788,7 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
             }
 
             blocks.push(SealedBlockWithSenders {
-                block: SealedBlock { header, body, ommers, withdrawals },
+                block: SealedBlock { header, body, ommers, withdrawals, sidecars: None },
                 senders,
             })
         }
@@ -1384,7 +1384,13 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                     None => return Ok(None),
                 };
 
-                return Ok(Some(Block { header, body: transactions, ommers, withdrawals }))
+                return Ok(Some(Block {
+                    header,
+                    body: transactions,
+                    ommers,
+                    withdrawals,
+                    sidecars: None,
+                }))
             }
         }
 
@@ -1470,7 +1476,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
             })
             .collect();
 
-        Block { header, body, ommers, withdrawals }
+        Block { header, body, ommers, withdrawals, sidecars: None }
             // Note: we're using unchecked here because we know the block contains valid txs wrt to
             // its height and can ignore the s value check so pre EIP-2 txs are allowed
             .try_with_senders_unchecked(senders)
@@ -1489,7 +1495,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                     .map(Into::into)
                     .collect()
             };
-            Ok(Block { header, body, ommers, withdrawals })
+            Ok(Block { header, body, ommers, withdrawals, sidecars: None })
         })
     }
 
@@ -1532,7 +1538,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                 (body, senders)
             };
 
-            Block { header, body, ommers, withdrawals }
+            Block { header, body, ommers, withdrawals, sidecars: None }
                 .try_with_senders_unchecked(senders)
                 .map_err(|_| ProviderError::SenderRecoveryError)
         })
@@ -1605,8 +1611,6 @@ impl<TX: DbTx> TransactionsProviderExt for DatabaseProvider<TX> {
         )
     }
 }
-
-/// Calculates the hash of the given transaction
 
 impl<TX: DbTx> TransactionsProvider for DatabaseProvider<TX> {
     fn transaction_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {

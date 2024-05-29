@@ -162,10 +162,12 @@ where
 
         for hash in request.0 {
             if let Some(block) = self.client.block_by_hash(hash).unwrap_or_default() {
+                // TODO: get sidecars
                 let body = BlockBody {
                     transactions: block.body,
                     ommers: block.ommers,
                     withdrawals: block.withdrawals,
+                    sidecars: None,
                 };
 
                 total_bytes += body.length();
