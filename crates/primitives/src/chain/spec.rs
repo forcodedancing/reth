@@ -966,12 +966,13 @@ impl ChainSpec {
             cond.as_timestamp().filter(|time| time > &self.genesis.timestamp)
         }) {
             let cond = ForkCondition::Timestamp(timestamp);
-            if cond.active_at_head(head) {
-                // Skip Fermat hardfork for opbnb
-                if timestamp == 1698991506 || timestamp == 1701151200 {
-                    continue;
-                }
 
+            // Skip Fermat hardfork for opbnb
+            if timestamp == 1698991506 || timestamp == 1701151200 {
+                continue;
+            }
+
+            if cond.active_at_head(head) {
                 if timestamp != current_applied {
                     forkhash += timestamp;
                     current_applied = timestamp;
