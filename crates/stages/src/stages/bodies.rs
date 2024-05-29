@@ -13,6 +13,7 @@ use reth_db::{
     tables,
     transaction::DbTxMut,
 };
+use reth_db::models::StoredBlockSidecars;
 use reth_interfaces::{
     p2p::bodies::{downloader::BodyDownloader, response::BlockResponse},
     provider::ProviderResult,
@@ -238,6 +239,14 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
                                 .append(block_number, StoredBlockWithdrawals { withdrawals })?;
                         }
                     }
+
+                    // Write sidecars if any
+                    if let Some(sidecars) = block.sidecars {
+                        if !sidecars.is_empty() {
+                            sidecars_cursor
+                                .append(block_number, StoredBlockSidecars { sidecars })?;
+                        }
+                    }
                 }
                 BlockResponse::Empty(_) => {}
             };
@@ -273,6 +282,7 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
         let mut body_cursor = tx.cursor_write::<tables::BlockBodyIndices>()?;
         let mut ommers_cursor = tx.cursor_write::<tables::BlockOmmers>()?;
         let mut withdrawals_cursor = tx.cursor_write::<tables::BlockWithdrawals>()?;
+        let mut sidecars_cursor = tx.cursor_write::<tables::BlockSidecars>()?;
         // Cursors to unwind transitions
         let mut tx_block_cursor = tx.cursor_write::<tables::TransactionBlocks>()?;
 
@@ -290,6 +300,11 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
             // Delete the withdrawals entry if any
             if withdrawals_cursor.seek_exact(number)?.is_some() {
                 withdrawals_cursor.delete_current()?;
+            }
+
+            // Delete the sidecars entry if any
+            if sidecars_cursor.seek_exact(number)?.is_some() {
+                sidecars_cursor.delete_current()?;
             }
 
             // Delete all transaction to block values.

@@ -1,8 +1,12 @@
 //! Block related models and types.
 
+use crate::table::{Compress, Decompress};
+use bytes::BufMut;
 use reth_codecs::{main_codec, Compact};
-use reth_primitives::{Header, TxNumber, Withdrawals, B256};
+use reth_interfaces::db::DatabaseError;
+use reth_primitives::{BlobSidecar, BlobSidecars, Header, TxNumber, Withdrawals, B256};
 use std::ops::Range;
+use crate::models::parlia::Snapshot;
 
 /// Total number of transactions.
 pub type NumTransactions = u64;
@@ -81,6 +85,33 @@ pub struct StoredBlockOmmers {
 pub struct StoredBlockWithdrawals {
     /// The block withdrawals.
     pub withdrawals: Withdrawals,
+}
+
+/// The storage representation of block sidecars.
+#[main_codec]
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct StoredBlockSidecars {
+    /// The block sidecars.
+    pub sidecars: BlobSidecars,
+}
+
+impl Compress for StoredBlockSidecars {
+    type Compressed = Vec<u8>;
+
+    fn compress(self) -> Self::Compressed {
+        serde_cbor::to_vec(&self).expect("Failed to serialize StoredBlockSidecars")
+    }
+
+    fn compress_to_buf<B: BufMut + AsMut<[u8]>>(self, buf: &mut B) {
+        let compressed = self.compress();
+        buf.put_slice(&compressed);
+    }
+}
+
+impl Decompress for StoredBlockSidecars {
+    fn decompress<B: AsRef<[u8]>>(value: B) -> Result<Self, DatabaseError> {
+        serde_cbor::from_slice(value.as_ref()).map_err(|_| DatabaseError::Decode)
+    }
 }
 
 /// Hash of the block header. Value for [`CanonicalHeaders`][crate::tables::CanonicalHeaders]

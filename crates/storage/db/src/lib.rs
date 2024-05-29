@@ -72,6 +72,7 @@ pub mod static_file;
 pub mod tables;
 mod utils;
 pub mod version;
+pub mod blob_storage;
 
 #[cfg(feature = "mdbx")]
 /// Bindings for [MDBX](https://libmdbx.dqdkfa.ru/).

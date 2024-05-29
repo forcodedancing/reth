@@ -9,9 +9,9 @@ use crate::{
     Chain, EvmEnvProvider, HashingWriter, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider,
     HeaderSyncMode, HistoricalStateProvider, HistoryWriter, LatestStateProvider,
     OriginalValuesKnown, ParliaSnapshotReader, ParliaSnapshotWriter, ProviderError,
-    PruneCheckpointReader, PruneCheckpointWriter, StageCheckpointReader, StateProviderBox,
-    StateWriter, StatsReader, StorageReader, TransactionVariant, TransactionsProvider,
-    TransactionsProviderExt, WithdrawalsProvider,
+    PruneCheckpointReader, PruneCheckpointWriter, SidecarsProvider, StageCheckpointReader,
+    StateProviderBox, StateWriter, StatsReader, StorageReader, TransactionVariant,
+    TransactionsProvider, TransactionsProviderExt, WithdrawalsProvider,
 };
 use itertools::{izip, Itertools};
 use reth_db::{
@@ -27,6 +27,7 @@ use reth_db::{
     tables,
     transaction::{DbTx, DbTxMut},
     BlockNumberList, DatabaseError,
+    Tables::BlockSidecars,
 };
 use reth_evm::ConfigureEvmEnv;
 use reth_interfaces::{
@@ -39,11 +40,12 @@ use reth_primitives::{
     revm::{config::revm_spec, env::fill_block_env},
     stage::{StageCheckpoint, StageId},
     trie::Nibbles,
-    Account, Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders,
-    ChainInfo, ChainSpec, GotExpected, Head, Header, PruneCheckpoint, PruneLimiter, PruneModes,
-    PruneSegment, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment,
-    StorageEntry, TransactionMeta, TransactionSigned, TransactionSignedEcRecovered,
-    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, Withdrawals, B256, U256,
+    Account, Address, BlobSidecars, Block, BlockHash, BlockHashOrNumber, BlockNumber,
+    BlockWithSenders, ChainInfo, ChainSpec, GotExpected, Head, Header, PruneCheckpoint,
+    PruneLimiter, PruneModes, PruneSegment, Receipt, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, StaticFileSegment, StorageEntry, TransactionMeta, TransactionSigned,
+    TransactionSignedEcRecovered, TransactionSignedNoHash, TxHash, TxNumber, Withdrawal,
+    Withdrawals, B256, U256,
 };
 use reth_trie::{
     prefix_set::{PrefixSet, PrefixSetMut, TriePrefixSets},
@@ -729,6 +731,7 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
         let block_ommers = self.get_or_take::<tables::BlockOmmers, TAKE>(range.clone())?;
         let block_withdrawals =
             self.get_or_take::<tables::BlockWithdrawals, TAKE>(range.clone())?;
+        let block_sidecars = self.get_or_take::<tables::BlockSidecars, TAKE>(range.clone())?;
 
         let block_tx = self.get_take_block_transaction_range::<TAKE>(range.clone())?;
 
@@ -752,8 +755,10 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
         // Ommers can be empty for some blocks
         let mut block_ommers_iter = block_ommers.into_iter();
         let mut block_withdrawals_iter = block_withdrawals.into_iter();
+        let mut block_sidecars_iter = block_sidecars.into_iter();
         let mut block_ommers = block_ommers_iter.next();
         let mut block_withdrawals = block_withdrawals_iter.next();
+        let mut block_sidecars = block_sidecars_iter.next();
 
         let mut blocks = Vec::new();
         for ((main_block_number, header), (_, header_hash), (_, tx)) in
@@ -787,8 +792,22 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
                 withdrawals = None
             }
 
+            // sidecars can be missing
+            let cancun_is_active = self.chain_spec.is_cancun_active_at_timestamp(header.timestamp);
+            let mut sidecars = Some(BlobSidecars::default());
+            if cancun_is_active {
+                if let Some((block_number, _)) = block_sidecars.as_ref() {
+                    if *block_number == main_block_number {
+                        sidecars = Some(block_sidecars.take().unwrap().1.sidecars);
+                        block_sidecars = block_sidecars_iter.next();
+                    }
+                }
+            } else {
+                sidecars = None
+            }
+
             blocks.push(SealedBlockWithSenders {
-                block: SealedBlock { header, body, ommers, withdrawals },
+                block: SealedBlock { header, body, ommers, withdrawals, sidecars },
                 senders,
             })
         }
@@ -1837,6 +1856,28 @@ impl<TX: DbTx> WithdrawalsProvider for DatabaseProvider<TX> {
         let latest_block_withdrawal = self.tx.cursor_read::<tables::BlockWithdrawals>()?.last()?;
         Ok(latest_block_withdrawal
             .and_then(|(_, mut block_withdrawal)| block_withdrawal.withdrawals.pop()))
+    }
+}
+
+impl<TX: DbTx> SidecarsProvider for DatabaseProvider<TX> {
+    fn sidecars_by_block(
+        &self,
+        id: BlockHashOrNumber,
+        timestamp: u64,
+    ) -> ProviderResult<Option<BlobSidecars>> {
+        if self.chain_spec.is_cancun_active_at_timestamp(timestamp) {
+            if let Some(number) = self.convert_hash_or_number(id)? {
+                // If we are past shanghai, then all blocks should have a withdrawal list, even if
+                // empty
+                let sidecars = self
+                    .tx
+                    .get::<tables::BlockSidecars>(number)
+                    .map(|s| s.map(|s| s.sidecars))?
+                    .unwrap_or_default();
+                return Ok(Some(sidecars))
+            }
+        }
+        Ok(None)
     }
 }
 

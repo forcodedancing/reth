@@ -38,13 +38,9 @@ use crate::{
         },
     },
 };
-use reth_primitives::{
-    stage::StageCheckpoint,
-    trie::{StorageTrieEntry, StoredBranchNode, StoredNibbles, StoredNibblesSubKey},
-    Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, PruneCheckpoint,
-    PruneSegment, Receipt, StorageEntry, TransactionSignedNoHash, TxHash, TxNumber, B256,
-};
+use reth_primitives::{stage::StageCheckpoint, trie::{StorageTrieEntry, StoredBranchNode, StoredNibbles, StoredNibblesSubKey}, Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, PruneCheckpoint, PruneSegment, Receipt, StorageEntry, TransactionSignedNoHash, TxHash, TxNumber, B256, BlobSidecars};
 use std::fmt;
+use crate::models::StoredBlockSidecars;
 
 /// Enum for the types of tables present in libmdbx.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -267,6 +263,9 @@ tables! {
 
     /// Stores the block withdrawals.
     table BlockWithdrawals<Key = BlockNumber, Value = StoredBlockWithdrawals>;
+
+    /// Stores the block sidecars.
+    table BlockSidecars<Key = BlockNumber, Value = StoredBlockSidecars>;
 
     /// Canonical only Stores the transaction body for canonical transactions.
     table Transactions<Key = TxNumber, Value = TransactionSignedNoHash>;

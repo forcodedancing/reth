@@ -48,6 +48,9 @@ pub use transactions::{TransactionsProvider, TransactionsProviderExt};
 mod withdrawals;
 pub use withdrawals::WithdrawalsProvider;
 
+mod sidecars;
+pub use sidecars::SidecarsProvider;
+
 mod chain;
 pub use chain::{
     CanonStateNotification, CanonStateNotificationSender, CanonStateNotificationStream,
@@ -85,7 +88,7 @@ mod tree_viewer;
 pub use tree_viewer::TreeViewer;
 
 mod parlia_snapshot;
+pub use parlia_snapshot::{ParliaSnapshotReader, ParliaSnapshotWriter};
+
 mod parlia_provider;
 pub use parlia_provider::ParliaProvider;
-
-pub use parlia_snapshot::{ParliaSnapshotReader, ParliaSnapshotWriter};

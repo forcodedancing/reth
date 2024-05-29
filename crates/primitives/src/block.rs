@@ -1,5 +1,5 @@
 use crate::{
-    Address, Bytes, GotExpected, Header, SealedHeader, TransactionSigned,
+    Address, BlobSidecars, Bytes, GotExpected, Header, SealedHeader, TransactionSigned,
     TransactionSignedEcRecovered, Withdrawals, B256,
 };
 use alloy_rlp::{RlpDecodable, RlpEncodable};
@@ -45,6 +45,14 @@ pub struct Block {
         proptest(strategy = "proptest::option::of(proptest::arbitrary::any::<Withdrawals>())")
     )]
     pub withdrawals: Option<Withdrawals>,
+
+    // only for bsc
+    /// Tx sidecars for the block.
+    #[cfg_attr(
+        any(test, feature = "arbitrary"),
+        proptest(strategy = "proptest::option::of(proptest::arbitrary::any::<BlobSidecars>())")
+    )]
+    pub sidecars: Option<BlobSidecars>,
 }
 
 impl Block {
@@ -55,6 +63,7 @@ impl Block {
             body: self.body,
             ommers: self.ommers,
             withdrawals: self.withdrawals,
+            sidecars: self.sidecars,
         }
     }
 
@@ -67,6 +76,7 @@ impl Block {
             body: self.body,
             ommers: self.ommers,
             withdrawals: self.withdrawals,
+            sidecars: self.sidecars,
         }
     }
 
@@ -188,6 +198,7 @@ impl TryFrom<alloy_rpc_types::Block> for Block {
             body,
             ommers: Default::default(),
             withdrawals: block.withdrawals.map(Into::into),
+            sidecars: block.other.map(Into::into),
         })
     }
 }
@@ -302,14 +313,22 @@ pub struct SealedBlock {
         proptest(strategy = "proptest::option::of(proptest::arbitrary::any::<Withdrawals>())")
     )]
     pub withdrawals: Option<Withdrawals>,
+
+    // only for bsc
+    /// Tx sidecars for the block.
+    #[cfg_attr(
+        any(test, feature = "arbitrary"),
+        proptest(strategy = "proptest::option::of(proptest::arbitrary::any::<BlobSidecars>())")
+    )]
+    pub sidecars: Option<BlobSidecars>,
 }
 
 impl SealedBlock {
     /// Create a new sealed block instance using the sealed header and block body.
     #[inline]
     pub fn new(header: SealedHeader, body: BlockBody) -> Self {
-        let BlockBody { transactions, ommers, withdrawals } = body;
-        Self { header, body: transactions, ommers, withdrawals }
+        let BlockBody { transactions, ommers, withdrawals, sidecars } = body;
+        Self { header, body: transactions, ommers, withdrawals, sidecars }
     }
 
     /// Header hash.
@@ -333,6 +352,7 @@ impl SealedBlock {
                 transactions: self.body,
                 ommers: self.ommers,
                 withdrawals: self.withdrawals,
+                sidecars: self.sidecars,
             },
         )
     }
@@ -388,6 +408,7 @@ impl SealedBlock {
             body: self.body,
             ommers: self.ommers,
             withdrawals: self.withdrawals,
+            sidecars: self.sidecars,
         }
     }
 
@@ -559,6 +580,10 @@ pub struct BlockBody {
     pub ommers: Vec<Header>,
     /// Withdrawals in the block.
     pub withdrawals: Option<Withdrawals>,
+
+    // only for bsc
+    /// Tx sidecars for the block.
+    pub sidecars: Option<BlobSidecars>,
 }
 
 impl BlockBody {
@@ -569,6 +594,7 @@ impl BlockBody {
             body: self.transactions.clone(),
             ommers: self.ommers.clone(),
             withdrawals: self.withdrawals.clone(),
+            sidecars: self.sidecars.clone(),
         }
     }
 
@@ -597,13 +623,21 @@ impl BlockBody {
             self.ommers.capacity() * std::mem::size_of::<Header>() +
             self.withdrawals
                 .as_ref()
-                .map_or(std::mem::size_of::<Option<Withdrawals>>(), Withdrawals::total_size)
+                .map_or(std::mem::size_of::<Option<Withdrawals>>(), Withdrawals::total_size) +
+            self.sidecars
+                .as_ref()
+                .map_or(std::mem::size_of::<Option<BlobSidecars>>(), BlobSidecars::total_size)
     }
 }
 
 impl From<Block> for BlockBody {
     fn from(block: Block) -> Self {
-        Self { transactions: block.body, ommers: block.ommers, withdrawals: block.withdrawals }
+        Self {
+            transactions: block.body,
+            ommers: block.ommers,
+            withdrawals: block.withdrawals,
+            sidecars: None,
+        }
     }
 }
 

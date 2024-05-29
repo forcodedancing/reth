@@ -42,6 +42,8 @@ derive_more.workspace = true
 eyre.workspace = true
 paste.workspace = true
 rustc-hash.workspace = true
+snap = "1.1.1"
+byteorder = "1.5.0"
 
 # arbitrary utils
 arbitrary = { workspace = true, features = ["derive"], optional = true }
