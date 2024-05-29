@@ -357,6 +357,7 @@ where
 
         #[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
+            info!("Execute PreContractFork");
             // WBNBContract WBNB preDeploy contract address
             let w_bnb_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
