@@ -355,6 +355,7 @@ where
             block.withdrawals.as_ref().map(Withdrawals::as_ref),
         );
 
+        info!("Execute PreContractFork Pre-Check");
         #[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             info!("Execute PreContractFork");
