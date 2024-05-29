@@ -68,3 +68,8 @@ optimism = [
     "reth-optimism-payload-builder/optimism",
     "reth-beacon-consensus/optimism",
 ]
+
+opbnb = [
+    "reth-primitives/opbnb",
+    "revm-primitives/opbnb"
+]
