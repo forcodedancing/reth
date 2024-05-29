@@ -366,26 +366,12 @@ where
             // GovernanceToken contract address
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
-            // touch in cache
-            let governance_token_contract_account = self.state_mut().load_cache_account(governance_token_contract_address).unwrap();
-            // insert wBNB contract with storage
-            self.state_mut().insert_account_with_storage(
-                w_bnb_contract_address,
-                AccountInfo::default(),
-                HashMap::from([
-                    // nameSlot { Name: "Wrapped BNB" }
-                    (U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(), U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap()),
-                    // symbolSlot { Symbol: "wBNB" }
-                    (U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(), U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap())
-                ]),
-            );
-            let state_changed = HashMap::from([
-                // insert wBNB contract with storage
+            self.state.bundle_state.extend_state(HashMap::from([
                 (
                     w_bnb_contract_address,
-                    Account {
-                        status: AccountStatus::Touched | AccountStatus::Created,
-                        info: AccountInfo::default(),
+                    BundleAccount{
+                        info: AccountInfo::default().into(),
+                        original_info: AccountInfo::default().into(),
                         storage: HashMap::from([
                             // nameSlot { Name: "Wrapped BNB" }
                             (
@@ -398,20 +384,19 @@ where
                                 StorageSlot { present_value: U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(), ..Default::default() },
                             ),
                         ]),
-                    },
+                        status: BundleAccountStatus:: Changed,
+                    }
                 ),
-                // destruct the governance token contract
                 (
                     governance_token_contract_address,
-                    Account {
-                        status: AccountStatus::Touched | AccountStatus::SelfDestructed,
-                        info: governance_token_contract_account.account_info().unwrap(),
+                    BundleAccount{
+                        info: None,
+                        original_info: None,
                         storage: HashMap::new(),
-                    },
-                ),
-            ]);
-
-            self.state_mut().commit(state_changed);
+                        status: BundleAccountStatus::Destroyed
+                    }
+                )
+            ]));
         }
 
         // increment balances
