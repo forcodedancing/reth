@@ -58,7 +58,7 @@ pub fn try_payload_v1_to_block(payload: ExecutionPayloadV1) -> Result<Block, Pay
         nonce: Default::default(),
     };
 
-    Ok(Block { header, body: transactions, withdrawals: None, ommers: Default::default() })
+    Ok(Block { header, body: transactions, withdrawals: None, ommers: Default::default(), sidecars: None })
 }
 
 /// Converts [ExecutionPayloadV2] to [Block]

@@ -125,15 +125,21 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
         let tx = provider.tx_ref();
         let mut block_indices_cursor = tx.cursor_write::<tables::BlockBodyIndices>()?;
         let mut tx_block_cursor = tx.cursor_write::<tables::TransactionBlocks>()?;
+        let mut sidecar_block_cursor = tx.cursor_write::<tables::SidecarBlocks>()?;
         let mut ommers_cursor = tx.cursor_write::<tables::BlockOmmers>()?;
         let mut withdrawals_cursor = tx.cursor_write::<tables::BlockWithdrawals>()?;
 
         // Get id for the next tx_num of zero if there are no transactions.
         let mut next_tx_num = tx_block_cursor.last()?.map(|(id, _)| id + 1).unwrap_or_default();
 
+        // Get id for the next sidecar_num of zero if there are no sidecars.
+        let mut next_sidecar_num = sidecar_block_cursor.last()?.map(|(id, _)| id + 1).unwrap_or_default();
+
         let static_file_provider = provider.static_file_provider();
-        let mut static_file_producer =
+        let mut static_file_producer_tx =
             static_file_provider.get_writer(from_block, StaticFileSegment::Transactions)?;
+        let mut static_file_producer_sidecar =
+            static_file_provider.get_writer(from_block, StaticFileSegment::Sidecars)?;
 
         // Make sure Transactions static file is at the same height. If it's further, this
         // input execution was interrupted previously and we need to unwind the static file.
@@ -147,11 +153,11 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
             // stage run. So, our only solution is to unwind the static files and proceed from the
             // database expected height.
             Ordering::Greater => {
-                static_file_producer
+                static_file_producer_tx
                     .prune_transactions(next_static_file_tx_num - next_tx_num, from_block - 1)?;
                 // Since this is a database <-> static file inconsistency, we commit the change
                 // straight away.
-                static_file_producer.commit()?;
+                static_file_producer_tx.commit()?;
             }
             // If static files are behind, then there was some corruption or loss of files. This
             // error will trigger an unwind, that will bring the database to the same height as the
@@ -159,6 +165,37 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
             Ordering::Less => {
                 return Err(missing_static_data_error(
                     next_static_file_tx_num.saturating_sub(1),
+                    static_file_provider,
+                    provider,
+                )?)
+            }
+            Ordering::Equal => {}
+        }
+
+        // Make sure Sidecars static file is at the same height. If it's further, this
+        // input execution was interrupted previously and we need to unwind the static file.
+        let next_static_file_sidecar_num = static_file_provider
+            .get_highest_static_file_sidecar(StaticFileSegment::Sidecars)
+            .map(|id| id + 1)
+            .unwrap_or_default();
+
+        match next_static_file_sidecar_num.cmp(&next_sidecar_num) {
+            // If static files are ahead, then we didn't reach the database commit in a previous
+            // stage run. So, our only solution is to unwind the static files and proceed from the
+            // database expected height.
+            Ordering::Greater => {
+                static_file_producer_sidecar
+                    .prune_transactions(next_static_file_sidecar_num - next_sidecar_num, from_block - 1)?;
+                // Since this is a database <-> static file inconsistency, we commit the change
+                // straight away.
+                static_file_producer_sidecar.commit()?;
+            }
+            // If static files are behind, then there was some corruption or loss of files. This
+            // error will trigger an unwind, that will bring the database to the same height as the
+            // static files.
+            Ordering::Less => {
+                return Err(missing_static_data_error(
+                    next_static_file_sidecar_num.saturating_sub(1),
                     static_file_provider,
                     provider,
                 )?)
@@ -181,11 +218,16 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
                     BlockResponse::Full(block) => block.body.len() as u64,
                     BlockResponse::Empty(_) => 0,
                 },
+                first_sidecar_num: next_sidecar_num,
+                sidecar_count: match &response {
+                    BlockResponse::Full(block) => block.sidecars.clone().map(|s| s.len() as u64).unwrap_or_default(),
+                    BlockResponse::Empty(_) => 0,
+                },
             };
 
             // Increment block on static file header.
             if block_number > 0 {
-                let appended_block_number = static_file_producer
+                let appended_block_number = static_file_producer_tx
                     .increment_block(StaticFileSegment::Transactions, block_number)?;
 
                 if appended_block_number != block_number {
@@ -208,7 +250,7 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
 
                     // Write transactions
                     for transaction in block.body {
-                        let appended_tx_number = static_file_producer
+                        let appended_tx_number = static_file_producer_tx
                             .append_transaction(next_tx_num, transaction.into())?;
 
                         if appended_tx_number != next_tx_num {
@@ -236,6 +278,27 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
                         if !withdrawals.is_empty() {
                             withdrawals_cursor
                                 .append(block_number, StoredBlockWithdrawals { withdrawals })?;
+                        }
+                    }
+
+                    // Write sidecars if any
+                    if let Some(sidecars) = block.sidecars {
+                        for sidecar in sidecars {
+                            let appended_sidecar_number = static_file_producer_sidecar
+                                .append_sidecar(next_sidecar_num, sidecar.into())?;
+
+                            if appended_sidecar_number != next_sidecar_num {
+                                // This scenario indicates a critical error in the logic of adding new
+                                // items. It should be treated as an `expect()` failure.
+                                return Err(StageError::InconsistentSidecarNumber {
+                                    segment: StaticFileSegment::Sidecars,
+                                    database: next_sidecar_num,
+                                    static_file: appended_sidecar_number,
+                                })
+                            }
+
+                            // Increment sidecar id for each sidecar.
+                            next_sidecar_num += 1;
                         }
                     }
                 }
@@ -273,8 +336,9 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
         let mut body_cursor = tx.cursor_write::<tables::BlockBodyIndices>()?;
         let mut ommers_cursor = tx.cursor_write::<tables::BlockOmmers>()?;
         let mut withdrawals_cursor = tx.cursor_write::<tables::BlockWithdrawals>()?;
-        // Cursors to unwind transitions
+        // Cursors to unwind transitions and sidecars
         let mut tx_block_cursor = tx.cursor_write::<tables::TransactionBlocks>()?;
+        let mut sidecar_block_cursor = tx.cursor_write::<tables::SidecarBlocks>()?;
 
         let mut rev_walker = body_cursor.walk_back(None)?;
         while let Some((number, block_meta)) = rev_walker.next().transpose()? {
@@ -293,18 +357,24 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
             }
 
             // Delete all transaction to block values.
-            if !block_meta.is_empty() &&
-                tx_block_cursor.seek_exact(block_meta.last_tx_num())?.is_some()
+            if !block_meta.is_empty()
             {
-                tx_block_cursor.delete_current()?;
+                if tx_block_cursor.seek_exact(block_meta.last_tx_num())?.is_some() {
+                    tx_block_cursor.delete_current()?;
+                }
+                if sidecar_block_cursor.seek_exact(block_meta.last_sidecar_num())?.is_some() {
+                    sidecar_block_cursor.delete_current()?;
+                }
             }
 
             // Delete the current body value
             rev_walker.delete_current()?;
         }
 
-        let mut static_file_producer =
+        let mut static_file_producer_tx =
             static_file_provider.latest_writer(StaticFileSegment::Transactions)?;
+        let mut static_file_producer_sidecar =
+            static_file_provider.latest_writer(StaticFileSegment::Sidecars)?;
 
         // Unwind from static files. Get the current last expected transaction from DB, and match it
         // on static file
@@ -313,10 +383,13 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
         let static_file_tx_num: u64 = static_file_provider
             .get_highest_static_file_tx(StaticFileSegment::Transactions)
             .unwrap_or_default();
+        let static_file_sidecar_num: u64 = static_file_provider
+            .get_highest_static_file_sidecar(StaticFileSegment::Sidecars)
+            .unwrap_or_default();
 
-        // If there are more transactions on database, then we are missing static file data and we
+        // If there are more transactions or sidecars on database, then we are missing static file data and we
         // need to unwind further.
-        if db_tx_num > static_file_tx_num {
+        if db_tx_num > static_file_tx_num || db_tx_num > static_file_sidecar_num {
             return Err(missing_static_data_error(
                 static_file_tx_num,
                 static_file_provider,
@@ -325,8 +398,10 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
         }
 
         // Unwinds static file
-        static_file_producer
+        static_file_producer_tx
             .prune_transactions(static_file_tx_num.saturating_sub(db_tx_num), input.unwind_to)?;
+        static_file_producer_sidecar
+            .prune_sidecars(static_file_sidecar_num.saturating_sub(db_tx_num), input.unwind_to)?;
 
         Ok(UnwindOutput {
             checkpoint: StageCheckpoint::new(input.unwind_to)
@@ -663,6 +738,7 @@ mod tests {
                     transactions: block.body.clone(),
                     ommers: block.ommers.clone(),
                     withdrawals: block.withdrawals.clone(),
+                    sidecars: block.sidecars.clone(),
                 },
             )
         }
@@ -730,6 +806,8 @@ mod tests {
                         let body = StoredBlockBodyIndices {
                             first_tx_num: 0,
                             tx_count: progress.body.len() as u64,
+                            first_sidecar_num: 0,
+                            sidecar_count: progress.sidecars.clone().map(|s| s.len() as u64).unwrap_or_default(),
                         };
 
                         static_file_producer.set_block_range(0..=progress.number);
@@ -941,6 +1019,7 @@ mod tests {
                             body: body.transactions,
                             ommers: body.ommers,
                             withdrawals: body.withdrawals,
+                            sidecars: body.sidecars,
                         }));
                     }
 

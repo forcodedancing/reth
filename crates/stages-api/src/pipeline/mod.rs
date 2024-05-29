@@ -267,6 +267,7 @@ where
                 headers: stages_checkpoints[0],
                 receipts: stages_checkpoints[1],
                 transactions: stages_checkpoints[2],
+                sidecars: stages_checkpoints[2],
             })?;
             static_file_producer.run(targets)?;
             stages_checkpoints.into_iter().min().expect("exists")

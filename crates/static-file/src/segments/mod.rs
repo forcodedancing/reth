@@ -9,6 +9,9 @@ pub use headers::Headers;
 mod receipts;
 pub use receipts::Receipts;
 
+mod sidecars;
+pub use sidecars::Sidecars;
+
 use reth_db::{
     cursor::DbCursorRO, database::Database, table::Table, transaction::DbTx, RawKey, RawTable,
 };
@@ -22,7 +25,8 @@ use reth_primitives::{
     BlockNumber, StaticFileSegment,
 };
 use reth_provider::{
-    providers::StaticFileProvider, DatabaseProviderRO, ProviderError, TransactionsProviderExt,
+    providers::StaticFileProvider, DatabaseProviderRO, ProviderError, SidecarsProviderExt,
+    TransactionsProviderExt,
 };
 use std::{ops::RangeInclusive, path::Path};
 
@@ -65,16 +69,30 @@ pub(crate) fn prepare_jar<DB: Database, const COLUMNS: usize>(
     prepare_compression: impl Fn() -> ProviderResult<Rows<COLUMNS>>,
 ) -> ProviderResult<NippyJar<SegmentHeader>> {
     let tx_range = match segment {
-        StaticFileSegment::Headers => None,
+        StaticFileSegment::Headers | StaticFileSegment::Sidecars => None,
         StaticFileSegment::Receipts | StaticFileSegment::Transactions => {
             Some(provider.transaction_range_by_block_range(block_range.clone())?.into())
+        }
+    };
+    let sidecar_range = match segment {
+        StaticFileSegment::Headers |
+        StaticFileSegment::Transactions |
+        StaticFileSegment::Receipts => None,
+        StaticFileSegment::Sidecars => {
+            Some(provider.sidecar_range_by_block_range(block_range.clone())?.into())
         }
     };
 
     let mut nippy_jar = NippyJar::new(
         COLUMNS,
         &directory.as_ref().join(segment.filename(&find_fixed_range(*block_range.end())).as_str()),
-        SegmentHeader::new(block_range.clone().into(), Some(block_range.into()), tx_range, segment),
+        SegmentHeader::new(
+            block_range.clone().into(),
+            Some(block_range.into()),
+            tx_range,
+            sidecar_range,
+            segment,
+        ),
     );
 
     nippy_jar = match segment_config.compression {

@@ -9,8 +9,8 @@ use reth_db::{
     AccountChangeSets, AccountsHistory, AccountsTrie, BlockBodyIndices, BlockOmmers,
     BlockWithdrawals, Bytecodes, CanonicalHeaders, DatabaseEnv, HashedAccounts, HashedStorages,
     HeaderNumbers, HeaderTerminalDifficulties, Headers, ParliaSnapshot, PlainAccountState,
-    PlainStorageState, PruneCheckpoints, Receipts, StageCheckpointProgresses, StageCheckpoints,
-    StorageChangeSets, StoragesHistory, StoragesTrie, Tables, TransactionBlocks,
+    PlainStorageState, PruneCheckpoints, Receipts, Sidecars, StageCheckpointProgresses,
+    StageCheckpoints, StorageChangeSets, StoragesHistory, StoragesTrie, Tables, TransactionBlocks,
     TransactionHashNumbers, TransactionSenders, Transactions, VersionHistory,
 };
 use std::{
@@ -106,6 +106,13 @@ impl Command {
                 }
                 Tables::TransactionHashNumbers => {
                     find_diffs::<TransactionHashNumbers>(primary_tx, secondary_tx, output_dir)?
+                }
+                Tables::Sidecars => find_diffs::<Sidecars>(primary_tx, secondary_tx, output_dir)?,
+                Tables::TransactionHashSidecarNumbers => {
+                    find_diffs::<TransactionHashNumbers>(primary_tx, secondary_tx, output_dir)?
+                }
+                Tables::SidecarBlocks => {
+                    find_diffs::<TransactionBlocks>(primary_tx, secondary_tx, output_dir)?
                 }
                 Tables::Receipts => find_diffs::<Receipts>(primary_tx, secondary_tx, output_dir)?,
                 Tables::PlainAccountState => {

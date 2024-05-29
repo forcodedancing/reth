@@ -3,17 +3,18 @@ use super::{
     LoadedJarRef,
 };
 use crate::{
-    to_range, BlockHashReader, BlockNumReader, HeaderProvider, ReceiptProvider,
+    to_range, BlockHashReader, BlockNumReader, HeaderProvider, ReceiptProvider, SidecarsProvider,
     TransactionsProvider,
 };
 use reth_db::{
     codecs::CompactU256,
-    static_file::{HeaderMask, ReceiptMask, StaticFileCursor, TransactionMask},
+    static_file::{HeaderMask, ReceiptMask, SidecarMask, StaticFileCursor, TransactionMask},
 };
 use reth_interfaces::provider::{ProviderError, ProviderResult};
 use reth_primitives::{
-    Address, BlockHash, BlockHashOrNumber, BlockNumber, ChainInfo, Header, Receipt, SealedHeader,
-    TransactionMeta, TransactionSigned, TransactionSignedNoHash, TxHash, TxNumber, B256, U256,
+    Address, BlobSidecar, BlockHash, BlockHashOrNumber, BlockNumber, ChainInfo, Header, Receipt,
+    SealedHeader, TransactionMeta, TransactionSigned, TransactionSignedNoHash, TxHash, TxNumber,
+    B256, U256,
 };
 use std::{
     ops::{Deref, RangeBounds},
@@ -242,7 +243,7 @@ impl<'a> TransactionsProvider for StaticFileJarProvider<'a> {
         _block_id: BlockHashOrNumber,
     ) -> ProviderResult<Option<Vec<TransactionSigned>>> {
         // Related to indexing tables. Live database should get the tx_range and call static file
-        // provider with `transactions_by_tx_range` instead.
+        // provider with `sidecars_by_sidecar_range` instead.
         Err(ProviderError::UnsupportedProvider)
     }
 
@@ -251,7 +252,7 @@ impl<'a> TransactionsProvider for StaticFileJarProvider<'a> {
         _range: impl RangeBounds<BlockNumber>,
     ) -> ProviderResult<Vec<Vec<TransactionSigned>>> {
         // Related to indexing tables. Live database should get the tx_range and call static file
-        // provider with `transactions_by_tx_range` instead.
+        // provider with `sidecars_by_sidecar_range` instead.
         Err(ProviderError::UnsupportedProvider)
     }
 
@@ -287,6 +288,63 @@ impl<'a> TransactionsProvider for StaticFileJarProvider<'a> {
             .cursor()?
             .get_one::<TransactionMask<TransactionSignedNoHash>>(num.into())?
             .and_then(|tx| tx.recover_signer()))
+    }
+}
+
+impl<'a> SidecarsProvider for StaticFileJarProvider<'a> {
+    fn sidecar_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
+        let mut cursor = self.cursor()?;
+
+        Ok(cursor
+            .get_one::<SidecarMask<BlobSidecar>>((&tx_hash).into())?
+            .and_then(|res| (res.tx_hash == tx_hash).then(|| cursor.number()).flatten()))
+    }
+
+    fn sidecar_by_id(&self, id: TxNumber) -> ProviderResult<Option<BlobSidecar>> {
+        self.cursor()?.get_one::<SidecarMask<BlobSidecar>>(id.into())
+    }
+
+    fn sidecar_by_hash(&self, hash: TxHash) -> ProviderResult<Option<BlobSidecar>> {
+        self.cursor()?.get_one::<SidecarMask<BlobSidecar>>((&hash).into())
+    }
+
+    fn sidecar_block(&self, _id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        // Information on indexing table [`tables::SidecarBlocks`]
+        Err(ProviderError::UnsupportedProvider)
+    }
+
+    fn sidecars_by_block(
+        &self,
+        _block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<BlobSidecar>>> {
+        // Related to indexing tables. Live database should get the sidecar_range and call static
+        // file provider with `sidecars_by_sidecar_range` instead.
+        Err(ProviderError::UnsupportedProvider)
+    }
+
+    fn sidecars_by_block_range(
+        &self,
+        _range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<BlobSidecar>>> {
+        // Related to indexing tables. Live database should get the sidecar_range and call static
+        // file provider with `sidecars_by_sidecar_range` instead.
+        Err(ProviderError::UnsupportedProvider)
+    }
+
+    fn sidecars_by_sidecar_range(
+        &self,
+        range: impl RangeBounds<TxNumber>,
+    ) -> ProviderResult<Vec<BlobSidecar>> {
+        let range = to_range(range);
+        let mut cursor = self.cursor()?;
+        let mut sidecars = Vec::with_capacity((range.end - range.start) as usize);
+
+        for num in range {
+            if let Some(sidecar) = cursor.get_one::<SidecarMask<BlobSidecar>>(num.into())? {
+                sidecars.push(sidecar)
+            }
+        }
+        Ok(sidecars)
     }
 }
 

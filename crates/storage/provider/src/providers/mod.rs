@@ -3,9 +3,9 @@ use crate::{
     BlockSource, BlockchainTreePendingStateProvider, BundleStateDataProvider, CanonChainTracker,
     CanonStateNotifications, CanonStateSubscriptions, ChainSpecProvider, ChangeSetReader,
     DatabaseProviderFactory, EvmEnvProvider, HeaderProvider, ParliaSnapshotReader, ProviderError,
-    PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt, StageCheckpointReader,
-    StateProviderBox, StateProviderFactory, StaticFileProviderFactory, TransactionVariant,
-    TransactionsProvider, TreeViewer, WithdrawalsProvider,
+    PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt, SidecarsProvider,
+    StageCheckpointReader, StateProviderBox, StateProviderFactory, StaticFileProviderFactory,
+    TransactionVariant, TransactionsProvider, TreeViewer, WithdrawalsProvider,
 };
 use reth_db::{
     database::Database,
@@ -23,8 +23,8 @@ use reth_interfaces::{
 };
 use reth_primitives::{
     stage::{StageCheckpoint, StageId},
-    Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumber,
-    BlockNumberOrTag, BlockWithSenders, ChainInfo, ChainSpec, Header, PruneCheckpoint,
+    Account, Address, BlobSidecar, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumHash,
+    BlockNumber, BlockNumberOrTag, BlockWithSenders, ChainInfo, ChainSpec, Header, PruneCheckpoint,
     PruneSegment, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionMeta,
     TransactionSigned, TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, Withdrawals, B256,
     U256,
@@ -398,6 +398,48 @@ where
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
         self.database.transaction_sender(id)
+    }
+}
+
+impl<DB> SidecarsProvider for BlockchainProvider<DB>
+where
+    DB: Database,
+{
+    fn sidecar_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
+        self.database.sidecar_id(tx_hash)
+    }
+
+    fn sidecar_by_id(&self, id: TxNumber) -> ProviderResult<Option<BlobSidecar>> {
+        self.database.sidecar_by_id(id)
+    }
+
+    fn sidecar_by_hash(&self, hash: TxHash) -> ProviderResult<Option<BlobSidecar>> {
+        self.database.sidecar_by_hash(hash)
+    }
+
+    fn sidecar_block(&self, id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        self.database.sidecar_block(id)
+    }
+
+    fn sidecars_by_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<BlobSidecar>>> {
+        self.database.sidecars_by_block(block)
+    }
+
+    fn sidecars_by_block_range(
+        &self,
+        range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<BlobSidecar>>> {
+        self.database.sidecars_by_block_range(range)
+    }
+
+    fn sidecars_by_sidecar_range(
+        &self,
+        range: impl RangeBounds<TxNumber>,
+    ) -> ProviderResult<Vec<BlobSidecar>> {
+        self.database.sidecars_by_sidecar_range(range)
     }
 }
 

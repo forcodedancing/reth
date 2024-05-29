@@ -10,8 +10,8 @@ use reth_interfaces::provider::{ProviderError, ProviderResult};
 use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter};
 use reth_primitives::{
     static_file::{find_fixed_range, SegmentHeader, SegmentRangeInclusive},
-    BlockHash, BlockNumber, Header, Receipt, StaticFileSegment, TransactionSignedNoHash, TxNumber,
-    U256,
+    BlobSidecar, BlockHash, BlockNumber, Header, Receipt, StaticFileSegment,
+    TransactionSignedNoHash, TxNumber, U256,
 };
 use std::{
     path::{Path, PathBuf},
@@ -123,6 +123,9 @@ impl StaticFileProviderRW {
                 StaticFileSegment::Receipts => {
                     self.prune_receipt_data(to_delete, last_block_number.expect("should exist"))?
                 }
+                StaticFileSegment::Sidecars => {
+                    self.prune_sidecar_data(to_delete, last_block_number.expect("should exist"))?
+                }
             }
         }
 
@@ -232,7 +235,7 @@ impl StaticFileProviderRW {
                 self.data_path = data_path;
 
                 *self.writer.user_header_mut() =
-                    SegmentHeader::new(find_fixed_range(last_block + 1), None, None, segment);
+                    SegmentHeader::new(find_fixed_range(last_block + 1), None, None, None, segment);
             }
         }
 
@@ -295,6 +298,9 @@ impl StaticFileProviderRW {
                 }
                 StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
                     self.writer.user_header().tx_len().unwrap_or_default()
+                }
+                StaticFileSegment::Sidecars => {
+                    self.writer.user_header().sidecar_len().unwrap_or_default()
                 }
             };
 
@@ -385,6 +391,28 @@ impl StaticFileProviderRW {
         Ok(self.writer.user_header().tx_end().expect("qed"))
     }
 
+    /// Appends to sidecar number-based static file.
+    ///
+    /// Returns the current [`TxNumber`] as seen in the static file.
+    fn append_with_sidecar_number<V: Compact>(
+        &mut self,
+        segment: StaticFileSegment,
+        sidecar_num: TxNumber,
+        value: V,
+    ) -> ProviderResult<TxNumber> {
+        debug_assert!(self.writer.user_header().segment() == segment);
+
+        if self.writer.user_header().sidecar_range().is_none() {
+            self.writer.user_header_mut().set_sidecar_range(sidecar_num, sidecar_num);
+        } else {
+            self.writer.user_header_mut().increment_sidecar();
+        }
+
+        self.append_column(value)?;
+
+        Ok(self.writer.user_header().sidecar_end().expect("qed"))
+    }
+
     /// Appends header to static file.
     ///
     /// It **CALLS** `increment_block()` since the number of headers is equal to the number of
@@ -473,6 +501,41 @@ impl StaticFileProviderRW {
         Ok(result)
     }
 
+    /// Appends sidecar to static file.
+    pub fn append_sidecar(
+        &mut self,
+        sidecar_num: TxNumber,
+        sidecar: BlobSidecar,
+    ) -> ProviderResult<TxNumber> {
+        let start = Instant::now();
+        self.ensure_no_queued_prune()?;
+
+        let result =
+            self.append_with_sidecar_number(StaticFileSegment::Sidecars, sidecar_num, sidecar)?;
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_segment_operation(
+                StaticFileSegment::Transactions,
+                StaticFileProviderOperation::Append,
+                Some(start.elapsed()),
+            );
+        }
+
+        Ok(result)
+    }
+
+    /// Adds an instruction to prune `to_delete` sidecars during commit.
+    ///
+    /// Note: `last_block` refers to the block the unwinds ends at.
+    pub fn prune_sidecars(
+        &mut self,
+        to_delete: u64,
+        last_block: BlockNumber,
+    ) -> ProviderResult<()> {
+        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::Sidecars);
+        self.queue_prune(to_delete, Some(last_block))
+    }
+
     /// Adds an instruction to prune `to_delete`transactions during commit.
     ///
     /// Note: `last_block` refers to the block the unwinds ends at.
@@ -524,6 +587,30 @@ impl StaticFileProviderRW {
                 "Pruning should be comitted before appending or pruning more data".to_string(),
             ));
         }
+        Ok(())
+    }
+
+    /// Removes the last `to_delete` sidecars from the data file.
+    fn prune_sidecar_data(
+        &mut self,
+        to_delete: u64,
+        last_block: BlockNumber,
+    ) -> ProviderResult<()> {
+        let start = Instant::now();
+
+        let segment = StaticFileSegment::Sidecars;
+        debug_assert!(self.writer.user_header().segment() == segment);
+
+        self.truncate(segment, to_delete, Some(last_block))?;
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_segment_operation(
+                StaticFileSegment::Sidecars,
+                StaticFileProviderOperation::Prune,
+                Some(start.elapsed()),
+            );
+        }
+
         Ok(())
     }
 
@@ -634,7 +721,7 @@ fn create_jar(
     let mut jar = NippyJar::new(
         segment.columns(),
         path,
-        SegmentHeader::new(expected_block_range, None, None, segment),
+        SegmentHeader::new(expected_block_range, None, None, None, segment),
     );
 
     // Transaction and Receipt already have the compression scheme used natively in its encoding.

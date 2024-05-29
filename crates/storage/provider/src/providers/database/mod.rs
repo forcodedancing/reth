@@ -4,19 +4,19 @@ use crate::{
     traits::{BlockSource, ReceiptProvider},
     BlockHashReader, BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory,
     EvmEnvProvider, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider, HeaderSyncMode,
-    ParliaSnapshotReader, ProviderError, PruneCheckpointReader, StageCheckpointReader,
-    StateProviderBox, StaticFileProviderFactory, TransactionVariant, TransactionsProvider,
-    WithdrawalsProvider,
+    ParliaSnapshotReader, ProviderError, PruneCheckpointReader, SidecarsProvider,
+    StageCheckpointReader, StateProviderBox, StaticFileProviderFactory, TransactionVariant,
+    TransactionsProvider, WithdrawalsProvider,
 };
 use reth_db::{database::Database, init_db, models::StoredBlockBodyIndices, DatabaseEnv};
 use reth_evm::ConfigureEvmEnv;
 use reth_interfaces::{provider::ProviderResult, RethError, RethResult};
 use reth_primitives::{
     stage::{StageCheckpoint, StageId},
-    Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders, ChainInfo,
-    ChainSpec, Header, PruneCheckpoint, PruneSegment, Receipt, SealedBlock, SealedBlockWithSenders,
-    SealedHeader, StaticFileSegment, TransactionMeta, TransactionSigned, TransactionSignedNoHash,
-    TxHash, TxNumber, Withdrawal, Withdrawals, B256, U256,
+    Address, BlobSidecar, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders,
+    ChainInfo, ChainSpec, Header, PruneCheckpoint, PruneSegment, Receipt, SealedBlock,
+    SealedBlockWithSenders, SealedHeader, StaticFileSegment, TransactionMeta, TransactionSigned,
+    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, Withdrawals, B256, U256,
 };
 use revm::primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use std::{
@@ -414,6 +414,50 @@ impl<DB: Database> TransactionsProvider for ProviderFactory<DB> {
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
         self.provider()?.transaction_sender(id)
+    }
+}
+
+impl<DB: Database> SidecarsProvider for ProviderFactory<DB> {
+    fn sidecar_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
+        self.provider()?.sidecar_id(tx_hash)
+    }
+
+    fn sidecar_by_id(&self, id: TxNumber) -> ProviderResult<Option<BlobSidecar>> {
+        self.static_file_provider.get_with_static_file_or_database(
+            StaticFileSegment::Sidecars,
+            id,
+            |static_file| static_file.sidecar_by_id(id),
+            || self.provider()?.sidecar_by_id(id),
+        )
+    }
+
+    fn sidecar_by_hash(&self, hash: TxHash) -> ProviderResult<Option<BlobSidecar>> {
+        self.provider()?.sidecar_by_hash(hash)
+    }
+
+    fn sidecar_block(&self, id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        self.provider()?.sidecar_block(id)
+    }
+
+    fn sidecars_by_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<BlobSidecar>>> {
+        self.provider()?.sidecars_by_block(block)
+    }
+
+    fn sidecars_by_block_range(
+        &self,
+        range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<BlobSidecar>>> {
+        self.provider()?.sidecars_by_block_range(range)
+    }
+
+    fn sidecars_by_sidecar_range(
+        &self,
+        range: impl RangeBounds<TxNumber>,
+    ) -> ProviderResult<Vec<BlobSidecar>> {
+        self.provider()?.sidecars_by_sidecar_range(range)
     }
 }
 

@@ -96,6 +96,18 @@ pub enum StageError {
         /// Static File segment
         segment: StaticFileSegment,
     },
+    /// Unrecoverable inconsistency error related to a sidecar number in a static file segment.
+    #[error(
+        "inconsistent sidecar number for {segment}. db: {database}, static_file: {static_file}"
+    )]
+    InconsistentSidecarNumber {
+        /// Static File segment where this error was encountered.
+        segment: StaticFileSegment,
+        /// Expected database sidecar number.
+        database: TxNumber,
+        /// Expected static file sidecar number.
+        static_file: TxNumber,
+    },
     /// Unrecoverable inconsistency error related to a transaction number in a static file segment.
     #[error(
         "inconsistent transaction number for {segment}. db: {database}, static_file: {static_file}"

@@ -2,8 +2,8 @@ use crate::{
     traits::{BlockSource, ReceiptProvider},
     AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
     ChainSpecProvider, ChangeSetReader, EvmEnvProvider, HeaderProvider, ParliaSnapshotReader,
-    PruneCheckpointReader, ReceiptProviderIdExt, StageCheckpointReader, StateProvider,
-    StateProviderBox, StateProviderFactory, StateRootProvider, TransactionVariant,
+    PruneCheckpointReader, ReceiptProviderIdExt, SidecarsProvider, StageCheckpointReader,
+    StateProvider, StateProviderBox, StateProviderFactory, StateRootProvider, TransactionVariant,
     TransactionsProvider, WithdrawalsProvider,
 };
 use reth_db::models::{parlia::Snapshot, AccountBeforeTx, StoredBlockBodyIndices};
@@ -12,11 +12,11 @@ use reth_interfaces::provider::ProviderResult;
 use reth_primitives::{
     stage::{StageCheckpoint, StageId},
     trie::AccountProof,
-    Account, Address, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumber, BlockWithSenders,
-    Bytecode, ChainInfo, ChainSpec, Header, PruneCheckpoint, PruneSegment, Receipt, SealedBlock,
-    SealedBlockWithSenders, SealedHeader, StorageKey, StorageValue, TransactionMeta,
-    TransactionSigned, TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, Withdrawals, B256,
-    MAINNET, U256,
+    Account, Address, BlobSidecar, Block, BlockHash, BlockHashOrNumber, BlockId, BlockNumber,
+    BlockWithSenders, Bytecode, ChainInfo, ChainSpec, Header, PruneCheckpoint, PruneSegment,
+    Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, StorageKey, StorageValue,
+    TransactionMeta, TransactionSigned, TransactionSignedNoHash, TxHash, TxNumber, Withdrawal,
+    Withdrawals, B256, MAINNET, U256,
 };
 use reth_trie::updates::TrieUpdates;
 use revm::{
@@ -239,6 +239,45 @@ impl ReceiptProvider for NoopProvider {
         _range: impl RangeBounds<TxNumber>,
     ) -> ProviderResult<Vec<Receipt>> {
         Ok(vec![])
+    }
+}
+
+impl SidecarsProvider for NoopProvider {
+    fn sidecar_id(&self, _tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
+        todo!()
+    }
+
+    fn sidecar_by_id(&self, _id: TxNumber) -> ProviderResult<Option<BlobSidecar>> {
+        todo!()
+    }
+
+    fn sidecar_by_hash(&self, _hash: TxHash) -> ProviderResult<Option<BlobSidecar>> {
+        todo!()
+    }
+
+    fn sidecar_block(&self, _id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        todo!()
+    }
+
+    fn sidecars_by_block(
+        &self,
+        _block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<BlobSidecar>>> {
+        todo!()
+    }
+
+    fn sidecars_by_block_range(
+        &self,
+        _range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<BlobSidecar>>> {
+        todo!()
+    }
+
+    fn sidecars_by_sidecar_range(
+        &self,
+        _range: impl RangeBounds<TxNumber>,
+    ) -> ProviderResult<Vec<BlobSidecar>> {
+        todo!()
     }
 }
 

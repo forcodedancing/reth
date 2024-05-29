@@ -127,6 +127,12 @@ impl Command {
                             static_file_segments::Receipts,
                             SegmentConfig { filters, compression },
                         )?,
+                        StaticFileSegment::Sidecars => self
+                            .generate_static_file::<DatabaseEnv>(
+                                provider_factory.clone(),
+                                static_file_segments::Sidecars,
+                                SegmentConfig { filters, compression },
+                            )?,
                     }
                 }
             }
@@ -153,6 +159,7 @@ impl Command {
                         InclusionFilter::Cuckoo,
                         phf,
                     )?,
+                    StaticFileSegment::Sidecars => todo!(),
                 }
             }
         }

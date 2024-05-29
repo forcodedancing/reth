@@ -38,12 +38,7 @@ use crate::{
         },
     },
 };
-use reth_primitives::{
-    stage::StageCheckpoint,
-    trie::{StorageTrieEntry, StoredBranchNode, StoredNibbles, StoredNibblesSubKey},
-    Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, PruneCheckpoint,
-    PruneSegment, Receipt, StorageEntry, TransactionSignedNoHash, TxHash, TxNumber, B256,
-};
+use reth_primitives::{stage::StageCheckpoint, trie::{StorageTrieEntry, StoredBranchNode, StoredNibbles, StoredNibblesSubKey}, Account, Address, BlockHash, BlockNumber, Bytecode, Header, IntegerList, PruneCheckpoint, PruneSegment, Receipt, StorageEntry, TransactionSignedNoHash, TxHash, TxNumber, B256, BlobSidecar};
 use std::fmt;
 
 /// Enum for the types of tables present in libmdbx.
@@ -278,6 +273,17 @@ tables! {
     ///
     /// The key is the highest transaction ID in the block.
     table TransactionBlocks<Key = TxNumber, Value = BlockNumber>;
+
+    /// Canonical only Stores the blob sidecar for canonical transactions.
+    table Sidecars<Key = TxNumber, Value = BlobSidecar>;
+
+    /// Stores the mapping of the transaction hash to the sidecar number.
+    table TransactionHashSidecarNumbers<Key = TxHash, Value = TxNumber>;
+
+    /// Stores the mapping of sidecar number to the blocks number.
+    ///
+    /// The key is the highest sidecar ID in the block.
+    table SidecarBlocks<Key = TxNumber, Value = BlockNumber>;
 
     /// Canonical only Stores transaction receipts.
     table Receipts<Key = TxNumber, Value = Receipt>;

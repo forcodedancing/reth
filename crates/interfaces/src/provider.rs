@@ -116,6 +116,9 @@ pub enum ProviderError {
     /// Static File is not found for requested transaction.
     #[error("unable to find {0} static file for transaction id {1}")]
     MissingStaticFileTx(StaticFileSegment, TxNumber),
+    /// Static File is not found for requested transaction.
+    #[error("unable to find {0} static file for sidecar id {1}")]
+    MissingStaticFileSidecar(StaticFileSegment, TxNumber),
     /// Static File is finalized and cannot be written to.
     #[error("unable to write block #{1} to finalized static file {0}")]
     FinalizedStaticFile(StaticFileSegment, BlockNumber),

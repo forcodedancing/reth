@@ -36,6 +36,11 @@ pub enum StaticFileSegment {
     #[strum(serialize = "receipts")]
     /// Static File segment responsible for the `Receipts` table.
     Receipts,
+
+    // Only for bsc
+    #[strum(serialize = "sidecars")]
+    /// Static File segment responsible for the `Sidecars` table.
+    Sidecars,
 }
 
 impl StaticFileSegment {
@@ -45,6 +50,7 @@ impl StaticFileSegment {
             StaticFileSegment::Headers => "headers",
             StaticFileSegment::Transactions => "transactions",
             StaticFileSegment::Receipts => "receipts",
+            StaticFileSegment::Sidecars => "sidecars",
         }
     }
 
@@ -62,6 +68,7 @@ impl StaticFileSegment {
             StaticFileSegment::Headers => default_config,
             StaticFileSegment::Transactions => default_config,
             StaticFileSegment::Receipts => default_config,
+            StaticFileSegment::Sidecars => default_config,
         }
     }
 
@@ -71,6 +78,7 @@ impl StaticFileSegment {
             StaticFileSegment::Headers => 3,
             StaticFileSegment::Transactions => 1,
             StaticFileSegment::Receipts => 1,
+            StaticFileSegment::Sidecars => 1,
         }
     }
 
@@ -152,6 +160,8 @@ pub struct SegmentHeader {
     block_range: Option<SegmentRangeInclusive>,
     /// Transaction range of data of the static file segment
     tx_range: Option<SegmentRangeInclusive>,
+    /// Sidecar range of data of the static file segment
+    sidecar_range: Option<SegmentRangeInclusive>,
     /// Segment type
     segment: StaticFileSegment,
 }
@@ -162,9 +172,10 @@ impl SegmentHeader {
         expected_block_range: SegmentRangeInclusive,
         block_range: Option<SegmentRangeInclusive>,
         tx_range: Option<SegmentRangeInclusive>,
+        sidecar_range: Option<SegmentRangeInclusive>,
         segment: StaticFileSegment,
     ) -> Self {
-        Self { expected_block_range, block_range, tx_range, segment }
+        Self { expected_block_range, block_range, tx_range, sidecar_range, segment }
     }
 
     /// Returns the static file segment kind.
@@ -180,6 +191,11 @@ impl SegmentHeader {
     /// Returns the transaction range.
     pub fn tx_range(&self) -> Option<&SegmentRangeInclusive> {
         self.tx_range.as_ref()
+    }
+
+    /// Returns the sidecar range.
+    pub fn sidecar_range(&self) -> Option<&SegmentRangeInclusive> {
+        self.sidecar_range.as_ref()
     }
 
     /// The expected block start of the segment.
@@ -202,6 +218,11 @@ impl SegmentHeader {
         self.block_range.as_ref().map(|b| b.end())
     }
 
+    /// Number of blocks.
+    pub fn block_len(&self) -> Option<u64> {
+        self.block_range.as_ref().map(|r| (r.end() + 1) - r.start())
+    }
+
     /// Returns the first transaction number of the segment.  
     pub fn tx_start(&self) -> Option<TxNumber> {
         self.tx_range.as_ref().map(|t| t.start())
@@ -217,9 +238,19 @@ impl SegmentHeader {
         self.tx_range.as_ref().map(|r| (r.end() + 1) - r.start())
     }
 
-    /// Number of blocks.
-    pub fn block_len(&self) -> Option<u64> {
-        self.block_range.as_ref().map(|r| (r.end() + 1) - r.start())
+    /// Returns the first sidecar number of the segment.
+    pub fn sidecar_start(&self) -> Option<TxNumber> {
+        self.sidecar_range.as_ref().map(|s| s.start())
+    }
+
+    /// Returns the last sidecar number of the segment.
+    pub fn sidecar_end(&self) -> Option<TxNumber> {
+        self.sidecar_range.as_ref().map(|s| s.end())
+    }
+
+    /// Number of sidecars.
+    pub fn sidecar_len(&self) -> Option<u64> {
+        self.sidecar_range.as_ref().map(|r| (r.end() + 1) - r.start())
     }
 
     /// Increments block end range depending on segment
@@ -239,7 +270,7 @@ impl SegmentHeader {
     /// Increments tx end range depending on segment
     pub fn increment_tx(&mut self) {
         match self.segment {
-            StaticFileSegment::Headers => (),
+            StaticFileSegment::Headers | StaticFileSegment::Sidecars => (),
             StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
                 if let Some(tx_range) = &mut self.tx_range {
                     tx_range.end += 1;
@@ -250,7 +281,23 @@ impl SegmentHeader {
         }
     }
 
-    /// Removes `num` elements from end of tx or block range.
+    /// Increments sidecar end range depending on segment
+    pub fn increment_sidecar(&mut self) {
+        match self.segment {
+            StaticFileSegment::Headers |
+            StaticFileSegment::Transactions |
+            StaticFileSegment::Receipts => (),
+            StaticFileSegment::Sidecars => {
+                if let Some(sidecar_range) = &mut self.sidecar_range {
+                    sidecar_range.end += 1;
+                } else {
+                    self.sidecar_range = Some(SegmentRangeInclusive::new(0, 0));
+                }
+            }
+        }
+    }
+
+    /// Removes `num` elements from end of sidecar or tx or block range.
     pub fn prune(&mut self, num: u64) {
         match self.segment {
             StaticFileSegment::Headers => {
@@ -266,6 +313,15 @@ impl SegmentHeader {
                 if let Some(range) = &mut self.tx_range {
                     if num > range.end {
                         self.tx_range = None;
+                    } else {
+                        range.end = range.end.saturating_sub(num);
+                    }
+                };
+            }
+            StaticFileSegment::Sidecars => {
+                if let Some(range) = &mut self.sidecar_range {
+                    if num > range.end {
+                        self.sidecar_range = None;
                     } else {
                         range.end = range.end.saturating_sub(num);
                     }
@@ -294,11 +350,22 @@ impl SegmentHeader {
         }
     }
 
+    /// Sets a new sidecar_range.
+    pub fn set_sidecar_range(&mut self, sidecar_start: TxNumber, sidecar_end: TxNumber) {
+        if let Some(sidecar_range) = &mut self.sidecar_range {
+            sidecar_range.start = sidecar_start;
+            sidecar_range.end = sidecar_end;
+        } else {
+            self.sidecar_range = Some(SegmentRangeInclusive::new(sidecar_start, sidecar_end))
+        }
+    }
+
     /// Returns the row offset which depends on whether the segment is block or transaction based.
     pub fn start(&self) -> Option<u64> {
         match self.segment {
             StaticFileSegment::Headers => self.block_start(),
             StaticFileSegment::Transactions | StaticFileSegment::Receipts => self.tx_start(),
+            StaticFileSegment::Sidecars => self.sidecar_start(),
         }
     }
 }

@@ -1,18 +1,6 @@
-use crate::{
-    bundle_state::{BundleStateInit, BundleStateWithReceipts, HashedStateChanges, RevertsInit},
-    providers::{database::metrics, static_file::StaticFileWriter, StaticFileProvider},
-    to_range,
-    traits::{
-        AccountExtReader, BlockSource, ChangeSetReader, ReceiptProvider, StageCheckpointWriter,
-    },
-    AccountReader, BlockExecutionWriter, BlockHashReader, BlockNumReader, BlockReader, BlockWriter,
-    Chain, EvmEnvProvider, HashingWriter, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider,
-    HeaderSyncMode, HistoricalStateProvider, HistoryWriter, LatestStateProvider,
-    OriginalValuesKnown, ParliaSnapshotReader, ParliaSnapshotWriter, ProviderError,
-    PruneCheckpointReader, PruneCheckpointWriter, StageCheckpointReader, StateProviderBox,
-    StateWriter, StatsReader, StorageReader, TransactionVariant, TransactionsProvider,
-    TransactionsProviderExt, WithdrawalsProvider,
-};
+use crate::{bundle_state::{BundleStateInit, BundleStateWithReceipts, HashedStateChanges, RevertsInit}, providers::{database::metrics, static_file::StaticFileWriter, StaticFileProvider}, to_range, traits::{
+    AccountExtReader, BlockSource, ChangeSetReader, ReceiptProvider, StageCheckpointWriter,
+}, AccountReader, BlockExecutionWriter, BlockHashReader, BlockNumReader, BlockReader, BlockWriter, Chain, EvmEnvProvider, HashingWriter, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider, HeaderSyncMode, HistoricalStateProvider, HistoryWriter, LatestStateProvider, OriginalValuesKnown, ParliaSnapshotReader, ParliaSnapshotWriter, ProviderError, PruneCheckpointReader, PruneCheckpointWriter, SidecarsProvider, StageCheckpointReader, StateProviderBox, StateWriter, StatsReader, StorageReader, TransactionVariant, TransactionsProvider, TransactionsProviderExt, WithdrawalsProvider, SidecarsProviderExt};
 use itertools::{izip, Itertools};
 use reth_db::{
     common::KeyValue,
@@ -39,11 +27,12 @@ use reth_primitives::{
     revm::{config::revm_spec, env::fill_block_env},
     stage::{StageCheckpoint, StageId},
     trie::Nibbles,
-    Account, Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders,
-    ChainInfo, ChainSpec, GotExpected, Head, Header, PruneCheckpoint, PruneLimiter, PruneModes,
-    PruneSegment, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment,
-    StorageEntry, TransactionMeta, TransactionSigned, TransactionSignedEcRecovered,
-    TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, Withdrawals, B256, U256,
+    Account, Address, BlobSidecar, BlobSidecars, Block, BlockHash, BlockHashOrNumber, BlockNumber,
+    BlockWithSenders, ChainInfo, ChainSpec, GotExpected, Head, Header, PruneCheckpoint,
+    PruneLimiter, PruneModes, PruneSegment, Receipt, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, StaticFileSegment, StorageEntry, TransactionMeta, TransactionSigned,
+    TransactionSignedEcRecovered, TransactionSignedNoHash, TxHash, TxNumber, Withdrawal,
+    Withdrawals, B256, U256,
 };
 use reth_trie::{
     prefix_set::{PrefixSet, PrefixSetMut, TriePrefixSets},
@@ -352,6 +341,23 @@ impl<TX: DbTx> DatabaseProvider<TX> {
             StaticFileSegment::Transactions,
             to_range(range),
             |static_file, range, _| static_file.transactions_by_tx_range(range),
+            |range, _| self.cursor_collect(cursor, range),
+            |_| true,
+        )
+    }
+
+    fn sidecars_by_sidecar_range_with_cursor<C>(
+        &self,
+        range: impl RangeBounds<TxNumber>,
+        cursor: &mut C,
+    ) -> ProviderResult<Vec<BlobSidecar>>
+    where
+        C: DbCursorRO<tables::Sidecars>,
+    {
+        self.static_file_provider.get_range_with_static_file_or_database(
+            StaticFileSegment::Sidecars,
+            to_range(range),
+            |static_file, range, _| static_file.sidecars_by_sidecar_range(range),
             |range, _| self.cursor_collect(cursor, range),
             |_| true,
         )
@@ -788,7 +794,7 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
             }
 
             blocks.push(SealedBlockWithSenders {
-                block: SealedBlock { header, body, ommers, withdrawals },
+                block: SealedBlock { header, body, ommers, withdrawals, sidecars: None },
                 senders,
             })
         }
@@ -1302,7 +1308,13 @@ impl<Tx: DbTx> DatabaseProvider<Tx> {
         mut assemble_block: F,
     ) -> ProviderResult<Vec<R>>
     where
-        F: FnMut(Range<TxNumber>, Header, Vec<Header>, Option<Withdrawals>) -> ProviderResult<R>,
+        F: FnMut(
+            Range<TxNumber>,
+            Range<TxNumber>,
+            Header,
+            Vec<Header>,
+            Option<Withdrawals>,
+        ) -> ProviderResult<R>,
     {
         if range.is_empty() {
             return Ok(Vec::new())
@@ -1324,6 +1336,7 @@ impl<Tx: DbTx> DatabaseProvider<Tx> {
             // we skip the block.
             if let Some((_, block_body_indices)) = block_body_cursor.seek_exact(header.number)? {
                 let tx_range = block_body_indices.tx_num_range();
+                let sidecar_range = block_body_indices.sidecar_num_range();
 
                 // If we are past shanghai, then all blocks should have a withdrawal list,
                 // even if empty
@@ -1347,7 +1360,8 @@ impl<Tx: DbTx> DatabaseProvider<Tx> {
                             .map(|(_, o)| o.ommers)
                             .unwrap_or_default()
                     };
-                if let Ok(b) = assemble_block(tx_range, header, ommers, withdrawals) {
+                if let Ok(b) = assemble_block(tx_range, sidecar_range, header, ommers, withdrawals)
+                {
                     blocks.push(b);
                 }
             }
@@ -1384,7 +1398,12 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                     None => return Ok(None),
                 };
 
-                return Ok(Some(Block { header, body: transactions, ommers, withdrawals }))
+                let sidecars = match self.sidecars_by_block(number.into())? {
+                    Some(sidecars) => Some(BlobSidecars::from(sidecars)),
+                    None => return Ok(None),
+                };
+
+                return Ok(Some(Block { header, body: transactions, ommers, withdrawals, sidecars }))
             }
         }
 
@@ -1450,11 +1469,18 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
         let Some(body) = self.block_body_indices(block_number)? else { return Ok(None) };
 
         let tx_range = body.tx_num_range();
+        let sidecar_range = body.sidecar_num_range();
 
         let (transactions, senders) = if tx_range.is_empty() {
             (vec![], vec![])
         } else {
             (self.transactions_by_tx_range(tx_range.clone())?, self.senders_by_tx_range(tx_range)?)
+        };
+
+        let sidecars = if sidecar_range.is_empty() {
+            None
+        } else {
+            Some(BlobSidecars::from(self.sidecars_by_sidecar_range(sidecar_range)?))
         };
 
         let body = transactions
@@ -1470,7 +1496,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
             })
             .collect();
 
-        Block { header, body, ommers, withdrawals }
+        Block { header, body, ommers, withdrawals, sidecars }
             // Note: we're using unchecked here because we know the block contains valid txs wrt to
             // its height and can ignore the s value check so pre EIP-2 txs are allowed
             .try_with_senders_unchecked(senders)
@@ -1480,7 +1506,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
 
     fn block_range(&self, range: RangeInclusive<BlockNumber>) -> ProviderResult<Vec<Block>> {
         let mut tx_cursor = self.tx.cursor_read::<tables::Transactions>()?;
-        self.process_block_range(range, |tx_range, header, ommers, withdrawals| {
+        self.process_block_range(range, |tx_range, sidecar_range, header, ommers, withdrawals| {
             let body = if tx_range.is_empty() {
                 Vec::new()
             } else {
@@ -1489,7 +1515,13 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                     .map(Into::into)
                     .collect()
             };
-            Ok(Block { header, body, ommers, withdrawals })
+
+            let sidecars = if sidecar_range.is_empty() {
+                None
+            } else {
+                Some(BlobSidecars::from(self.sidecars_by_sidecar_range(sidecar_range)?))
+            };
+            Ok(Block { header, body, ommers, withdrawals, sidecars })
         })
     }
 
@@ -1500,7 +1532,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
         let mut tx_cursor = self.tx.cursor_read::<tables::Transactions>()?;
         let mut senders_cursor = self.tx.cursor_read::<tables::TransactionSenders>()?;
 
-        self.process_block_range(range, |tx_range, header, ommers, withdrawals| {
+        self.process_block_range(range, |tx_range, sidecar_range, header, ommers, withdrawals| {
             let (body, senders) = if tx_range.is_empty() {
                 (Vec::new(), Vec::new())
             } else {
@@ -1532,7 +1564,13 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                 (body, senders)
             };
 
-            Block { header, body, ommers, withdrawals }
+            let sidecars = if sidecar_range.is_empty() {
+                None
+            } else {
+                Some(BlobSidecars::from(self.sidecars_by_sidecar_range(sidecar_range)?))
+            };
+
+            Block { header, body, ommers, withdrawals, sidecars }
                 .try_with_senders_unchecked(senders)
                 .map_err(|_| ProviderError::SenderRecoveryError)
         })
@@ -1605,8 +1643,6 @@ impl<TX: DbTx> TransactionsProviderExt for DatabaseProvider<TX> {
         )
     }
 }
-
-/// Calculates the hash of the given transaction
 
 impl<TX: DbTx> TransactionsProvider for DatabaseProvider<TX> {
     fn transaction_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
@@ -1763,6 +1799,104 @@ impl<TX: DbTx> TransactionsProvider for DatabaseProvider<TX> {
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
         Ok(self.tx.get::<tables::TransactionSenders>(id)?)
+    }
+}
+
+impl<TX: DbTx> SidecarsProviderExt for DatabaseProvider<TX> {
+    fn sidecar_transaction_hashes_by_range(&self, _tx_range: Range<TxNumber>) -> ProviderResult<Vec<(TxHash, TxNumber)>> {
+        todo!()
+    }
+}
+
+impl<TX: DbTx> SidecarsProvider for DatabaseProvider<TX> {
+    fn sidecar_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
+        Ok(self.tx.get::<tables::TransactionHashSidecarNumbers>(tx_hash)?)
+    }
+
+    fn sidecar_by_id(&self, id: TxNumber) -> ProviderResult<Option<BlobSidecar>> {
+        self.static_file_provider.get_with_static_file_or_database(
+            StaticFileSegment::Sidecars,
+            id,
+            |static_file| static_file.sidecar_by_id(id),
+            || Ok(self.tx.get::<tables::Sidecars>(id)?.map(Into::into)),
+        )
+    }
+
+    fn sidecar_by_hash(&self, hash: TxHash) -> ProviderResult<Option<BlobSidecar>> {
+        if let Some(id) = self.sidecar_id(hash)? {
+            self.sidecar_by_id(id)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn sidecar_block(&self, id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        let mut cursor = self.tx.cursor_read::<tables::SidecarBlocks>()?;
+        Ok(cursor.seek(id)?.map(|(_, bn)| bn))
+    }
+
+    fn sidecars_by_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<BlobSidecar>>> {
+        let mut sidecar_cursor = self.tx.cursor_read::<tables::Sidecars>()?;
+
+        if let Some(block_number) = self.convert_hash_or_number(block)? {
+            if let Some(body) = self.block_body_indices(block_number)? {
+                let sidecar_range = body.sidecar_num_range();
+                return if sidecar_range.is_empty() {
+                    Ok(Some(Vec::new().into()))
+                } else {
+                    Ok(Some(
+                        self.sidecars_by_sidecar_range_with_cursor(
+                            sidecar_range,
+                            &mut sidecar_cursor,
+                        )?
+                        .into_iter()
+                        .map(Into::into)
+                        .collect(),
+                    ))
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn sidecars_by_block_range(
+        &self,
+        range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<BlobSidecar>>> {
+        let mut sidecar_cursor = self.tx.cursor_read::<tables::Sidecars>()?;
+        let mut results = Vec::new();
+        let mut body_cursor = self.tx.cursor_read::<tables::BlockBodyIndices>()?;
+        for entry in body_cursor.walk_range(range)? {
+            let (_, body) = entry?;
+            let sidecar_num_range = body.sidecar_num_range();
+            if sidecar_num_range.is_empty() {
+                results.push(Vec::new());
+            } else {
+                results.push(
+                    self.sidecars_by_sidecar_range_with_cursor(
+                        sidecar_num_range,
+                        &mut sidecar_cursor,
+                    )?
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                );
+            }
+        }
+        Ok(results)
+    }
+
+    fn sidecars_by_sidecar_range(
+        &self,
+        range: impl RangeBounds<TxNumber>,
+    ) -> ProviderResult<Vec<BlobSidecar>> {
+        self.sidecars_by_sidecar_range_with_cursor(
+            range,
+            &mut self.tx.cursor_read::<tables::Sidecars>()?,
+        )
     }
 }
 
@@ -2529,6 +2663,16 @@ impl<TX: DbTxMut + DbTx> BlockWriter for DatabaseProvider<TX> {
 
         let tx_count = block.block.body.len() as u64;
 
+        let next_sidecar_num = self
+            .tx
+            .cursor_read::<tables::SidecarBlocks>()?
+            .last()?
+            .map(|(n, _)| n + 1)
+            .unwrap_or_default();
+        let first_sidecar_num = next_sidecar_num;
+        let sidecar_count =
+            if let Some(sidecars) = block.block.sidecars { sidecars.len() as u64 } else { 0 };
+
         // Ensures we have all the senders for the block's transactions.
         let mut tx_senders_elapsed = Duration::default();
         let mut transactions_elapsed = Duration::default();
@@ -2592,7 +2736,8 @@ impl<TX: DbTxMut + DbTx> BlockWriter for DatabaseProvider<TX> {
             }
         }
 
-        let block_indices = StoredBlockBodyIndices { first_tx_num, tx_count };
+        let block_indices =
+            StoredBlockBodyIndices { first_tx_num, tx_count, first_sidecar_num, sidecar_count };
         self.tx.put::<tables::BlockBodyIndices>(block_number, block_indices.clone())?;
         durations_recorder.record_relative(metrics::Action::InsertBlockBodyIndices);
 

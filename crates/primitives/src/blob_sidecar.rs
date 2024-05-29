@@ -5,9 +5,10 @@ use alloy_eips::eip4844::BlobTransactionSidecar;
 use alloy_primitives::B256;
 use alloy_rlp::{Decodable, Encodable, RlpDecodableWrapper, RlpEncodableWrapper};
 use bytes::BufMut;
-use reth_codecs::derive_arbitrary;
+use reth_codecs::{derive_arbitrary, Compact};
 use revm_primitives::U256;
 use serde::{Deserialize, Serialize};
+use std::ops::{Deref, DerefMut};
 
 #[derive_arbitrary(rlp, 25)]
 #[derive(
@@ -21,9 +22,78 @@ use serde::{Deserialize, Serialize};
     RlpEncodableWrapper,
     RlpDecodableWrapper,
 )]
-pub struct BlobSidecars(pub Vec<BlobSidecar>);
+pub struct BlobSidecars(Vec<BlobSidecar>);
 
-#[derive_arbitrary(rlp, 25)]
+impl BlobSidecars {
+    /// Create a new BlobSidecars instance.
+    pub fn new(sidecars: Vec<BlobSidecar>) -> Self {
+        Self(sidecars)
+    }
+
+    /// Calculate the total size, including capacity, of the BlobSidecars.
+    #[inline]
+    pub fn total_size(&self) -> usize {
+        self.capacity() * std::mem::size_of::<BlobSidecar>()
+    }
+
+    /// Calculate a heuristic for the in-memory size of the [BlobSidecars].
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.len() * std::mem::size_of::<BlobSidecar>()
+    }
+
+    /// Get an iterator over the BlobSidecars.
+    pub fn iter(&self) -> std::slice::Iter<'_, BlobSidecar> {
+        self.0.iter()
+    }
+
+    /// Get a mutable iterator over the BlobSidecars.
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, BlobSidecar> {
+        self.0.iter_mut()
+    }
+
+    /// Convert [Self] into raw vec of sidecars.
+    pub fn into_inner(self) -> Vec<BlobSidecar> {
+        self.0
+    }
+}
+
+impl IntoIterator for BlobSidecars {
+    type Item = BlobSidecar;
+    type IntoIter = std::vec::IntoIter<BlobSidecar>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl AsRef<[BlobSidecar]> for BlobSidecars {
+    fn as_ref(&self) -> &[BlobSidecar] {
+        &self.0
+    }
+}
+
+impl Deref for BlobSidecars {
+    type Target = Vec<BlobSidecar>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for BlobSidecars {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<Vec<BlobSidecar>> for BlobSidecars {
+    fn from(sidecars: Vec<BlobSidecar>) -> Self {
+        Self(sidecars)
+    }
+}
+
+#[derive_arbitrary(compact, rlp)]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct BlobSidecar {
     pub blob_transaction_sidecar: BlobTransactionSidecar,
@@ -117,6 +187,19 @@ impl Decodable for BlobSidecar {
         };
 
         return Ok(this)
+    }
+}
+
+impl Compact for BlobSidecar {
+    fn to_compact<B>(self, _buf: &mut B) -> usize
+    where
+        B: BufMut + AsMut<[u8]>,
+    {
+        todo!()
+    }
+
+    fn from_compact(_buf: &[u8], _len: usize) -> (Self, &[u8]) {
+        todo!()
     }
 }
 

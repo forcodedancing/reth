@@ -9,8 +9,8 @@ pub type NumTransactions = u64;
 
 /// The storage of the block body indices.
 ///
-/// It has the pointer to the transaction Number of the first
-/// transaction in the block and the total number of transactions.
+/// It has the pointer to the transaction/sidecar Number of the first
+/// transaction/sidecar in the block and the total number of transactions/sidecars.
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 #[main_codec]
 pub struct StoredBlockBodyIndices {
@@ -24,6 +24,14 @@ pub struct StoredBlockBodyIndices {
     /// NOTE: Number of transitions is equal to number of transactions with
     /// additional transition for block change if block has block reward or withdrawal.
     pub tx_count: NumTransactions,
+
+    /// The number of the first sidecar in this block
+    ///
+    /// Note: If the block has no blob, this is the number of the first sidecar
+    /// in the next non-empty block.
+    pub first_sidecar_num: TxNumber,
+    /// The total number of sidecars in the block
+    pub sidecar_count: NumTransactions,
 }
 
 impl StoredBlockBodyIndices {
@@ -32,11 +40,23 @@ impl StoredBlockBodyIndices {
         self.first_tx_num..self.first_tx_num + self.tx_count
     }
 
+    /// Return the range of sidecar ids for this block.
+    pub fn sidecar_num_range(&self) -> Range<TxNumber> {
+        self.first_sidecar_num..self.first_sidecar_num + self.sidecar_count
+    }
+
     /// Return the index of last transaction in this block unless the block
     /// is empty in which case it refers to the last transaction in a previous
     /// non-empty block
     pub fn last_tx_num(&self) -> TxNumber {
         self.first_tx_num.saturating_add(self.tx_count).saturating_sub(1)
+    }
+
+    /// Return the index of last sidecar in this block unless the block
+    /// has no sidecars in which case it refers to the last sidecar in a previous
+    /// non-empty block
+    pub fn last_sidecar_num(&self) -> TxNumber {
+        self.first_sidecar_num.saturating_add(self.sidecar_count).saturating_sub(1)
     }
 
     /// First transaction index.
@@ -47,9 +67,22 @@ impl StoredBlockBodyIndices {
         self.first_tx_num
     }
 
+    /// First sidecar index.
+    ///
+    /// Caution: If the block has no blob, this is the number of the first sidecar
+    /// in the next non-empty block.
+    pub fn first_sidecar_num(&self) -> TxNumber {
+        self.first_sidecar_num
+    }
+
     /// Return the index of the next transaction after this block.
     pub fn next_tx_num(&self) -> TxNumber {
         self.first_tx_num + self.tx_count
+    }
+
+    /// Return the index of the next sidecar after this block.
+    pub fn next_sidecar_num(&self) -> TxNumber {
+        self.first_sidecar_num + self.sidecar_count
     }
 
     /// Return a flag whether the block is empty
@@ -57,11 +90,21 @@ impl StoredBlockBodyIndices {
         self.tx_count == 0
     }
 
+    /// Return a flag whether the block has no sidecars
+    pub fn has_no_sidecars(&self) -> bool {
+        self.sidecar_count == 0
+    }
+
     /// Return number of transaction inside block
     ///
     /// NOTE: This is not the same as the number of transitions.
     pub fn tx_count(&self) -> NumTransactions {
         self.tx_count
+    }
+
+    /// Return number of sidecars inside block
+    pub fn sidecar_count(&self) -> NumTransactions {
+        self.sidecar_count
     }
 }
 
@@ -106,7 +149,10 @@ mod tests {
     fn block_indices() {
         let first_tx_num = 10;
         let tx_count = 6;
-        let block_indices = StoredBlockBodyIndices { first_tx_num, tx_count };
+        let first_sidecar_num = 5;
+        let sidecar_count = 3;
+        let block_indices =
+            StoredBlockBodyIndices { first_tx_num, tx_count, first_sidecar_num, sidecar_count };
 
         assert_eq!(block_indices.first_tx_num(), first_tx_num);
         assert_eq!(block_indices.last_tx_num(), first_tx_num + tx_count - 1);

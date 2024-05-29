@@ -77,6 +77,7 @@ mod tests {
             range.clone().into(),
             Some(range.clone().into()),
             Some(range.clone().into()),
+            Some(range.clone().into()),
             StaticFileSegment::Headers,
         );
 

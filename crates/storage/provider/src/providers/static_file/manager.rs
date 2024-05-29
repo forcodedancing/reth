@@ -2,17 +2,15 @@ use super::{
     metrics::StaticFileProviderMetrics, LoadedJar, StaticFileJarProvider, StaticFileProviderRW,
     StaticFileProviderRWRefMut, BLOCKS_PER_STATIC_FILE,
 };
-use crate::{
-    to_range, BlockHashReader, BlockNumReader, BlockReader, BlockSource, HeaderProvider,
-    ReceiptProvider, StatsReader, TransactionVariant, TransactionsProvider,
-    TransactionsProviderExt, WithdrawalsProvider,
-};
+use crate::{to_range, BlockHashReader, BlockNumReader, BlockReader, BlockSource, HeaderProvider, ReceiptProvider, SidecarsProvider, StatsReader, TransactionVariant, TransactionsProvider, TransactionsProviderExt, WithdrawalsProvider, SidecarsProviderExt};
 use dashmap::{mapref::entry::Entry as DashMapEntry, DashMap};
 use parking_lot::RwLock;
 use reth_db::{
     codecs::CompactU256,
     models::StoredBlockBodyIndices,
-    static_file::{iter_static_files, HeaderMask, ReceiptMask, StaticFileCursor, TransactionMask},
+    static_file::{
+        iter_static_files, HeaderMask, ReceiptMask, SidecarMask, StaticFileCursor, TransactionMask,
+    },
     table::Table,
     tables,
 };
@@ -21,10 +19,10 @@ use reth_nippy_jar::NippyJar;
 use reth_primitives::{
     keccak256,
     static_file::{find_fixed_range, HighestStaticFiles, SegmentHeader, SegmentRangeInclusive},
-    Address, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders, ChainInfo, Header,
-    Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment, TransactionMeta,
-    TransactionSigned, TransactionSignedNoHash, TxHash, TxNumber, Withdrawal, Withdrawals, B256,
-    U256,
+    Address, BlobSidecar, Block, BlockHash, BlockHashOrNumber, BlockNumber, BlockWithSenders,
+    ChainInfo, Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader,
+    StaticFileSegment, TransactionMeta, TransactionSigned, TransactionSignedNoHash, TxHash,
+    TxNumber, Withdrawal, Withdrawals, B256, U256,
 };
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap},
@@ -70,6 +68,8 @@ pub struct StaticFileProviderInner {
     static_files_max_block: RwLock<HashMap<StaticFileSegment, u64>>,
     /// Available static file block ranges on disk indexed by max transactions.
     static_files_tx_index: RwLock<SegmentRanges>,
+    /// Available static file block ranges on disk indexed by max sidecars.
+    static_files_sidecar_index: RwLock<SegmentRanges>,
     /// Directory where static_files are located
     path: PathBuf,
     /// Whether [`StaticFileJarProvider`] loads filters into memory. If not, `by_hash` queries
@@ -88,6 +88,7 @@ impl StaticFileProviderInner {
             writers: Default::default(),
             static_files_max_block: Default::default(),
             static_files_tx_index: Default::default(),
+            static_files_sidecar_index: Default::default(),
             path: path.as_ref().to_path_buf(),
             load_filters: false,
             metrics: None,
@@ -182,6 +183,21 @@ impl StaticFileProvider {
             path,
         )?
         .ok_or_else(|| ProviderError::MissingStaticFileTx(segment, tx))
+    }
+
+    /// Gets the [`StaticFileJarProvider`] of the requested segment and sidecar.
+    pub fn get_segment_provider_from_sidecar(
+        &self,
+        segment: StaticFileSegment,
+        sidecar: TxNumber,
+        path: Option<&Path>,
+    ) -> ProviderResult<StaticFileJarProvider<'_>> {
+        self.get_segment_provider(
+            segment,
+            || self.get_segment_ranges_from_sidecar(segment, sidecar),
+            path,
+        )?
+        .ok_or_else(|| ProviderError::MissingStaticFileSidecar(segment, sidecar))
     }
 
     /// Gets the [`StaticFileJarProvider`] of the requested segment and block or transaction.
@@ -334,6 +350,34 @@ impl StaticFileProvider {
         None
     }
 
+    /// Gets a static file segment's fixed block range from the provider inner
+    /// sidecar index.
+    fn get_segment_ranges_from_sidecar(
+        &self,
+        segment: StaticFileSegment,
+        sidecar: u64,
+    ) -> Option<SegmentRangeInclusive> {
+        let static_files = self.static_files_sidecar_index.read();
+        let segment_static_files = static_files.get(&segment)?;
+
+        // It's more probable that the request comes from a newer sidecar height, so we iterate
+        // the static_files in reverse.
+        let mut static_files_rev_iter = segment_static_files.iter().rev().peekable();
+
+        while let Some((sidecar_end, block_range)) = static_files_rev_iter.next() {
+            if sidecar > *sidecar_end {
+                // request sidecar is higher than highest static file sidecar
+                return None
+            }
+            let sidecar_start =
+                static_files_rev_iter.peek().map(|(sidecar_end, _)| *sidecar_end + 1).unwrap_or(0);
+            if sidecar_start <= sidecar {
+                return Some(find_fixed_range(block_range.end()))
+            }
+        }
+        None
+    }
+
     /// Updates the inner transaction and block indexes alongside the internal cached providers in
     /// `self.map`.
     ///
@@ -461,12 +505,21 @@ impl StaticFileProvider {
             .and_then(|index| index.last_key_value().map(|(last_tx, _)| *last_tx))
     }
 
+    /// Gets the highest static file sidecar.
+    pub fn get_highest_static_file_sidecar(&self, segment: StaticFileSegment) -> Option<TxNumber> {
+        self.static_files_sidecar_index
+            .read()
+            .get(&segment)
+            .and_then(|index| index.last_key_value().map(|(last_sidecar, _)| *last_sidecar))
+    }
+
     /// Gets the highest static file block for all segments.
     pub fn get_highest_static_files(&self) -> HighestStaticFiles {
         HighestStaticFiles {
             headers: self.get_highest_static_file_block(StaticFileSegment::Headers),
             receipts: self.get_highest_static_file_block(StaticFileSegment::Receipts),
             transactions: self.get_highest_static_file_block(StaticFileSegment::Transactions),
+            sidecars: self.get_highest_static_file_block(StaticFileSegment::Sidecars),
         }
     }
 
@@ -515,6 +568,9 @@ impl StaticFileProvider {
             }
             StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
                 self.get_segment_provider_from_transaction(segment, start, None)
+            }
+            StaticFileSegment::Sidecars => {
+                todo!()
             }
         };
 
@@ -586,6 +642,9 @@ impl StaticFileProvider {
             StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
                 self.get_segment_provider_from_transaction(segment, start, None)
             }
+            StaticFileSegment::Sidecars => {
+                todo!()
+            }
         };
         let mut provider = get_provider(range.start)?;
 
@@ -631,6 +690,9 @@ impl StaticFileProvider {
             StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
                 self.get_highest_static_file_tx(segment)
             }
+            StaticFileSegment::Sidecars => {
+                todo!()
+            }
         };
 
         if static_file_upper_bound
@@ -672,6 +734,9 @@ impl StaticFileProvider {
             StaticFileSegment::Headers => self.get_highest_static_file_block(segment),
             StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
                 self.get_highest_static_file_tx(segment)
+            }
+            StaticFileSegment::Sidecars => {
+                todo!()
             }
         } {
             if block_or_tx_range.start <= static_file_upper_bound {
@@ -1023,6 +1088,76 @@ impl TransactionsProvider for StaticFileProvider {
 
     fn transaction_sender(&self, id: TxNumber) -> ProviderResult<Option<Address>> {
         Ok(self.transaction_by_id_no_hash(id)?.and_then(|tx| tx.recover_signer()))
+    }
+}
+
+impl SidecarsProviderExt for StaticFileProvider {
+    fn sidecar_transaction_hashes_by_range(&self, _tx_range: Range<TxNumber>) -> ProviderResult<Vec<(TxHash, TxNumber)>> {
+        todo!()
+    }
+}
+
+impl SidecarsProvider for StaticFileProvider {
+    fn sidecar_id(&self, tx_hash: TxHash) -> ProviderResult<Option<TxNumber>> {
+        self.find_static_file(StaticFileSegment::Sidecars, |jar_provider| {
+            let mut cursor = jar_provider.cursor()?;
+            if cursor
+                .get_one::<SidecarMask<BlobSidecar>>((&tx_hash).into())?
+                .and_then(|sidecar| (sidecar.tx_hash == tx_hash).then_some(sidecar))
+                .is_some()
+            {
+                Ok(cursor.number())
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    fn sidecar_by_id(&self, id: TxNumber) -> ProviderResult<Option<BlobSidecar>> {
+        self.get_segment_provider_from_sidecar(StaticFileSegment::Sidecars, id, None)?
+            .sidecar_by_id(id)
+    }
+
+    fn sidecar_by_hash(&self, hash: TxHash) -> ProviderResult<Option<BlobSidecar>> {
+        self.find_static_file(StaticFileSegment::Sidecars, |jar_provider| {
+            Ok(jar_provider
+                .cursor()?
+                .get_one::<SidecarMask<BlobSidecar>>((&hash).into())?
+                .and_then(|sidecar| (&sidecar.tx_hash == &hash).then_some(sidecar)))
+        })
+    }
+
+    fn sidecar_block(&self, _id: TxNumber) -> ProviderResult<Option<BlockNumber>> {
+        // Required data not present in static_files
+        Err(ProviderError::UnsupportedProvider)
+    }
+
+    fn sidecars_by_block(
+        &self,
+        _block: BlockHashOrNumber,
+    ) -> ProviderResult<Option<Vec<BlobSidecar>>> {
+        // Required data not present in static_files
+        Err(ProviderError::UnsupportedProvider)
+    }
+
+    fn sidecars_by_block_range(
+        &self,
+        _range: impl RangeBounds<BlockNumber>,
+    ) -> ProviderResult<Vec<Vec<BlobSidecar>>> {
+        // Required data not present in static_files
+        Err(ProviderError::UnsupportedProvider)
+    }
+
+    fn sidecars_by_sidecar_range(
+        &self,
+        range: impl RangeBounds<TxNumber>,
+    ) -> ProviderResult<Vec<BlobSidecar>> {
+        self.fetch_range_with_predicate(
+            StaticFileSegment::Sidecars,
+            to_range(range),
+            |cursor, number| cursor.get_one::<SidecarMask<BlobSidecar>>(number.into()),
+            |_| true,
+        )
     }
 }
 

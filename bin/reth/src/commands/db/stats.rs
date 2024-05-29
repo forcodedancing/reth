@@ -11,9 +11,9 @@ use reth_db::{
     AccountsTrie, BlockBodyIndices, BlockOmmers, BlockWithdrawals, Bytecodes, CanonicalHeaders,
     DatabaseEnv, HashedAccounts, HashedStorages, HeaderNumbers, HeaderTerminalDifficulties,
     Headers, ParliaSnapshot, PlainAccountState, PlainStorageState, PruneCheckpoints, Receipts,
-    StageCheckpointProgresses, StageCheckpoints, StorageChangeSets, StoragesHistory, StoragesTrie,
-    Tables, TransactionBlocks, TransactionHashNumbers, TransactionSenders, Transactions,
-    VersionHistory,
+    SidecarBlocks, Sidecars, StageCheckpointProgresses, StageCheckpoints, StorageChangeSets,
+    StoragesHistory, StoragesTrie, Tables, TransactionBlocks, TransactionHashNumbers,
+    TransactionHashSidecarNumbers, TransactionSenders, Transactions, VersionHistory,
 };
 use reth_node_core::dirs::{ChainPath, DataDirPath};
 use reth_primitives::static_file::{find_fixed_range, SegmentRangeInclusive};
@@ -356,6 +356,11 @@ impl Command {
                 Tables::TransactionHashNumbers => {
                     viewer.get_checksum::<TransactionHashNumbers>().unwrap()
                 }
+                Tables::Sidecars => viewer.get_checksum::<Sidecars>().unwrap(),
+                Tables::TransactionHashSidecarNumbers => {
+                    viewer.get_checksum::<TransactionHashSidecarNumbers>().unwrap()
+                }
+                Tables::SidecarBlocks => viewer.get_checksum::<SidecarBlocks>().unwrap(),
                 Tables::TransactionSenders => viewer.get_checksum::<TransactionSenders>().unwrap(),
                 Tables::Transactions => viewer.get_checksum::<Transactions>().unwrap(),
                 Tables::VersionHistory => viewer.get_checksum::<VersionHistory>().unwrap(),
