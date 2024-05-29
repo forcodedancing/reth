@@ -24,7 +24,7 @@ use reth_revm::{
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
     Evm, State,
 };
-use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, AccountInfo, Account, AccountStatus};
+use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, AccountInfo, Account, AccountStatus, StorageSlot};
 use std::sync::Arc;
 use tracing::{info, debug, trace};
 
@@ -356,35 +356,48 @@ where
         );
 
         info!("Execute PreContractFork Pre-Check");
-        #[cfg(all(feature = "optimism", feature = "opbnb"))]
+        //#[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             info!("Execute PreContractFork");
             // WBNBContract WBNB preDeploy contract address
             let w_bnb_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
-            // insert wBNB contract with storage
-            self.state.insert_account_with_storage(
-                w_bnb_contract_address,
-                AccountInfo::default(),
-                HashMap::from([
-                    // nameSlot { Name: "Wrapped BNB" }
-                    (U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(), U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap()),
-                    // symbolSlot { Symbol: "wBNB" }
-                    (U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(), U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap())
-                ])
-            );
             // GovernanceToken contract address
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
-            // destruct the governance token contract
-            self.state.commit(HashMap::from([(
-                governance_token_contract_address,
-                Account {
-                    status: AccountStatus::Touched | AccountStatus::SelfDestructed,
-                    info: AccountInfo::default(),
-                    storage: HashMap::default(),
-                },
-            )]));
+            let state_changed = HashMap::from([
+                // insert wBNB contract with storage
+                (
+                    w_bnb_contract_address,
+                    Account {
+                        status: AccountStatus::Touched | AccountStatus::Created,
+                        info: AccountInfo::default(),
+                        storage: HashMap::from([
+                            // nameSlot { Name: "Wrapped BNB" }
+                            (
+                                U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                                StorageSlot { present_value: U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(), ..Default::default() },
+                            ),
+                            // symbolSlot { Symbol: "wBNB" }
+                            (
+                                U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
+                                StorageSlot { present_value: U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(), ..Default::default() },
+                            ),
+                        ]),
+                    },
+                ),
+                // destruct the governance token contract
+                (
+                    governance_token_contract_address,
+                    Account {
+                        status: AccountStatus::Touched | AccountStatus::SelfDestructed,
+                        info: AccountInfo::default(),
+                        storage: HashMap::new(),
+                    },
+                ),
+            ]);
+
+            self.state.commit(state_changed);
         }
 
         // increment balances
