@@ -365,6 +365,8 @@ where
             // GovernanceToken contract address
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+            self.state.insert_not_existing(w_bnb_contract_address);
+            let governance_token_contract_account = self.state.load_cache_account(governance_token_contract_address).unwrap();
             let state_changed = HashMap::from([
                 // insert wBNB contract with storage
                 (
@@ -391,7 +393,7 @@ where
                     governance_token_contract_address,
                     Account {
                         status: AccountStatus::Touched | AccountStatus::SelfDestructed,
-                        info: AccountInfo::default(),
+                        info: governance_token_contract_account.account_info().unwrap(),
                         storage: HashMap::new(),
                     },
                 ),
