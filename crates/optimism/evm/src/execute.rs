@@ -24,9 +24,8 @@ use reth_revm::{
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
     Evm, State,
 };
-use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, StorageSlot};
+use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, StorageSlot, Account, AccountStatus, AccountInfo};
 use std::sync::Arc;
-use revm::db::{BundleAccount, AccountStatus as BundleAccountStatus};
 use tracing::{info, debug, trace};
 
 /// Provides executors to execute regular ethereum blocks
@@ -359,45 +358,42 @@ where
         //#[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             info!("Execute PreContractFork");
-            // // WBNBContract WBNB preDeploy contract address
-            // let w_bnb_contract_address =
-            //     Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
-            // // GovernanceToken contract address
-            // let governance_token_contract_address =
-            //     Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
-            // let w_bnb_contract_account = self.state.load_cache_account(w_bnb_contract_address).map_err(|err|err)?.clone();
-            // let governance_token_contract_account = self.state.load_cache_account(governance_token_contract_address).map_err(|err|err)?.clone();
-            // self.state.bundle_state.extend_state(HashMap::from([
-            //     (
-            //         w_bnb_contract_address,
-            //         BundleAccount{
-            //             info: w_bnb_contract_account.account_info().clone(),
-            //             original_info: w_bnb_contract_account.account_info().clone(),
-            //             storage: HashMap::from([
-            //                 // nameSlot { Name: "Wrapped BNB" }
-            //                 (
-            //                     U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
-            //                     StorageSlot { present_value: U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(), ..Default::default() },
-            //                 ),
-            //                 // symbolSlot { Symbol: "wBNB" }
-            //                 (
-            //                     U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
-            //                     StorageSlot { present_value: U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(), ..Default::default() },
-            //                 ),
-            //             ]),
-            //             status: BundleAccountStatus::Changed,
-            //         }
-            //     ),
-            //     (
-            //         governance_token_contract_address,
-            //         BundleAccount{
-            //             info: None,
-            //             original_info: None,
-            //             storage: HashMap::new(),
-            //             status: BundleAccountStatus::Destroyed
-            //         }
-            //     )
-            // ]));
+            // WBNBContract WBNB preDeploy contract address
+            let w_bnb_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
+            // GovernanceToken contract address
+            let governance_token_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+            // touch in cache
+            let w_bnb_contract_account = self.state.load_cache_account(w_bnb_contract_address).map_err(|err|err)?.clone();
+            self.state.load_cache_account(governance_token_contract_address).map_err(|err|err)?;
+            self.state.commit(HashMap::from([(
+                w_bnb_contract_address,
+                Account {
+                    info: w_bnb_contract_account.account_info().unwrap(),
+                    status: AccountStatus::Touched,
+                    storage: HashMap::from([
+                        // nameSlot { Name: "Wrapped BNB" }
+                        (
+                            U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                            StorageSlot { present_value: U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(), ..Default::default() },
+                        ),
+                        // symbolSlot { Symbol: "wBNB" }
+                        (
+                            U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
+                            StorageSlot { present_value: U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(), ..Default::default() },
+                        ),
+                    ]),
+                }
+            )]));
+            self.state.commit(HashMap::from([(
+                governance_token_contract_address,
+                Account {
+                    status: AccountStatus::Touched | AccountStatus::SelfDestructed,
+                    info: AccountInfo::default(),
+                    storage: HashMap::default(),
+                }
+            )]));
         }
 
         // increment balances
