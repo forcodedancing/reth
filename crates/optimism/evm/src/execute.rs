@@ -24,7 +24,7 @@ use reth_revm::{
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
     Evm, State,
 };
-use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, AccountInfo, Account, AccountStatus, StorageSlot};
+use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, StorageSlot};
 use std::sync::Arc;
 use revm::db::{BundleAccount, AccountStatus as BundleAccountStatus};
 use tracing::{info, debug, trace};
@@ -356,7 +356,7 @@ where
             block.withdrawals.as_ref().map(Withdrawals::as_ref),
         );
 
-        #[cfg(all(feature = "optimism", feature = "opbnb"))]
+        //#[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
             info!("Execute PreContractFork");
             // WBNBContract WBNB preDeploy contract address
@@ -365,12 +365,14 @@ where
             // GovernanceToken contract address
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+            let w_bnb_contract_account = self.state.bundle_state.account(&w_bnb_contract_address).unwrap().clone();
+            let governance_token_contract_account = self.state.bundle_state.account(&governance_token_contract_address).unwrap().clone();
             self.state.bundle_state.extend_state(HashMap::from([
                 (
                     w_bnb_contract_address,
                     BundleAccount{
-                        info: AccountInfo::default().into(),
-                        original_info: AccountInfo::default().into(),
+                        info: w_bnb_contract_account.info.clone(),
+                        original_info: w_bnb_contract_account.original_info.clone(),
                         storage: HashMap::from([
                             // nameSlot { Name: "Wrapped BNB" }
                             (
@@ -390,7 +392,7 @@ where
                     governance_token_contract_address,
                     BundleAccount{
                         info: None,
-                        original_info: None,
+                        original_info: governance_token_contract_account.original_info.clone(),
                         storage: HashMap::new(),
                         status: BundleAccountStatus::Destroyed
                     }
