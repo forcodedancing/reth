@@ -26,6 +26,7 @@ use reth_revm::{
 };
 use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, AccountInfo, Account, AccountStatus, StorageSlot};
 use std::sync::Arc;
+use revm::db::{BundleAccount, AccountStatus as BundleAccountStatus};
 use tracing::{info, debug, trace};
 
 /// Provides executors to execute regular ethereum blocks
@@ -366,9 +367,9 @@ where
             let governance_token_contract_address =
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
             // touch in cache
-            let governance_token_contract_account = self.state.load_cache_account(governance_token_contract_address).unwrap();
+            let governance_token_contract_account = self.state_mut().load_cache_account(governance_token_contract_address).unwrap();
             // insert wBNB contract with storage
-            self.state.insert_account_with_storage(
+            self.state_mut().insert_account_with_storage(
                 w_bnb_contract_address,
                 AccountInfo::default(),
                 HashMap::from([
@@ -410,7 +411,7 @@ where
                 ),
             ]);
 
-            self.state.commit(state_changed);
+            self.state_mut().commit(state_changed);
         }
 
         // increment balances
