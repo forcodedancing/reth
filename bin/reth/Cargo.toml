@@ -50,6 +50,7 @@ reth-node-api.workspace = true
 reth-node-ethereum.workspace = true
 reth-node-optimism = { workspace = true, optional = true, features = [
     "optimism",
+    "opbnb",
 ] }
 reth-node-core.workspace = true
 reth-node-builder.workspace = true

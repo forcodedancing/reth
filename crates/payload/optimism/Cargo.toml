@@ -41,3 +41,7 @@ optimism = [
     "reth-rpc-types-compat/optimism",
     "reth-evm-optimism/optimism",
 ]
+opbnb = [
+    "reth-primitives/opbnb",
+    "reth-evm-optimism/opbnb",
+]
