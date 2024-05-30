@@ -369,11 +369,8 @@ where
             // touch in cache
             let mut w_bnb_contract_account =
                 self.state.load_cache_account(w_bnb_contract_address).unwrap().clone();
-            let mut governance_token_account = self
-                .state
-                .load_cache_account(governance_token_contract_address)
-                .unwrap()
-                .clone();
+            let mut governance_token_account =
+                self.state.load_cache_account(governance_token_contract_address).unwrap().clone();
             // change the token symbol and token name
             let w_bnb_contract_change =  w_bnb_contract_account.change(
                 w_bnb_contract_account.account_info().unwrap(), HashMap::from([
