@@ -358,7 +358,7 @@ where
         );
 
         //#[cfg(all(feature = "optimism", feature = "opbnb"))]
-        if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) 
+        if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number)
         {
             // WBNBContract WBNB preDeploy contract address
             let w_bnb_contract_address =
@@ -393,7 +393,7 @@ where
             let governance_token_change = governance_token_account.selfdestruct().unwrap();
 
             if let Some(s) = self.state.transition_state.as_mut() {
-                let mut transitions = vec![
+                let transitions = vec![
                     (w_bnb_contract_address, w_bnb_contract_change),
                     (governance_token_contract_address, governance_token_change),
                 ];
