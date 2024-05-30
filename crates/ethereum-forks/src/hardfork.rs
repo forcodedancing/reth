@@ -101,6 +101,8 @@ pub enum Hardfork {
     #[cfg(feature = "optimism")]
     Ecotone,
     // ArbOS20Atlas,
+    /// BSC Haber hardfork
+    Haber,
 
     // Upcoming
     /// Prague: <https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/prague.md>
