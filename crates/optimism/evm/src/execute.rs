@@ -1,5 +1,7 @@
 //! Optimism block executor.
 
+use std::collections::HashMap;
+use std::str::FromStr;
 use crate::{
     l1::ensure_create2_deployer, verify::verify_receipts, OptimismBlockExecutionError,
     OptimismEvmConfig,
@@ -15,20 +17,14 @@ use reth_interfaces::{
     executor::{BlockExecutionError, BlockValidationError},
     provider::ProviderError,
 };
-use reth_primitives::{
-    BlockNumber, BlockWithSenders, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt,
-    Receipts, TxType, Withdrawals, U256,
-};
+use reth_primitives::{BlockNumber, BlockWithSenders, ChainSpec, GotExpected, Hardfork, Header, PruneModes, Receipt, Receipts, TxType, Withdrawals, U256, Address};
 use reth_revm::{
     batch::{BlockBatchRecord, BlockExecutorStats},
     db::states::bundle_state::BundleRetention,
     state_change::{apply_beacon_root_contract_call, post_block_balance_increments},
     Evm, State,
 };
-use revm_primitives::{
-    db::{Database, DatabaseCommit},
-    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
-};
+use revm_primitives::{db::{Database, DatabaseCommit}, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState, StorageSlot};
 use std::sync::Arc;
 use tracing::{debug, trace};
 
@@ -357,49 +353,42 @@ where
             block.withdrawals.as_ref().map(Withdrawals::as_ref),
         );
 
-        // TODO: rebase with the fix
-        // #[cfg(all(feature = "optimism", feature = "opbnb"))]
-        // if self.chain_spec.fork(Hardfork::PreContractForkBlock).transitions_at_block(block.
-        // number) {     // WBNBContract WBNB preDeploy contract address
-        //     let w_bnb_contract_address =
-        //         Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
-        //     let mut w_bnb_storage = PlainStorage::new();
-        //     // insert storage for wBNB contract
-        //     // nameSlot { Name: "Wrapped BNB" }
-        //     w_bnb_storage.insert(
-        //         U256::from_str(
-        //             "0x0000000000000000000000000000000000000000000000000000000000000000",
-        //         )
-        //         .unwrap(),
-        //         U256::from_str(
-        //             "0x5772617070656420424e42000000000000000000000000000000000000000016",
-        //         )
-        //         .unwrap(),
-        //     );
-        //     // symbolSlot { Symbol: "wBNB" }
-        //     w_bnb_storage.insert(
-        //         U256::from_str(
-        //             "0x0000000000000000000000000000000000000000000000000000000000000001",
-        //         )
-        //         .unwrap(),
-        //         U256::from_str(
-        //             "0x57424e4200000000000000000000000000000000000000000000000000000008",
-        //         )
-        //         .unwrap(),
-        //     );
-        //     // insert wBNB contract with storage
-        //     self.db_mut().insert_account_with_storage(
-        //         w_bnb_contract_address,
-        //         AccountInfo::default(),
-        //         w_bnb_storage,
-        //     );
-        //     // GovernanceToken contract address
-        //     let governance_token_contract_address =
-        //         Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
-        //     // destruct the governance token contract
-        //     self.evm
-        //         .selfdestruct(governance_token_contract_address,
-        // governance_token_contract_address); }
+        #[cfg(all(feature = "optimism", feature = "opbnb"))]
+        if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) {
+            // WBNBContract WBNB preDeploy contract address
+            let w_bnb_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
+            // GovernanceToken contract address
+            let governance_token_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+            // touch in cache
+            let mut w_bnb_contract_account = self.state.load_cache_account(w_bnb_contract_address).map_err(|err|err)?.clone();
+            let mut governance_token_account = self.state.load_cache_account(governance_token_contract_address).map_err(|err|err)?.clone();
+            // change the token symbol and token name
+            let w_bnb_contract_change =  w_bnb_contract_account.change(
+                w_bnb_contract_account.account_info().unwrap(), HashMap::from([
+                    // nameSlot { Name: "Wrapped BNB" }
+                    (
+                        U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                        StorageSlot { present_value: U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(), ..Default::default() },
+                    ),
+                    // symbolSlot { Symbol: "wBNB" }
+                    (
+                        U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
+                        StorageSlot { present_value: U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(), ..Default::default() },
+                    ),
+                ])
+            );
+            // destroy governance token contract
+            let governance_token_change = governance_token_account.selfdestruct().unwrap();
+
+            if let Some(s) = self.state.transition_state.as_mut() {
+                let mut transitions = Vec::new();
+                transitions.push((w_bnb_contract_address, w_bnb_contract_change));
+                transitions.push((governance_token_contract_address, governance_token_change));
+                s.add_transitions(transitions);
+            }
+        }
 
         // increment balances
         self.state
