@@ -357,7 +357,7 @@ where
             block.withdrawals.as_ref().map(Withdrawals::as_ref),
         );
 
-        #[cfg(all(feature = "optimism", feature = "opbnb"))]
+        //#[cfg(all(feature = "optimism", feature = "opbnb"))]
         if self.chain_spec().fork(Hardfork::PreContractForkBlock).transitions_at_block(block.number) 
         {
             // WBNBContract WBNB preDeploy contract address
@@ -368,11 +368,11 @@ where
                 Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
             // touch in cache
             let mut w_bnb_contract_account =
-                self.state.load_cache_account(w_bnb_contract_address).map_err(|err| err)?.clone();
+                self.state.load_cache_account(w_bnb_contract_address).unwrap().clone();
             let mut governance_token_account = self
                 .state
                 .load_cache_account(governance_token_contract_address)
-                .map_err(|err| err)?
+                .unwrap()
                 .clone();
             // change the token symbol and token name
             let w_bnb_contract_change =  w_bnb_contract_account.change(
@@ -393,9 +393,10 @@ where
             let governance_token_change = governance_token_account.selfdestruct().unwrap();
 
             if let Some(s) = self.state.transition_state.as_mut() {
-                let mut transitions = Vec::new();
-                transitions.push((w_bnb_contract_address, w_bnb_contract_change));
-                transitions.push((governance_token_contract_address, governance_token_change));
+                let mut transitions = vec![
+                    (w_bnb_contract_address, w_bnb_contract_change),
+                    (governance_token_contract_address, governance_token_change),
+                ];
                 s.add_transitions(transitions);
             }
         }
