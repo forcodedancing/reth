@@ -57,6 +57,13 @@ install-op: ## Build and install the op-reth binary under `~/.cargo/bin`.
 		--profile "$(PROFILE)" \
 		$(CARGO_INSTALL_EXTRA_FLAGS)
 
+.PHONY: install-bsc
+install-bsc: ## Build and install the bsc-reth binary under `~/.cargo/bin`.
+	cargo install --path bin/reth --bin bsc-reth --force --locked \
+		--features "bsc,$(FEATURES)" \
+		--profile "$(PROFILE)" \
+		$(CARGO_INSTALL_EXTRA_FLAGS)
+
 .PHONY: build
 build: ## Build the reth binary into `target` directory.
 	cargo build --bin reth --features "$(FEATURES)" --profile "$(PROFILE)"
@@ -71,6 +78,9 @@ build-native-%:
 
 op-build-native-%:
 	cargo build --bin op-reth --target $* --features "optimism,$(FEATURES)" --profile "$(PROFILE)"
+
+bsc-build-native-%:
+	cargo build --bin bsc-reth --target $* --features "bsc,$(FEATURES)" --profile "$(PROFILE)"
 
 # The following commands use `cross` to build a cross-compile.
 #
@@ -106,6 +116,10 @@ build-%:
 op-build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
 		cross build --bin op-reth --target $* --features "optimism,$(FEATURES)" --profile "$(PROFILE)"
+
+bsc-build-%:
+	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
+		cross build --bin bsc-reth --target $* --features "bsc,$(FEATURES)" --profile "$(PROFILE)"
 
 # Unfortunately we can't easily use cross to build for Darwin because of licensing issues.
 # If we wanted to, we would need to build a custom Docker image with the SDK available.
@@ -276,6 +290,51 @@ define op_docker_build_push
 		--push
 endef
 
+##@ BSC docker
+
+# Note: This requires a buildx builder with emulation support. For example:
+#
+# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
+# `docker buildx create --use --driver docker-container --name cross-builder`
+.PHONY: bsc-docker-build-push
+bsc-docker-build-push: ## Build and push a cross-arch Docker image tagged with the latest git tag.
+	$(call bsc_docker_build_push,$(GIT_TAG),$(GIT_TAG))
+
+# Note: This requires a buildx builder with emulation support. For example:
+#
+# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
+# `docker buildx create --use --driver docker-container --name cross-builder`
+.PHONY: bsc-docker-build-push-latest
+bsc-docker-build-push-latest: ## Build and push a cross-arch Docker image tagged with the latest git tag and `latest`.
+	$(call bsc_docker_build_push,$(GIT_TAG),latest)
+
+# Note: This requires a buildx builder with emulation support. For example:
+#
+# `docker run --privileged --rm tonistiigi/binfmt --install amd64,arm64`
+# `docker buildx create --use --name cross-builder`
+.PHONY: bsc-docker-build-push-nightly
+bsc-docker-build-push-nightly: ## Build and push cross-arch Docker image tagged with the latest git tag with a `-nightly` suffix, and `latest-nightly`.
+	$(call bsc_docker_build_push,$(GIT_TAG)-nightly,latest-nightly)
+
+# Create a cross-arch Docker image with the given tags and push it
+define bsc_docker_build_push
+	$(MAKE) bsc-build-x86_64-unknown-linux-gnu
+	mkdir -p $(BIN_DIR)/amd64
+	cp $(BUILD_PATH)/x86_64-unknown-linux-gnu/$(PROFILE)/bsc-reth $(BIN_DIR)/amd64/bsc-reth
+
+	$(MAKE) bsc-build-aarch64-unknown-linux-gnu
+	mkdir -p $(BIN_DIR)/arm64
+	cp $(BUILD_PATH)/aarch64-unknown-linux-gnu/$(PROFILE)/bsc-reth $(BIN_DIR)/arm64/bsc-reth
+
+	docker buildx build --file ./DockerfileBsc.cross . \
+		--platform linux/amd64,linux/arm64 \
+		--tag $(DOCKER_IMAGE_NAME):$(1) \
+		--tag $(DOCKER_IMAGE_NAME):$(2) \
+		--provenance=false \
+		--push
+endef
+
+
 ##@ Other
 
 .PHONY: clean
@@ -345,14 +404,14 @@ lint-op-reth:
 	--features "optimism $(BIN_OTHER_FEATURES)" \
 	-- -D warnings
 
-lint-other-targets:
+lint-bsc-reth:
 	cargo +nightly clippy \
 	--workspace \
 	--lib \
 	--examples \
 	--tests \
 	--benches \
-	--all-features \
+	--features "bsc $(BIN_OTHER_FEATURES)" \
 	-- -D warnings
 
 lint-codespell: ensure-codespell
@@ -368,7 +427,7 @@ lint:
 	make fmt && \
 	make lint-reth && \
 	make lint-op-reth && \
-	make lint-other-targets && \
+	make lint-bsc-reth && \
 	make lint-codespell
 
 fix-lint-reth:
@@ -399,14 +458,14 @@ fix-lint-op-reth:
 	--allow-dirty \
 	-- -D warnings
 
-fix-lint-other-targets:
+fix-lint-bsc-reth:
 	cargo +nightly clippy \
 	--workspace \
 	--lib \
 	--examples \
 	--tests \
 	--benches \
-	--all-features \
+	--features "bsc $(BIN_OTHER_FEATURES)" \
 	--fix \
 	--allow-staged \
 	--allow-dirty \
@@ -415,7 +474,7 @@ fix-lint-other-targets:
 fix-lint:
 	make fix-lint-reth && \
 	make fix-lint-op-reth && \
-	make fix-lint-other-targets && \
+	make fix-lint-bsc-reth && \
 	make fmt
 
 .PHONY: rustdocs

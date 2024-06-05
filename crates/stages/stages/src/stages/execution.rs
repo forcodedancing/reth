@@ -15,8 +15,8 @@ use reth_primitives::{
 use reth_provider::{
     providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
     BlockReader, BundleStateWithReceipts, Chain, DatabaseProviderRW, HeaderProvider,
-    LatestStateProviderRef, OriginalValuesKnown, ProviderError, StateWriter, StatsReader,
-    TransactionVariant,
+    LatestStateProviderRef, OriginalValuesKnown, ParliaSnapshotWriter, ProviderError, StateWriter,
+    StatsReader, TransactionVariant,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages_api::{
@@ -217,6 +217,10 @@ where
 
         let mut blocks = Vec::new();
         for block_number in start_block..=max_block {
+            if block_number % 100000 == 0 {
+                info!(target: "sync::stages::execution", "Executing block {:?}", block_number);
+            }
+
             // Fetch the block
             let fetch_block_start = Instant::now();
 
@@ -273,7 +277,7 @@ where
             }
         }
         let time = Instant::now();
-        let BatchBlockExecutionOutput { bundle, receipts, requests: _, first_block } =
+        let BatchBlockExecutionOutput { bundle, receipts, requests: _, first_block, snapshots } =
             executor.finalize();
         let state = BundleStateWithReceipts::new(bundle, receipts, first_block);
         let write_preparation_duration = time.elapsed();
@@ -304,6 +308,9 @@ where
             static_file_producer,
             OriginalValuesKnown::Yes,
         )?;
+        for snap in snapshots {
+            provider.save_parlia_snapshot(snap)?;
+        }
         let db_write_duration = time.elapsed();
         debug!(
             target: "sync::stages::execution",

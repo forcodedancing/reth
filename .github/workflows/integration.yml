@@ -29,6 +29,8 @@ jobs:
             extra-features: ""
           - network: optimism
             extra-features: "opbnb"
+          - network: bsc
+            extra-features: ""
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +53,11 @@ jobs:
         run: |
           cargo nextest run \
             --locked -p reth-node-optimism --features "optimism ${{ matrix.extra-features }}"
+      - if: matrix.network == 'bsc'
+        name: Run tests
+        run: |
+          cargo nextest run \
+            --locked -p reth-node-bsc --features "bsc"
 
   sync:
     name: sync / 100k blocks

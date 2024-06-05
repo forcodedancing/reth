@@ -24,8 +24,8 @@ use reth_network_p2p::full_block::FullBlockClient;
 use reth_primitives::{stage::StageCheckpoint, BlockHashOrNumber, ChainSpec, PruneModes};
 use reth_provider::{
     providers::StaticFileProvider, BlockNumReader, BlockWriter, BundleStateWithReceipts,
-    HeaderProvider, LatestStateProviderRef, OriginalValuesKnown, ProviderError, ProviderFactory,
-    StateWriter,
+    HeaderProvider, LatestStateProviderRef, OriginalValuesKnown, ParliaSnapshotWriter,
+    ProviderError, ProviderFactory, StateWriter,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_stages::{
@@ -191,13 +191,16 @@ impl Command {
                 PruneModes::none(),
             );
             executor.execute_and_verify_one((&sealed_block.clone().unseal(), td).into())?;
-            let BatchBlockExecutionOutput { bundle, receipts, requests: _, first_block } =
+            let BatchBlockExecutionOutput { bundle, receipts, requests: _, first_block, snapshots } =
                 executor.finalize();
             BundleStateWithReceipts::new(bundle, receipts, first_block).write_to_storage(
                 provider_rw.tx_ref(),
                 None,
                 OriginalValuesKnown::Yes,
             )?;
+            for snap in snapshots {
+                provider_rw.save_parlia_snapshot(snap)?;
+            }
 
             let checkpoint = Some(StageCheckpoint::new(block_number - 1));
 

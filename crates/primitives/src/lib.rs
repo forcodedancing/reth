@@ -43,10 +43,13 @@ mod request;
 pub mod revm;
 pub mod stage;
 pub use reth_static_file_types as static_file;
+mod blob_sidecar;
 mod storage;
+pub mod system_contracts;
 pub mod transaction;
 pub mod trie;
 mod withdrawal;
+
 pub use account::{Account, Bytecode};
 #[cfg(any(test, feature = "arbitrary"))]
 pub use block::{generate_valid_header, valid_header_strategy};
@@ -107,6 +110,8 @@ pub use transaction::{
 
 pub use withdrawal::{Withdrawal, Withdrawals};
 
+pub use blob_sidecar::{BlobSidecar, BlobSidecars};
+
 // Re-exports
 pub use self::ruint::UintTryTo;
 pub use alloy_consensus::Request;
@@ -160,3 +165,15 @@ mod optimism {
 
 #[cfg(feature = "optimism")]
 pub use optimism::*;
+
+/// Bsc specific re-exports
+#[cfg(feature = "bsc")]
+mod bsc {
+    pub use crate::{
+        chain::{BSC_MAINNET, BSC_QA, BSC_TESTNET},
+        net::{bsc_mainnet_nodes, bsc_testnet_nodes, BSC_MAINNET_BOOTNODES, BSC_TESTNET_BOOTNODES},
+    };
+}
+
+#[cfg(feature = "bsc")]
+pub use bsc::*;

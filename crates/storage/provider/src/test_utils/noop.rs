@@ -1,12 +1,12 @@
 use crate::{
     traits::{BlockSource, ReceiptProvider},
     AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
-    ChainSpecProvider, ChangeSetReader, EvmEnvProvider, HeaderProvider, PruneCheckpointReader,
-    ReceiptProviderIdExt, RequestsProvider, StageCheckpointReader, StateProvider, StateProviderBox,
-    StateProviderFactory, StateRootProvider, TransactionVariant, TransactionsProvider,
-    WithdrawalsProvider,
+    ChainSpecProvider, ChangeSetReader, EvmEnvProvider, HeaderProvider, ParliaSnapshotReader,
+    PruneCheckpointReader, ReceiptProviderIdExt, RequestsProvider, StageCheckpointReader,
+    StateProvider, StateProviderBox, StateProviderFactory, StateRootProvider, TransactionVariant,
+    TransactionsProvider, WithdrawalsProvider,
 };
-use reth_db::models::{AccountBeforeTx, StoredBlockBodyIndices};
+use reth_db::models::{parlia::Snapshot, AccountBeforeTx, StoredBlockBodyIndices};
 use reth_evm::ConfigureEvmEnv;
 use reth_primitives::{
     stage::{StageCheckpoint, StageId},
@@ -463,6 +463,12 @@ impl PruneCheckpointReader for NoopProvider {
         &self,
         _segment: PruneSegment,
     ) -> ProviderResult<Option<PruneCheckpoint>> {
+        Ok(None)
+    }
+}
+
+impl ParliaSnapshotReader for NoopProvider {
+    fn get_parlia_snapshot(&self, _block_hash: B256) -> ProviderResult<Option<Snapshot>> {
         Ok(None)
     }
 }

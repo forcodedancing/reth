@@ -25,6 +25,7 @@ pub(crate) mod utils;
 
 use crate::{
     abstraction::table::Table,
+    models::parlia::Snapshot,
     table::DupSort,
     tables::{
         codecs::CompactU256,
@@ -412,6 +413,9 @@ tables! {
 
     /// Stores EIP-7685 EL -> CL requests, indexed by block number.
     table BlockRequests<Key = BlockNumber, Value = Requests>;
+
+    /// Stores the parlia snapshot data by block hash.
+    table ParliaSnapshot<Key = BlockHash, Value = Snapshot>;
 }
 
 // Alias types.

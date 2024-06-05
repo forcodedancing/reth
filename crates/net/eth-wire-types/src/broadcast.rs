@@ -8,7 +8,7 @@ use alloy_rlp::{
 use derive_more::{Constructor, Deref, DerefMut, From, IntoIterator};
 use reth_codecs_derive::derive_arbitrary;
 use reth_primitives::{
-    Block, Bytes, PooledTransactionsElement, TransactionSigned, TxHash, B256, U128,
+    BlobSidecars, Block, Bytes, PooledTransactionsElement, TransactionSigned, TxHash, B256, U128,
 };
 
 use std::{
@@ -75,11 +75,16 @@ impl From<NewBlockHashes> for Vec<BlockHashNumber> {
 #[derive(Clone, Debug, PartialEq, Eq, RlpEncodable, RlpDecodable, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive_arbitrary(rlp, 25)]
+#[rlp(trailing)]
 pub struct NewBlock {
     /// A new block.
     pub block: Block,
     /// The current total difficulty.
     pub td: U128,
+
+    // only for bsc
+    /// Tx sidecars for the block.
+    pub sidecars: Option<BlobSidecars>,
 }
 
 /// This informs peers of transactions that have appeared on the network and are not yet included

@@ -64,6 +64,12 @@ arbitrary = { workspace = true, features = ["derive"], optional = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 
+# `bsc` feature
+include_dir = { version = "0.7.3", optional = true }
+lazy_static = { version = "1.4.0", optional = true }
+
+log = "0.4.21"
+
 [dev-dependencies]
 # eth
 revm-primitives = { workspace = true, features = ["arbitrary"] }
@@ -95,7 +101,7 @@ pprof = { workspace = true, features = [
 secp256k1.workspace = true
 
 [features]
-default = ["c-kzg", "zstd-codec"]
+default = ["c-kzg", "zstd-codec", "secp256k1/rand"]
 asm-keccak = ["alloy-primitives/asm-keccak"]
 arbitrary = [
     "revm-primitives/arbitrary",
@@ -130,6 +136,12 @@ opbnb = [
 
 alloy-compat = ["alloy-rpc-types"]
 test-utils = ["dep:plain_hasher", "dep:hash-db"]
+bsc = [
+    "reth-ethereum-forks/bsc",
+    "revm/bsc",
+    "dep:include_dir",
+    "dep:lazy_static",
+]
 
 [[bench]]
 name = "recover_ecdsa_crit"

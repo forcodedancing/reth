@@ -372,7 +372,13 @@ where
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
 
-        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, requests, gas_used })
+        Ok(BlockExecutionOutput {
+            state: self.state.take_bundle(),
+            receipts,
+            requests,
+            gas_used,
+            snapshot: None,
+        })
     }
 }
 
@@ -439,6 +445,7 @@ where
             self.batch_record.take_receipts(),
             self.batch_record.take_requests(),
             self.batch_record.first_block().unwrap_or_default(),
+            Vec::new(),
         )
     }
 

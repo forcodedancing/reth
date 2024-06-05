@@ -8,15 +8,20 @@ use crate::{
     BuilderContext, NodeBuilderWithComponents, NodeHandle,
 };
 use futures::{future, future::Either, stream, stream_select, StreamExt};
+#[cfg(not(feature = "bsc"))]
 use reth_auto_seal_consensus::AutoSealConsensus;
+#[cfg(not(feature = "bsc"))]
+use reth_beacon_consensus::EthBeaconConsensus;
 use reth_beacon_consensus::{
     hooks::{EngineHooks, PruneHook, StaticFileHook},
-    BeaconConsensusEngine, EthBeaconConsensus,
+    BeaconConsensusEngine,
 };
 use reth_blockchain_tree::{
     noop::NoopBlockchainTree, BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree,
     TreeExternals,
 };
+#[cfg(feature = "bsc")]
+use reth_bsc_consensus::{Parlia, ParliaConfig};
 use reth_consensus::Consensus;
 use reth_exex::{ExExContext, ExExHandle, ExExManager, ExExManagerHandle};
 use reth_network::NetworkEvents;
@@ -114,11 +119,15 @@ where
             });
 
         // setup the consensus instance
+        #[cfg(not(feature = "bsc"))]
         let consensus: Arc<dyn Consensus> = if ctx.is_dev() {
             Arc::new(AutoSealConsensus::new(ctx.chain_spec()))
         } else {
             Arc::new(EthBeaconConsensus::new(ctx.chain_spec()))
         };
+        #[cfg(feature = "bsc")]
+        let consensus: Arc<dyn Consensus> =
+            Arc::new(Parlia::new(ctx.chain_spec(), ParliaConfig::default()));
 
         debug!(target: "reth::cli", "Spawning stages metrics listener task");
         let (sync_metrics_tx, sync_metrics_rx) = unbounded_channel();

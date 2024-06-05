@@ -13,6 +13,8 @@ use reth_rpc_types::{
     state::{AccountOverride, StateOverride},
     BlockOverrides, TransactionRequest,
 };
+#[cfg(feature = "bsc")]
+use revm::primitives::BscFields;
 #[cfg(feature = "optimism")]
 use revm::primitives::{Bytes, OptimismFields};
 use revm::{
@@ -272,6 +274,8 @@ pub(crate) fn create_txn_env(
         max_fee_per_blob_gas,
         #[cfg(feature = "optimism")]
         optimism: OptimismFields { enveloped_tx: Some(Bytes::new()), ..Default::default() },
+        #[cfg(feature = "bsc")]
+        bsc: BscFields { is_system_transaction: Some(false) },
     };
 
     Ok(env)

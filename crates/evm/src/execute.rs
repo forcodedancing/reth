@@ -1,5 +1,6 @@
 //! Traits for execution.
 
+use reth_db::models::parlia::Snapshot;
 use reth_primitives::{
     BlockNumber, BlockWithSenders, PruneModes, Receipt, Receipts, Request, Requests, U256,
 };
@@ -102,6 +103,10 @@ pub struct BlockExecutionOutput<T> {
     pub requests: Vec<Request>,
     /// The total gas used by the block.
     pub gas_used: u64,
+
+    // TODO: feature?
+    /// Parlia snapshot
+    pub snapshot: Option<Snapshot>,
 }
 
 /// The output of a batch of ethereum blocks.
@@ -124,6 +129,10 @@ pub struct BatchBlockExecutionOutput {
     pub requests: Vec<Requests>,
     /// First block of bundle state.
     pub first_block: BlockNumber,
+
+    // TODO: feature?
+    /// Parlia snapshots
+    pub snapshots: Vec<Snapshot>,
 }
 
 impl BatchBlockExecutionOutput {
@@ -133,8 +142,9 @@ impl BatchBlockExecutionOutput {
         receipts: Receipts,
         requests: Vec<Requests>,
         first_block: BlockNumber,
+        snapshots: Vec<Snapshot>,
     ) -> Self {
-        Self { bundle, receipts, requests, first_block }
+        Self { bundle, receipts, requests, first_block, snapshots }
     }
 }
 
