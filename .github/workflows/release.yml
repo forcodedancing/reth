@@ -52,6 +52,8 @@ jobs:
             binary: reth
           - command: op-build
             binary: op-reth
+          - command: bsc-build
+            binary: bsc-reth
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -103,7 +105,7 @@ jobs:
 
   draft-release:
     name: draft release
-    needs: [build, extract-version]
+    needs: [ build, extract-version ]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.extract-version.outputs.VERSION }}

@@ -60,7 +60,7 @@ install-op: ## Build and install the op-reth binary under `~/.cargo/bin`.
 .PHONY: install-bsc
 install-bsc: ## Build and install the bsc-reth binary under `~/.cargo/bin`.
 	cargo install --path bin/reth --bin bsc-reth --force --locked \
-		--features "bsc,$(FEATURES)" \
+		--features "bsc $(FEATURES)" \
 		--profile "$(PROFILE)" \
 		$(CARGO_INSTALL_EXTRA_FLAGS)
 
@@ -71,6 +71,10 @@ build: ## Build the reth binary into `target` directory.
 .PHONY: build-op
 build-op: ## Build the op-reth binary into `target` directory.
 	cargo build --bin op-reth --features "optimism opbnb $(FEATURES)" --profile "$(PROFILE)"
+
+.PHONY: build-bsc
+build-bsc: ## Build the bsc-reth binary into `target` directory.
+	cargo build --bin bsc-reth --features "bsc $(FEATURES)" --profile "$(PROFILE)"
 
 # Builds the reth binary natively.
 build-native-%:
@@ -103,9 +107,13 @@ build-aarch64-unknown-linux-gnu: export JEMALLOC_SYS_WITH_LG_PAGE=16
 op-build-aarch64-unknown-linux-gnu: FEATURES := $(filter-out asm-keccak,$(FEATURES))
 op-build-aarch64-unknown-linux-gnu: export JEMALLOC_SYS_WITH_LG_PAGE=16
 
+bsc-build-aarch64-unknown-linux-gnu: FEATURES := $(filter-out asm-keccak,$(FEATURES))
+bsc-build-aarch64-unknown-linux-gnu: export JEMALLOC_SYS_WITH_LG_PAGE=16
+
 # No jemalloc on Windows
 build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(FEATURES))
 op-build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(FEATURES))
+bsc-build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(FEATURES))
 
 # Note: The additional rustc compiler flags are for intrinsics needed by MDBX.
 # See: https://github.com/cross-rs/cross/wiki/FAQ#undefined-reference-with-build-std
@@ -135,6 +143,10 @@ op-build-x86_64-apple-darwin:
 	$(MAKE) op-build-native-x86_64-apple-darwin
 op-build-aarch64-apple-darwin:
 	$(MAKE) op-build-native-aarch64-apple-darwin
+bsc-build-x86_64-apple-darwin:
+	$(MAKE) bsc-build-native-x86_64-apple-darwin
+bsc-build-aarch64-apple-darwin:
+	$(MAKE) bsc-build-native-aarch64-apple-darwin
 
 # Create a `.tar.gz` containing a binary for a specific target.
 define tarball_release_binary
