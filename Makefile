@@ -81,7 +81,7 @@ build-native-%:
 	cargo build --bin reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
 
 op-build-native-%:
-	cargo build --bin op-reth --target $* --features "optimism,$(FEATURES)" --profile "$(PROFILE)"
+	cargo build --bin op-reth --target $* --features "optimism,opbnb,$(FEATURES)" --profile "$(PROFILE)"
 
 bsc-build-native-%:
 	cargo build --bin bsc-reth --target $* --features "bsc,$(FEATURES)" --profile "$(PROFILE)"
@@ -123,7 +123,7 @@ build-%:
 
 op-build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
-		cross build --bin op-reth --target $* --features "optimism,$(FEATURES)" --profile "$(PROFILE)"
+		cross build --bin op-reth --target $* --features "optimism,opbnb,$(FEATURES)" --profile "$(PROFILE)"
 
 bsc-build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
