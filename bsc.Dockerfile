@@ -42,6 +42,9 @@ RUN cp /app/target/$BUILD_PROFILE/bsc-reth /app/bsc-reth
 FROM ubuntu AS runtime
 WORKDIR /app
 
+# Install tini
+RUN apt-get install -y tini
+
 # Copy reth over from the build stage
 COPY --from=builder /app/bsc-reth /usr/local/bin
 
