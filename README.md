@@ -68,7 +68,7 @@ export network=bsc-testnet
     --http \
     --http.addr=0.0.0.0 \
     --http.port=8545 \
-    --http.api="admin, debug, eth, net, trace, txpool, web3, rpc, reth, ots, eth-call-bundle" \
+    --http.api="eth, net, txpool, web3, rpc" \
     --ws \
     --ws.addr=0.0.0.0 \
     --ws.port=8546 \
@@ -77,6 +77,36 @@ export network=bsc-testnet
 ```
 
 You can run `bsc-reth --help` for command explanations.
+
+For running bsc-reth with docker, please use the following command:
+
+```shell
+# for testnet
+export network=bsc-testnet
+
+# for mainnet
+# export network=bsc
+
+# check this for version of the docker image, https://github.com/bnb-chain/reth/pkgs/container/bsc-reth
+export version=latest
+
+# the directory where reth data will be stored
+export data_dir=/xxx/xxx
+
+docker run -d -p 8545:8545 -p 8546:8546 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data \
+    --name bsc-reth ghcr.io/bnb-chain/bsc-reth:${version} node \
+    --datadir=/data \
+    --chain=${network} \
+    --http \
+    --http.addr=0.0.0.0 \
+    --http.port=8545 \
+    --http.api="eth, net, txpool, web3, rpc" \
+    --ws \
+    --ws.addr=0.0.0.0 \
+    --ws.port=8546 \
+    --nat=any \
+    --log.file.directory /data/logs
+```
 
 ## Run Reth for opBNB
 
@@ -152,7 +182,7 @@ export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
     --http \
     --http.addr=0.0.0.0 \
     --http.port=8545 \
-    --http.api="admin, debug, eth, net, trace, txpool, web3, rpc, reth, ots, eth-call-bundle" \
+    --http.api="eth, net, txpool, web3, rpc" \
     --ws \
     --ws.addr=0.0.0.0 \
     --ws.port=8546 \
@@ -163,6 +193,46 @@ export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
 
 You can run `op-reth --help` for command explanations. More details on running opbnb nodes can be
 found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local-node/).
+
+For running op-reth with docker, please use the following command:
+
+```shell
+# for testnet
+export network=testnet
+export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
+
+# for mainnet
+# export network=mainnet
+# export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
+
+# check this for version of the docker image, https://github.com/bnb-chain/reth/pkgs/container/op-reth
+export version=latest
+
+# the directory where reth data will be stored
+export data_dir=/xxx/xxx
+
+# the directory where the jwt.txt file is stored
+export jwt_dir=/xxx/xxx
+
+docker run -d -p 8545:8545 -p 8546:8546 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data -v ${jwt_dir}:/jwt \
+    --name op-reth ghcr.io/bnb-chain/op-reth:${version} node \
+    --datadir=/data \
+    --chain=opbnb-${network} \
+    --rollup.sequencer-http=${L2_RPC} \
+    --authrpc.addr="0.0.0.0" \
+    --authrpc.port=8551 \
+    --authrpc.jwtsecret=/jwt/jwt.txt \
+    --http \
+    --http.addr=0.0.0.0 \
+    --http.port=8545 \
+    --http.api="eth, net, txpool, web3, rpc" \
+    --ws \
+    --ws.addr=0.0.0.0 \
+    --ws.port=8546 \
+    --builder.gaslimit=150000000 \
+    --nat=any \
+    --log.file.directory /data/logs
+```
 
 ## Contribution
 
