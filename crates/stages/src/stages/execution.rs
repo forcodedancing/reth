@@ -192,18 +192,6 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
         let batch_start = Instant::now();
 
         let mut parent_block_timestamp = 0u64;
-
-        // get parent block timestamp for execution
-        if start_block > 0 {
-            let parent_block_number = start_block - 1 as u64;
-            let parent_header = match static_file_provider.header_by_number(parent_block_number) {
-                Ok(Some(header)) => header,
-                _ => return Err(StageError::DatabaseIntegrity(ProviderError::HeaderNotFound(parent_block_number.into()))),
-            };
-            parent_block_timestamp = parent_header.timestamp;
-        }
-
-        let mut parent_block_timestamp = 0u64;
         // get parent block timestamp for execution
         if start_block > 0 {
             let parent_block_number = start_block - 1 as u64;
@@ -253,6 +241,9 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
             stage_progress = block_number;
             stage_checkpoint.progress.processed += block.gas_used;
 
+            // Update parent block timestamp for next block
+            parent_block_timestamp = block.header.timestamp;
+
             // If we have ExEx's we need to save the block in memory for later
             if self.exex_manager_handle.has_exexs() {
                 blocks.push(block);
@@ -268,9 +259,6 @@ impl<EF: ExecutorFactory> ExecutionStage<EF> {
             ) {
                 break
             }
-
-            // Update parent block timestamp for next block
-            parent_block_timestamp = block.header.timestamp;
         }
         let time = Instant::now();
         let state = executor.take_output_state();
