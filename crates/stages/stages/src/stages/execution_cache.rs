@@ -5,6 +5,7 @@ use lru::LruCache;
 use parking_lot::RwLock;
 use tracing::debug;
 
+use quick_cache::sync::Cache;
 use reth_db_api::transaction::DbTx;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
@@ -15,30 +16,26 @@ use reth_revm::db::{states::StateChangeset, BundleState};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, AccountProof};
-
 /// The size of cache, counted by the number of accounts.
 const CACHE_SIZE: usize = 10240;
 
 lazy_static! {
-    /// Account cache
-    static ref ACCOUNT_CACHE: RwLock<LruCache<Address, Account>> = RwLock::new(LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()));
+        /// Account cache
+    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE);
 
     /// Storage cache
-    static ref STORAGE_CACHE: RwLock<LruCache<Address, HashMap<StorageKey, StorageValue>>> = RwLock::new(LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()));
+    static ref STORAGE_CACHE: Cache<Address, HashMap<StorageKey, StorageValue>> = Cache::new(CACHE_SIZE);
 }
 
 pub(crate) fn apply_changeset_to_cache(change_set: StateChangeset) {
-    let mut account_binding = ACCOUNT_CACHE.write();
-    let mut storage_binding = STORAGE_CACHE.write();
-
     for (address, account_info) in change_set.accounts.iter() {
         match account_info {
             None => {
-                account_binding.pop_entry(address);
-                storage_binding.pop_entry(address);
+                ACCOUNT_CACHE.remove(address);
+                STORAGE_CACHE.remove(address);
             }
             Some(acc) => {
-                account_binding.put(
+                ACCOUNT_CACHE.insert(
                     *address,
                     Account {
                         nonce: acc.nonce,
@@ -52,23 +49,20 @@ pub(crate) fn apply_changeset_to_cache(change_set: StateChangeset) {
 
     for storage in change_set.storage.iter() {
         if storage.wipe_storage {
-            storage_binding.pop_entry(&storage.address);
+            STORAGE_CACHE.remove(&storage.address);
         } else {
             let mut map = HashMap::new();
             for (k, v) in storage.storage.clone() {
                 map.insert(k.into(), v);
             }
-            storage_binding.put(storage.address, map);
+            STORAGE_CACHE.insert(storage.address, map);
         }
     }
 }
 
 pub(crate) fn clear_cache() {
-    let mut account_binding = ACCOUNT_CACHE.write();
-    account_binding.clear();
-
-    let mut storage_binding = STORAGE_CACHE.write();
-    storage_binding.clear();
+    ACCOUNT_CACHE.clear();
+    STORAGE_CACHE.clear();
 }
 
 /// State provider over latest state that takes tx reference.
@@ -99,8 +93,7 @@ impl<'b, TX: DbTx> AccountReader for CachedLatestStateProviderRef<'b, TX> {
                 storage_hit: false,
             });
         }
-        let mut binding = ACCOUNT_CACHE.write();
-        let cached = binding.get(&address);
+        let cached = ACCOUNT_CACHE.get(&address);
         return match cached {
             Some(account) => {
                 debug!(target: "sync::stages::execution", address = ?address.to_string(), "Hit execution stage account cache");
@@ -112,14 +105,14 @@ impl<'b, TX: DbTx> AccountReader for CachedLatestStateProviderRef<'b, TX> {
                         storage_hit: false,
                     });
                 }
-                Ok(Some(*account))
+                Ok(Some(account))
             }
             None => {
                 let db_value = AccountReader::basic_account(&self.provider, address);
                 match db_value {
                     Ok(account) => {
                         if let Some(_) = account {
-                            binding.put(address, account.unwrap());
+                            ACCOUNT_CACHE.insert(address, account.unwrap());
                             debug!(target: "sync::stages::execution", address = ?address.to_string(), "Add execution stage account cache");
                         }
                         Ok(account)
@@ -186,8 +179,7 @@ impl<'b, TX: DbTx> StateProvider for CachedLatestStateProviderRef<'b, TX> {
             });
         }
 
-        let mut binding = STORAGE_CACHE.write();
-        let cached = binding.get_or_insert_mut(account, || HashMap::new());
+        let mut cached = STORAGE_CACHE.get(&account).unwrap_or_else(|| HashMap::new());
 
         if let Some(v) = cached.get(&storage_key) {
             debug!(target: "sync::stages::execution", address = ?account.to_string(), storage_key = ?storage_key, "Hit execution stage storage cache");
@@ -204,6 +196,7 @@ impl<'b, TX: DbTx> StateProvider for CachedLatestStateProviderRef<'b, TX> {
 
         if let Some(value) = StateProvider::storage(&self.provider, account, storage_key)? {
             cached.insert(storage_key, value);
+            STORAGE_CACHE.insert(account, cached);
             debug!(target: "sync::stages::execution", address = ?account.to_string(), storage_key = ?storage_key, "Add execution stage storage cache");
             return Ok(Some(value))
         }

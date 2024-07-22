@@ -42,6 +42,9 @@ futures-util.workspace = true
 # observability
 tracing.workspace = true
 
+# cache
+quick_cache = "0.6.1"
+
 # misc
 thiserror.workspace = true
 itertools.workspace = true
