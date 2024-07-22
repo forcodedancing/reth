@@ -1,10 +1,17 @@
-use std::{collections::HashMap, num::NonZeroUsize};
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+    sync::{
+        atomic::{AtomicU128, AtomicU64},
+        Mutex,
+    },
+};
 
 use lazy_static::lazy_static;
 use lru::LruCache;
-use metrics::Counter;
+use metrics::{Counter, CounterFn, GaugeFn};
 use parking_lot::RwLock;
-use tracing::debug;
+use tracing::{debug, info};
 
 use quick_cache::sync::Cache;
 use reth_metrics::Metrics;
@@ -25,6 +32,23 @@ lazy_static! {
 
     /// Storage cache
     static ref STORAGE_CACHE: Cache<Address, HashMap<StorageKey, StorageValue>> = Cache::new(CACHE_SIZE);
+
+    static ref TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
+}
+
+pub(crate) fn update_total(block: u64, inc: u128) {
+    let mut binding = TOTAL_TIME.write();
+
+    let current = binding.get_mut();
+    let new = *current + inc;
+    *current = new;
+
+    if block % 5000 == 0 {
+        info!(target: "blockchain_tree", total = ?new , "Total execution time");
+    }
+    if block == 20001 {
+        panic!("reach height")
+    }
 }
 
 /// Metrics for cache.

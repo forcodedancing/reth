@@ -4,7 +4,10 @@
 //! blocks, as well as a list of the blocks the chain is composed of.
 
 use super::externals::TreeExternals;
-use crate::{execution_cache::CachedBundleStateProvider, BundleStateDataRef};
+use crate::{
+    execution_cache::{update_total, CachedBundleStateProvider},
+    BundleStateDataRef,
+};
 use reth_blockchain_tree_api::{
     error::{BlockchainTreeError, InsertBlockErrorKind},
     BlockAttachment, BlockValidationKind,
@@ -220,7 +223,7 @@ impl AppendableChain {
             throughput = format_gas_throughput(block.gas_used, duration),
             "Executed block"
         );
-
+        update_total(block.number, duration.as_micros());
         let BlockExecutionOutput { state, receipts, requests, .. } = state;
         externals
             .consensus
