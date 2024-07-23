@@ -208,3 +208,27 @@ impl<'b, TX: DbTx> StateProvider for CachedLatestStateProviderRef<'b, TX> {
         StateProvider::bytecode_by_hash(&self.provider, code_hash)
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use itertools::Itertools;
+//     use reth_primitives::{address, U256};
+//
+//     #[test]
+//     fn test_cached_hashmap() {
+//         //init data
+//         let address = address!("D3b0d838cCCEAe7ebF1781D11D1bB741DB7Fe1A7");
+//         let mut m: HashMap<StorageKey, StorageValue> = HashMap::new();
+//         m.insert(B256::random(), U256::MAX);
+//         STORAGE_CACHE.insert(address, m);
+//
+//         //put data
+//         let mut cached = STORAGE_CACHE.get(&address).unwrap_or_else(|| HashMap::new());
+//         cached.insert(B256::random(), U256::MAX);
+//
+//         //verify data
+//         let cached = STORAGE_CACHE.get(&address).unwrap_or_else(|| HashMap::new());
+//         println!("{}", cached.keys().len());
+//     }
+// }

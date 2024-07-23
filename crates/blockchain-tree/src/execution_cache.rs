@@ -13,7 +13,7 @@ use metrics::{Counter, CounterFn, GaugeFn};
 use parking_lot::RwLock;
 use tracing::{debug, info};
 
-use quick_cache::sync::Cache;
+use moka::sync::Cache;
 use reth_metrics::Metrics;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
@@ -24,14 +24,16 @@ use reth_revm::db::BundleState;
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, AccountProof};
 /// The size of cache, counted by the number of accounts.
-const CACHE_SIZE: usize = 10240;
+const CACHE_SIZE: u64 = 10240;
+
+type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
     /// Account cache
-    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE);
+    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<Address, HashMap<StorageKey, StorageValue>> = Cache::new(CACHE_SIZE);
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE*10).build();
 
     static ref TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
 }
@@ -71,8 +73,7 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
     for (address, account_info) in change_set.accounts.iter() {
         match account_info {
             None => {
-                ACCOUNT_CACHE.remove(address);
-                STORAGE_CACHE.remove(address);
+                ACCOUNT_CACHE.invalidate(address);
             }
             Some(acc) => {
                 ACCOUNT_CACHE.insert(
@@ -89,13 +90,24 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
 
     for storage in change_set.storage.iter() {
         if storage.wipe_storage {
-            STORAGE_CACHE.remove(&storage.address);
-        } else {
-            let mut map = HashMap::new();
-            for (k, v) in storage.storage.clone() {
-                map.insert(k.into(), v);
+            // invalidate_entries_if needs `static
+            // let _ = STORAGE_CACHE.invalidate_entries_if(move |k, _v| {
+            //     let (address, _) = k;
+            //     if address.eq(&storage.address) {
+            //         return true;
+            //     }
+            //     return false;
+            // });
+
+            for (storage_key, _storage_value) in STORAGE_CACHE.iter() {
+                if storage_key.0.eq(&storage.address) {
+                    STORAGE_CACHE.invalidate(&storage_key);
+                }
             }
-            STORAGE_CACHE.insert(storage.address, map);
+        } else {
+            for (k, v) in storage.storage.clone() {
+                STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
+            }
         }
     }
 }
@@ -230,17 +242,17 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
 
         self.cache_metrics.storage_access_total.increment(1);
 
-        let mut cached = STORAGE_CACHE.get(&account).unwrap_or_else(|| HashMap::new());
+        let cache_key = (account, storage_key);
+        let cached_value = STORAGE_CACHE.get(&cache_key);
 
-        if let Some(v) = cached.get(&storage_key) {
+        if let Some(v) = cached_value {
             debug!(target: "blockchain_tree", address = ?account.to_string(), storage_key = ?storage_key, "Hit blockchain tree storage cache");
             self.cache_metrics.storage_cache_hit_total.increment(1);
-            return Ok(Some(*v))
+            return Ok(Some(v))
         }
 
         if let Some(value) = StateProvider::storage(&self.state_provider, account, storage_key)? {
-            cached.insert(storage_key, value);
-            STORAGE_CACHE.insert(account, cached);
+            STORAGE_CACHE.insert(cache_key, value);
             debug!(target: "blockchain_tree", address = ?account.to_string(), storage_key = ?storage_key, "Add blockchain tree cache case");
             return Ok(Some(value))
         }
