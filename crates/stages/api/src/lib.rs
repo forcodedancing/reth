@@ -16,7 +16,7 @@ mod error;
 mod metrics;
 mod pipeline;
 mod stage;
-#[cfg(any(test, feature = "test-utils"))]
+//#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
 mod util;
 
