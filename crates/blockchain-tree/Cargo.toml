@@ -28,6 +28,7 @@ reth-trie = { workspace = true, features = ["metrics"] }
 reth-trie-parallel = { workspace = true, features = ["parallel"] }
 reth-network.workspace = true
 reth-consensus.workspace = true
+reth-primitives-traits.workspace = true
 
 # common
 parking_lot.workspace = true
@@ -37,6 +38,8 @@ tokio = { workspace = true, features = ["macros", "sync"] }
 # metrics
 reth-metrics = { workspace = true, features = ["common"] }
 metrics.workspace = true
+
+lazy_static = "1.4.0"
 
 # misc
 aquamarine.workspace = true

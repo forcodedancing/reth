@@ -2,9 +2,9 @@
 //!
 //! A [`Chain`] contains the state of accounts for the chain after execution of its constituent
 //! blocks, as well as a list of the blocks the chain is composed of.
-
 use super::externals::TreeExternals;
 use crate::BundleStateDataRef;
+use lazy_static::lazy_static;
 use reth_blockchain_tree_api::{
     error::{BlockchainTreeError, InsertBlockErrorKind},
     BlockAttachment, BlockValidationKind,
@@ -17,6 +17,7 @@ use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_primitives::{
     BlockHash, BlockNumber, ForkBlock, GotExpected, SealedBlockWithSenders, SealedHeader, U256,
 };
+use reth_primitives_traits::format_gas_throughput;
 use reth_provider::{
     providers::{BundleStateProvider, ConsistentDbView},
     FullExecutionDataProvider, ProviderError, StateRootProvider,
@@ -27,8 +28,30 @@ use reth_trie_parallel::parallel_root::ParallelStateRoot;
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
+    sync::{atomic::AtomicU128, RwLock},
     time::Instant,
 };
+use tracing::info;
+
+lazy_static! {
+    static ref TOTAL_TIME: parking_lot::RwLock<AtomicU128> =
+        parking_lot::RwLock::new(AtomicU128::new(0));
+}
+
+pub(crate) fn update_total(block: u64, inc: u128) {
+    let mut binding = TOTAL_TIME.write();
+
+    let current = binding.get_mut();
+    let new = *current + inc;
+    *current = new;
+
+    if block % 5000 == 0 {
+        info!(target: "blockchain_tree", total = ?new , "Total execution time");
+    }
+    if block == 4010000 {
+        panic!("reach height")
+    }
+}
 
 /// A chain in the blockchain tree that has functionality to execute blocks and append them to
 /// itself.
@@ -209,7 +232,18 @@ impl AppendableChain {
         let block_hash = block.hash();
         let block = block.unseal();
 
+        let execute_start = Instant::now();
         let state = executor.execute((&block, U256::MAX).into())?;
+        let duration = execute_start.elapsed();
+        info!(
+            target: "blockchain_tree",
+            block = block.number,
+            duration = duration.as_micros(),
+            throughput = format_gas_throughput(block.gas_used, duration),
+            "Executed block"
+        );
+        update_total(block.number, duration.as_micros());
+
         let BlockExecutionOutput { state, receipts, requests, .. } = state;
         externals
             .consensus
