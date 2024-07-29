@@ -53,26 +53,29 @@ make install-op
 
 ## Run Reth for BSC
 
+### Hardware Requirements
+
+* CPU with 16+ cores
+* 128GB RAM
+* High-performance NVMe SSD with at least 4TB of free space for full node and 8TB of free space for archive node
+* A broadband internet connection with upload/download speeds of 25 MB/s
+
+### Steps to Run bsc-reth
+
 The command below is for an archive node. To run a full node, simply add the `--full` tag.
 
 ```shell
-# for testnet
-export network=bsc-testnet
-
 # for mainnet
-# export network=bsc
+export network=bsc
+
+# for testnet
+# export network=bsc-testnet
 
 ./target/release/bsc-reth node \
     --datadir=./datadir \
     --chain=${network} \
     --http \
-    --http.addr=0.0.0.0 \
-    --http.port=8545 \
     --http.api="eth, net, txpool, web3, rpc" \
-    --ws \
-    --ws.addr=0.0.0.0 \
-    --ws.port=8546 \
-    --nat=any \
     --log.file.directory ./datadir/logs
 ```
 
@@ -81,11 +84,11 @@ You can run `bsc-reth --help` for command explanations.
 For running bsc-reth with docker, please use the following command:
 
 ```shell
-# for testnet
-export network=bsc-testnet
-
 # for mainnet
-# export network=bsc
+export network=bsc
+
+# for testnet
+# export network=bsc-testnet
 
 # check this for version of the docker image, https://github.com/bnb-chain/reth/pkgs/container/bsc-reth
 export version=latest
@@ -93,24 +96,25 @@ export version=latest
 # the directory where reth data will be stored
 export data_dir=/xxx/xxx
 
-docker run -d -p 8545:8545 -p 8546:8546 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data \
+docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data \
     --name bsc-reth ghcr.io/bnb-chain/bsc-reth:${version} node \
     --datadir=/data \
     --chain=${network} \
     --http \
-    --http.addr=0.0.0.0 \
-    --http.port=8545 \
     --http.api="eth, net, txpool, web3, rpc" \
-    --ws \
-    --ws.addr=0.0.0.0 \
-    --ws.port=8546 \
-    --nat=any \
     --log.file.directory /data/logs
 ```
 
+### Snapshots
+
+There are snapshots available from the community, you can use a snapshot to reduce the sync time for catching up.
+
+* [fuzzland snapshot](https://github.com/fuzzland/snapshots)
+
 ## Run Reth for opBNB
 
-The op-reth can function as both a full node and an archive node. Due to its unique storage advantages, it is primarily utilized for running archive nodes.
+The op-reth can function as both a full node and an archive node. Due to its unique storage advantages, it is primarily
+utilized for running archive nodes.
 
 ### Hardware Requirements
 
@@ -133,16 +137,16 @@ git clone https://github.com/bnb-chain/opbnb
 cd opbnb
 make op-node
 
+# for mainnet
+export network=mainnet
+export L1_RPC=https://bsc-dataseed.bnbchain.org
+export P2P_BOOTNODES="enr:-J24QA9sgVxbZ0KoJ7-1gx_szfc7Oexzz7xL2iHS7VMHGj2QQaLc_IQZmFthywENgJWXbApj7tw7BiouKDOZD4noWEWGAYppffmvgmlkgnY0gmlwhDbjSM6Hb3BzdGFja4PMAQCJc2VjcDI1NmsxoQKetGQX7sXd4u8hZr6uayTZgHRDvGm36YaryqZkgnidS4N0Y3CCIyuDdWRwgiMs,enr:-J24QPSZMaGw3NhO6Ll25cawknKcOFLPjUnpy72HCkwqaHBKaaR9ylr-ejx20INZ69BLLj334aEqjNHKJeWhiAdVcn-GAYv28FmZgmlkgnY0gmlwhDTDWQOHb3BzdGFja4PMAQCJc2VjcDI1NmsxoQJ-_5GZKjs7jaB4TILdgC8EwnwyL3Qip89wmjnyjvDDwoN0Y3CCIyuDdWRwgiMs"
+
 # for testnet
 # it's better to replace the L1_RPC with your own BSC Testnet RPC Endpoint for stability
-export network=testnet
-export L1_RPC=https://bsc-testnet.bnbchain.org
-export P2P_BOOTNODES="enr:-J24QGQBeMsXOaCCaLWtNFSfb2Gv50DjGOKToH2HUTAIn9yXImowlRoMDNuPNhSBZNQGCCE8eAl5O3dsONuuQp5Qix2GAYjB7KHSgmlkgnY0gmlwhDREiqaHb3BzdGFja4PrKwCJc2VjcDI1NmsxoQL4I9wpEVDcUb8bLWu6V8iPoN5w8E8q-GrS5WUCygYUQ4N0Y3CCIyuDdWRwgiMr,enr:-J24QJKXHEkIhy0tmIk2EscMZ2aRrivNsZf_YhgIU51g4ZKHWY0BxW6VedRJ1jxmneW9v7JjldPOPpLkaNSo6cXGFxqGAYpK96oCgmlkgnY0gmlwhANzx96Hb3BzdGFja4PrKwCJc2VjcDI1NmsxoQMOCzUFffz04eyDrmkbaSCrMEvLvn5O4RZaZ5k1GV4wa4N0Y3CCIyuDdWRwgiMr"
-
-# for mainnet
-# export network=mainnet
-# export L1_RPC=https://bsc-dataseed.bnbchain.org
-# export P2P_BOOTNODES="enr:-J24QA9sgVxbZ0KoJ7-1gx_szfc7Oexzz7xL2iHS7VMHGj2QQaLc_IQZmFthywENgJWXbApj7tw7BiouKDOZD4noWEWGAYppffmvgmlkgnY0gmlwhDbjSM6Hb3BzdGFja4PMAQCJc2VjcDI1NmsxoQKetGQX7sXd4u8hZr6uayTZgHRDvGm36YaryqZkgnidS4N0Y3CCIyuDdWRwgiMs,enr:-J24QPSZMaGw3NhO6Ll25cawknKcOFLPjUnpy72HCkwqaHBKaaR9ylr-ejx20INZ69BLLj334aEqjNHKJeWhiAdVcn-GAYv28FmZgmlkgnY0gmlwhDTDWQOHb3BzdGFja4PMAQCJc2VjcDI1NmsxoQJ-_5GZKjs7jaB4TILdgC8EwnwyL3Qip89wmjnyjvDDwoN0Y3CCIyuDdWRwgiMs"
+# export network=testnet
+# export L1_RPC=https://bsc-testnet.bnbchain.org
+# export P2P_BOOTNODES="enr:-J24QGQBeMsXOaCCaLWtNFSfb2Gv50DjGOKToH2HUTAIn9yXImowlRoMDNuPNhSBZNQGCCE8eAl5O3dsONuuQp5Qix2GAYjB7KHSgmlkgnY0gmlwhDREiqaHb3BzdGFja4PrKwCJc2VjcDI1NmsxoQL4I9wpEVDcUb8bLWu6V8iPoN5w8E8q-GrS5WUCygYUQ4N0Y3CCIyuDdWRwgiMr,enr:-J24QJKXHEkIhy0tmIk2EscMZ2aRrivNsZf_YhgIU51g4ZKHWY0BxW6VedRJ1jxmneW9v7JjldPOPpLkaNSo6cXGFxqGAYpK96oCgmlkgnY0gmlwhANzx96Hb3BzdGFja4PrKwCJc2VjcDI1NmsxoQMOCzUFffz04eyDrmkbaSCrMEvLvn5O4RZaZ5k1GV4wa4N0Y3CCIyuDdWRwgiMr"
 
 ./op-node/bin/op-node \
   --l1.trustrpc \
@@ -175,13 +179,13 @@ op-reth.
 The command below is for an archive node. To run a full node, simply add the `--full` tag.
 
 ```shell
-# for testnet
-export network=testnet
-export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
-
 # for mainnet
-# export network=mainnet
-# export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
+export network=mainnet
+export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
+
+# for testnet
+# export network=testnet
+# export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
 
 ./target/release/op-reth node \
     --datadir=./datadir \
@@ -191,14 +195,7 @@ export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
     --authrpc.port=8551 \
     --authrpc.jwtsecret=./jwt.txt \
     --http \
-    --http.addr=0.0.0.0 \
-    --http.port=8545 \
     --http.api="eth, net, txpool, web3, rpc" \
-    --ws \
-    --ws.addr=0.0.0.0 \
-    --ws.port=8546 \
-    --builder.gaslimit=150000000 \
-    --nat=any \
     --log.file.directory ./datadir/logs
 ```
 
@@ -208,13 +205,13 @@ found [here](https://docs.bnbchain.org/opbnb-docs/docs/tutorials/running-a-local
 For running op-reth with docker, please use the following command:
 
 ```shell
-# for testnet
-export network=testnet
-export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
-
 # for mainnet
-# export network=mainnet
-# export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
+export network=mainnet
+export L2_RPC=https://opbnb-mainnet-rpc.bnbchain.org
+
+# for testnet
+# export network=testnet
+# export L2_RPC=https://opbnb-testnet-rpc.bnbchain.org
 
 # check this for version of the docker image, https://github.com/bnb-chain/reth/pkgs/container/op-reth
 export version=latest
@@ -225,7 +222,7 @@ export data_dir=/xxx/xxx
 # the directory where the jwt.txt file is stored
 export jwt_dir=/xxx/xxx
 
-docker run -d -p 8545:8545 -p 8546:8546 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data -v ${jwt_dir}:/jwt \
+docker run -d -p 8545:8545 -p 30303:30303 -p 30303:30303/udp -v ${data_dir}:/data -v ${jwt_dir}:/jwt \
     --name op-reth ghcr.io/bnb-chain/op-reth:${version} node \
     --datadir=/data \
     --chain=opbnb-${network} \
@@ -234,14 +231,7 @@ docker run -d -p 8545:8545 -p 8546:8546 -p 30303:30303 -p 30303:30303/udp -v ${d
     --authrpc.port=8551 \
     --authrpc.jwtsecret=/jwt/jwt.txt \
     --http \
-    --http.addr=0.0.0.0 \
-    --http.port=8545 \
     --http.api="eth, net, txpool, web3, rpc" \
-    --ws \
-    --ws.addr=0.0.0.0 \
-    --ws.port=8546 \
-    --builder.gaslimit=150000000 \
-    --nat=any \
     --log.file.directory /data/logs
 ```
 
