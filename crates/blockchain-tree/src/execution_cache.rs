@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicU128, AtomicU64},
         Mutex,
     },
+    time::Instant,
 };
 
 use lazy_static::lazy_static;
@@ -32,10 +33,15 @@ lazy_static! {
     /// Account cache
     static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
+    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE).build();
+
+    static ref HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
+
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE*10).build();
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
     static ref TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
+    static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
 }
 
 pub(crate) fn update_total(block: u64, inc: u128) {
@@ -45,10 +51,12 @@ pub(crate) fn update_total(block: u64, inc: u128) {
     let new = *current + inc;
     *current = new;
 
-    if block % 5000 == 0 {
+    if block % 500 == 0 {
         info!(target: "blockchain_tree", total = ?new , "Total execution time");
+        let mut binding = CHANGE_SET_TOTAL_TIME.write();
+        info!(target: "blockchain_tree", total = ?binding.get_mut() , "Total changeset time");
     }
-    if block == 20001 {
+    if block == 420001 {
         panic!("reach height")
     }
 }
@@ -68,6 +76,7 @@ pub(crate) struct CacheMetrics {
 }
 
 pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
+    let execute_start = Instant::now();
     let change_set = bundle.into_plain_state(reth_provider::OriginalValuesKnown::Yes);
 
     for (address, account_info) in change_set.accounts.iter() {
@@ -110,6 +119,12 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
             }
         }
     }
+
+    let mut binding = CHANGE_SET_TOTAL_TIME.write();
+
+    let current = binding.get_mut();
+    let new = *current + execute_start.elapsed().as_micros();
+    *current = new;
 }
 
 #[derive(Debug)]
@@ -141,7 +156,23 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
         if block_hash.is_some() {
             return Ok(block_hash)
         }
-        self.state_provider.block_hash(block_number)
+
+        let cached = HASH_CACHE.get(&block_number);
+        return match cached {
+            Some(hash) => Ok(Some(hash)),
+            None => {
+                let db_value = self.state_provider.block_hash(block_number);
+                match db_value {
+                    Ok(hash) => {
+                        if let Some(acc) = hash {
+                            HASH_CACHE.insert(block_number, acc);
+                        }
+                        Ok(hash)
+                    }
+                    Err(err) => Err(err.into()),
+                }
+            }
+        }
     }
 
     fn canonical_hashes_range(
@@ -160,29 +191,23 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> AccountReader
         if let Some(account) =
             self.block_execution_data_provider.execution_outcome().account(&address)
         {
-            Ok(account)
-        } else {
-            self.cache_metrics.account_access_total.increment(1);
+            return Ok(account)
+        }
+        self.cache_metrics.account_access_total.increment(1);
 
-            let cached = ACCOUNT_CACHE.get(&address);
-            return match cached {
-                Some(account) => {
-                    debug!(target: "blockchain_tree", address = ?address.to_string(), "Hit blockchain tree account cache");
-                    self.cache_metrics.account_cache_hit_total.increment(1);
-                    Ok(Some(account))
-                }
-                None => {
-                    let db_value = AccountReader::basic_account(&self.state_provider, address);
-                    match db_value {
-                        Ok(account) => {
-                            if let Some(_) = account {
-                                ACCOUNT_CACHE.insert(address, account.unwrap());
-                                debug!(target: "blockchain_tree", address = ?address.to_string(), "Add blockchain tree account cache");
-                            }
-                            Ok(account)
+        let cached = ACCOUNT_CACHE.get(&address);
+        return match cached {
+            Some(account) => Ok(Some(account)),
+            None => {
+                let db_value = AccountReader::basic_account(&self.state_provider, address);
+                match db_value {
+                    Ok(account) => {
+                        if let Some(acc) = account {
+                            ACCOUNT_CACHE.insert(address, acc);
                         }
-                        Err(err) => Err(err.into()),
+                        Ok(account)
                     }
+                    Err(err) => Err(err.into()),
                 }
             }
         }
@@ -246,14 +271,11 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         let cached_value = STORAGE_CACHE.get(&cache_key);
 
         if let Some(v) = cached_value {
-            debug!(target: "blockchain_tree", address = ?account.to_string(), storage_key = ?storage_key, "Hit blockchain tree storage cache");
-            self.cache_metrics.storage_cache_hit_total.increment(1);
             return Ok(Some(v))
         }
 
         if let Some(value) = StateProvider::storage(&self.state_provider, account, storage_key)? {
             STORAGE_CACHE.insert(cache_key, value);
-            debug!(target: "blockchain_tree", address = ?account.to_string(), storage_key = ?storage_key, "Add blockchain tree cache case");
             return Ok(Some(value))
         }
         Ok(None)
@@ -265,7 +287,21 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         {
             return Ok(Some(bytecode))
         }
-
-        self.state_provider.bytecode_by_hash(code_hash)
+        let cached = CONTRACT_CACHE.get(&code_hash);
+        return match cached {
+            Some(code) => Ok(Some(code)),
+            None => {
+                let db_value = self.state_provider.bytecode_by_hash(code_hash);
+                match db_value {
+                    Ok(code) => {
+                        if let Some(acc) = code.clone() {
+                            CONTRACT_CACHE.insert(code_hash, acc);
+                        }
+                        Ok(code)
+                    }
+                    Err(err) => Err(err.into()),
+                }
+            }
+        }
     }
 }
