@@ -1,8 +1,6 @@
-use std::{collections::HashMap, num::NonZeroUsize};
+use std::collections::HashMap;
 
 use lazy_static::lazy_static;
-use lru::LruCache;
-use parking_lot::RwLock;
 use tracing::debug;
 
 use quick_cache::sync::Cache;

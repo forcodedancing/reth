@@ -1,18 +1,9 @@
-use std::{
-    collections::HashMap,
-    num::NonZeroUsize,
-    sync::{
-        atomic::{AtomicU128, AtomicU64},
-        Mutex,
-    },
-    time::Instant,
-};
+use std::{collections::HashSet, sync::atomic::AtomicU128, time::Instant};
 
 use lazy_static::lazy_static;
-use lru::LruCache;
-use metrics::{Counter, CounterFn, GaugeFn};
+use metrics::Counter;
 use parking_lot::RwLock;
-use tracing::{debug, info};
+use tracing::info;
 
 use moka::sync::Cache;
 use reth_metrics::Metrics;
@@ -33,12 +24,15 @@ lazy_static! {
     /// Account cache
     static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
+    /// Contract cache
     static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
-    static ref HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
-
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE).build();
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE*10).build();
+
+    /// Block hash cache
+    static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
+
 
     static ref TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
     static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
@@ -97,26 +91,20 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
         }
     }
 
+    let mut to_wipe = HashSet::new();
     for storage in change_set.storage.iter() {
         if storage.wipe_storage {
-            // invalidate_entries_if needs `static
-            // let _ = STORAGE_CACHE.invalidate_entries_if(move |k, _v| {
-            //     let (address, _) = k;
-            //     if address.eq(&storage.address) {
-            //         return true;
-            //     }
-            //     return false;
-            // });
-
-            for (storage_key, _storage_value) in STORAGE_CACHE.iter() {
-                if storage_key.0.eq(&storage.address) {
-                    STORAGE_CACHE.invalidate(&storage_key);
-                }
-            }
+            to_wipe.insert(storage.address);
         } else {
             for (k, v) in storage.storage.clone() {
                 STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
             }
+        }
+    }
+
+    for (address_storage_key, _storage_value) in STORAGE_CACHE.iter() {
+        if to_wipe.contains(&address_storage_key.0) {
+            STORAGE_CACHE.invalidate(&address_storage_key);
         }
     }
 
@@ -157,7 +145,7 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
             return Ok(block_hash)
         }
 
-        let cached = HASH_CACHE.get(&block_number);
+        let cached = BLOCK_HASH_CACHE.get(&block_number);
         return match cached {
             Some(hash) => Ok(Some(hash)),
             None => {
@@ -165,7 +153,7 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
                 match db_value {
                     Ok(hash) => {
                         if let Some(acc) = hash {
-                            HASH_CACHE.insert(block_number, acc);
+                            BLOCK_HASH_CACHE.insert(block_number, acc);
                         }
                         Ok(hash)
                     }
