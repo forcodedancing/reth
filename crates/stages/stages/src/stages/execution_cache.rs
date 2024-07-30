@@ -39,11 +39,11 @@ lazy_static! {
     static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
 }
 
-pub(crate) fn update_total(block: u64, inc: u64) {
+pub(crate) fn update_total(block: u64, inc: u128) {
     let mut binding = TOTAL_TIME.write();
 
     let current = binding.get_mut();
-    let new = *current + inc;
+    let new = *current + inc as u64;
     *current = new;
 
     if block % 500 == 0 {
