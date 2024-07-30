@@ -45,7 +45,6 @@ metrics.workspace = true
 # misc
 aquamarine.workspace = true
 linked_hash_set.workspace = true
-lru = "0.12.3"
 lazy_static = "1.4.0"
 
 [dev-dependencies]

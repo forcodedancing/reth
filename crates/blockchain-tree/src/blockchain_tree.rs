@@ -1,7 +1,7 @@
 //! Implementation of [`BlockchainTree`]
 
 use crate::{
-    execution_cache::apply_bundle_state_to_cache,
+    canonical_cache::apply_bundle_state_to_cache,
     metrics::{MakeCanonicalAction, MakeCanonicalDurationsRecorder, TreeMetrics},
     state::{BlockchainId, TreeState},
     AppendableChain, BlockIndices, BlockchainTreeConfig, ExecutionData, TreeExternals,
