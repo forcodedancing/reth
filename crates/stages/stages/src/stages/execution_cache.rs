@@ -33,30 +33,9 @@ lazy_static! {
 
     /// Block hash cache
     static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
-
-
-    static ref TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
-    static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
-}
-
-pub(crate) fn update_total(block: u64, inc: u128) {
-    let mut binding = TOTAL_TIME.write();
-
-    let current = binding.get_mut();
-    let new = *current + inc as u64;
-    *current = new;
-
-    if block % 500 == 0 {
-        let mut binding = CHANGE_SET_TOTAL_TIME.write();
-        let change_set_time = *binding.get_mut();
-        let total = new + change_set_time;
-        info!(target: "blockchain_tree", total = ?total, execution = ?new, change_set = ?change_set_time, block = ?block, "Total execution time");
-    }
 }
 
 pub(crate) fn apply_changeset_to_cache(change_set: StateChangeset) {
-    let execute_start = Instant::now();
-
     for (address, account_info) in change_set.accounts.iter() {
         match account_info {
             None => {
@@ -92,12 +71,6 @@ pub(crate) fn apply_changeset_to_cache(change_set: StateChangeset) {
             }
         }
     }
-
-    let mut binding = CHANGE_SET_TOTAL_TIME.write();
-
-    let current = binding.get_mut();
-    let new = *current + execute_start.elapsed().as_micros() as u64;
-    *current = new;
 }
 
 pub(crate) fn clear_cache() {
