@@ -146,7 +146,7 @@ members = [
     "examples/exex/minimal/",
     "examples/exex/op-bridge/",
     "testing/ef-tests/",
-    "testing/testing-utils", 
+    "testing/testing-utils",
 ]
 default-members = ["bin/reth"]
 
@@ -338,7 +338,7 @@ reth-network-p2p = { path = "crates/net/p2p" }
 reth-nippy-jar = { path = "crates/storage/nippy-jar" }
 reth-node-api = { path = "crates/node/api" }
 reth-node-builder = { path = "crates/node/builder" }
-reth-node-bsc= { path = "crates/bsc/node" }
+reth-node-bsc = { path = "crates/bsc/node" }
 reth-node-core = { path = "crates/node/core" }
 reth-node-ethereum = { path = "crates/ethereum/node" }
 reth-node-events = { path = "crates/node/events" }
@@ -554,10 +554,10 @@ test-fuzz = "5"
 iai-callgrind = "0.11"
 
 [patch.crates-io]
-revm = { git = "https://github.com/bnb-chain/revm", rev = "0fceb6332b50ece91aabe3f90df06ce5aa44111f" }
-revm-interpreter = { git = "https://github.com/bnb-chain/revm", rev = "0fceb6332b50ece91aabe3f90df06ce5aa44111f" }
-revm-precompile = { git = "https://github.com/bnb-chain/revm", rev = "0fceb6332b50ece91aabe3f90df06ce5aa44111f" }
-revm-primitives = { git = "https://github.com/bnb-chain/revm", rev = "0fceb6332b50ece91aabe3f90df06ce5aa44111f" }
+revm = { git = "https://github.com/forcodedancing/revm", rev = "2f7e9c0" }
+revm-interpreter = { git = "https://github.com/forcodedancing/revm", rev = "2f7e9c0" }
+revm-precompile = { git = "https://github.com/forcodedancing/revm", rev = "2f7e9c0" }
+revm-primitives = { git = "https://github.com/forcodedancing/revm", rev = "2f7e9c0" }
 alloy-chains = { git = "https://github.com/bnb-chain/alloy-chains-rs.git", rev = "b7c5379cf47345181f8dce350acafb958f47152a" }
 alloy-rpc-types-eth = { git = "https://github.com/bnb-chain/alloy", rev = "18f098dd78be661433bae682ad161a41f8a9c301" }
 alloy-consensus = { git = "https://github.com/bnb-chain/alloy", rev = "18f098dd78be661433bae682ad161a41f8a9c301" }

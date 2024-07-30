@@ -48,9 +48,6 @@ pub(crate) fn update_total(block: u64, inc: u128) {
     if block % 500 == 0 {
         info!(target: "blockchain_tree", total = ?new , "Total execution time");
     }
-    if block == 4010000 {
-        panic!("reach height")
-    }
 }
 
 /// A chain in the blockchain tree that has functionality to execute blocks and append them to
