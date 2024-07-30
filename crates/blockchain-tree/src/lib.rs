@@ -17,7 +17,7 @@
 )]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![feature(integer_atomics)]
+
 /// Re-export of the blockchain tree API.
 pub use reth_blockchain_tree_api::*;
 

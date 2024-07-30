@@ -28,21 +28,21 @@ use reth_trie_parallel::parallel_root::ParallelStateRoot;
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
-    sync::{atomic::AtomicU128, RwLock},
+    sync::{atomic::AtomicU64, RwLock},
     time::Instant,
 };
 use tracing::info;
 
 lazy_static! {
-    static ref TOTAL_TIME: parking_lot::RwLock<AtomicU128> =
-        parking_lot::RwLock::new(AtomicU128::new(0));
+    static ref TOTAL_TIME: parking_lot::RwLock<AtomicU64> =
+        parking_lot::RwLock::new(AtomicU64::new(0));
 }
 
 pub(crate) fn update_total(block: u64, inc: u128) {
     let mut binding = TOTAL_TIME.write();
 
     let current = binding.get_mut();
-    let new = *current + inc;
+    let new = *current + inc as u64;
     *current = new;
 
     if block % 500 == 0 {
