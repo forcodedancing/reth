@@ -5,7 +5,7 @@
 
 use super::externals::TreeExternals;
 use crate::{
-    execution_cache::{update_total, CachedBundleStateProvider},
+    canonical_cache::{update_total, CachedBundleStateProvider},
     BundleStateDataRef,
 };
 use reth_blockchain_tree_api::{

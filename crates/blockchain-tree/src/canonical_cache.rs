@@ -1,12 +1,11 @@
 use std::{collections::HashSet, sync::atomic::AtomicU128, time::Instant};
 
 use lazy_static::lazy_static;
-use metrics::Counter;
+use metrics::counter;
 use parking_lot::RwLock;
 use tracing::info;
 
 use moka::sync::Cache;
-use reth_metrics::Metrics;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
     AccountReader, BlockHashReader, ExecutionDataProvider, StateProofProvider, StateProvider,
@@ -28,7 +27,7 @@ lazy_static! {
     static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE*10).build();
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
     /// Block hash cache
     static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
@@ -46,27 +45,11 @@ pub(crate) fn update_total(block: u64, inc: u128) {
     *current = new;
 
     if block % 500 == 0 {
-        info!(target: "blockchain_tree", total = ?new , "Total execution time");
         let mut binding = CHANGE_SET_TOTAL_TIME.write();
-        info!(target: "blockchain_tree", total = ?binding.get_mut() , "Total changeset time");
+        let change_set_time = *binding.get_mut();
+        let total = new + change_set_time;
+        info!(target: "blockchain_tree", total = ?total, execution = ?new, change_set = ?change_set_time, block = ?block, "Total execution time");
     }
-    if block == 420001 {
-        panic!("reach height")
-    }
-}
-
-/// Metrics for cache.
-#[derive(Metrics)]
-#[metrics(scope = "blockchain_tree.cache")]
-pub(crate) struct CacheMetrics {
-    /// Total account access count
-    pub(crate) account_access_total: Counter,
-    /// Total account access cache hit count
-    pub(crate) account_cache_hit_total: Counter,
-    /// Total storage access count
-    pub(crate) storage_access_total: Counter,
-    /// Total storage access cache hit count
-    pub(crate) storage_cache_hit_total: Counter,
 }
 
 pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
@@ -101,10 +84,11 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
             }
         }
     }
-
-    for (address_storage_key, _storage_value) in STORAGE_CACHE.iter() {
-        if to_wipe.contains(&address_storage_key.0) {
-            STORAGE_CACHE.invalidate(&address_storage_key);
+    if !to_wipe.is_empty() {
+        for (address_storage_key, _storage_value) in STORAGE_CACHE.iter() {
+            if to_wipe.contains(&address_storage_key.0) {
+                STORAGE_CACHE.invalidate(&address_storage_key);
+            }
         }
     }
 
@@ -121,18 +105,12 @@ pub(crate) struct CachedBundleStateProvider<SP: StateProvider, EDP: ExecutionDat
     pub state_provider: SP,
     /// Block execution data.
     pub block_execution_data_provider: EDP,
-    /// Cache metrics.
-    pub cache_metrics: CacheMetrics,
 }
 
 impl<SP: StateProvider, EDP: ExecutionDataProvider> CachedBundleStateProvider<SP, EDP> {
     /// Create new cached bundle state provider
     pub(crate) fn new(state_provider: SP, block_execution_data_provider: EDP) -> Self {
-        Self {
-            state_provider,
-            block_execution_data_provider,
-            cache_metrics: CacheMetrics::default(),
-        }
+        Self { state_provider, block_execution_data_provider }
     }
 }
 
@@ -145,22 +123,14 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
             return Ok(block_hash)
         }
 
-        let cached = BLOCK_HASH_CACHE.get(&block_number);
-        return match cached {
-            Some(hash) => Ok(Some(hash)),
-            None => {
-                let db_value = self.state_provider.block_hash(block_number);
-                match db_value {
-                    Ok(hash) => {
-                        if let Some(acc) = hash {
-                            BLOCK_HASH_CACHE.insert(block_number, acc);
-                        }
-                        Ok(hash)
-                    }
-                    Err(err) => Err(err.into()),
-                }
-            }
+        if let Some(v) = BLOCK_HASH_CACHE.get(&block_number) {
+            return Ok(Some(v))
         }
+        if let Some(value) = self.state_provider.block_hash(block_number)? {
+            BLOCK_HASH_CACHE.insert(block_number, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 
     fn canonical_hashes_range(
@@ -179,26 +149,19 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> AccountReader
         if let Some(account) =
             self.block_execution_data_provider.execution_outcome().account(&address)
         {
+            counter!("blockchain.tree.cache.account.outcome.hit").increment(1);
             return Ok(account)
         }
-        self.cache_metrics.account_access_total.increment(1);
 
-        let cached = ACCOUNT_CACHE.get(&address);
-        return match cached {
-            Some(account) => Ok(Some(account)),
-            None => {
-                let db_value = AccountReader::basic_account(&self.state_provider, address);
-                match db_value {
-                    Ok(account) => {
-                        if let Some(acc) = account {
-                            ACCOUNT_CACHE.insert(address, acc);
-                        }
-                        Ok(account)
-                    }
-                    Err(err) => Err(err.into()),
-                }
-            }
+        if let Some(v) = ACCOUNT_CACHE.get(&address) {
+            counter!("blockchain.tree.cache.account.canonical.hit").increment(1);
+            return Ok(Some(v))
         }
+        if let Some(value) = self.state_provider.basic_account(address)? {
+            ACCOUNT_CACHE.insert(address, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }
 
@@ -242,27 +205,24 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
     fn storage(
         &self,
         account: Address,
-        storage_key: reth_primitives::StorageKey,
-    ) -> ProviderResult<Option<reth_primitives::StorageValue>> {
+        storage_key: StorageKey,
+    ) -> ProviderResult<Option<StorageValue>> {
         let u256_storage_key = storage_key.into();
         if let Some(value) = self
             .block_execution_data_provider
             .execution_outcome()
             .storage(&account, u256_storage_key)
         {
+            counter!("blockchain.tree.cache.storage.outcome.hit").increment(1);
             return Ok(Some(value))
         }
 
-        self.cache_metrics.storage_access_total.increment(1);
-
         let cache_key = (account, storage_key);
-        let cached_value = STORAGE_CACHE.get(&cache_key);
-
-        if let Some(v) = cached_value {
+        if let Some(v) = STORAGE_CACHE.get(&cache_key) {
+            counter!("blockchain.tree.cache.storage.canonical.hit").increment(1);
             return Ok(Some(v))
         }
-
-        if let Some(value) = StateProvider::storage(&self.state_provider, account, storage_key)? {
+        if let Some(value) = self.state_provider.storage(account, storage_key)? {
             STORAGE_CACHE.insert(cache_key, value);
             return Ok(Some(value))
         }
@@ -275,21 +235,14 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         {
             return Ok(Some(bytecode))
         }
-        let cached = CONTRACT_CACHE.get(&code_hash);
-        return match cached {
-            Some(code) => Ok(Some(code)),
-            None => {
-                let db_value = self.state_provider.bytecode_by_hash(code_hash);
-                match db_value {
-                    Ok(code) => {
-                        if let Some(acc) = code.clone() {
-                            CONTRACT_CACHE.insert(code_hash, acc);
-                        }
-                        Ok(code)
-                    }
-                    Err(err) => Err(err.into()),
-                }
-            }
+
+        if let Some(v) = CONTRACT_CACHE.get(&code_hash) {
+            return Ok(Some(v))
         }
+        if let Some(value) = self.state_provider.bytecode_by_hash(code_hash)? {
+            CONTRACT_CACHE.insert(code_hash, value.clone());
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }

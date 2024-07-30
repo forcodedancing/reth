@@ -7382,7 +7382,6 @@ dependencies = [
  "assert_matches",
  "lazy_static",
  "linked_hash_set",
- "lru",
  "metrics",
  "moka",
  "parking_lot 0.12.3",
@@ -9856,11 +9855,12 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "11.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=0fceb6332b50ece91aabe3f90df06ce5aa44111f#0fceb6332b50ece91aabe3f90df06ce5aa44111f"
+source = "git+https://github.com/forcodedancing/revm?rev=2f7e9c0#2f7e9c022c94328fcb1ccf86f16f61d4ba469b55"
 dependencies = [
  "auto_impl",
  "cfg-if",
  "dyn-clone",
+ "metrics",
  "revm-interpreter",
  "revm-precompile",
  "serde",
@@ -9888,7 +9888,7 @@ dependencies = [
 [[package]]
 name = "revm-interpreter"
 version = "7.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=0fceb6332b50ece91aabe3f90df06ce5aa44111f#0fceb6332b50ece91aabe3f90df06ce5aa44111f"
+source = "git+https://github.com/forcodedancing/revm?rev=2f7e9c0#2f7e9c022c94328fcb1ccf86f16f61d4ba469b55"
 dependencies = [
  "revm-primitives",
  "serde",
@@ -9897,7 +9897,7 @@ dependencies = [
 [[package]]
 name = "revm-precompile"
 version = "9.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=0fceb6332b50ece91aabe3f90df06ce5aa44111f#0fceb6332b50ece91aabe3f90df06ce5aa44111f"
+source = "git+https://github.com/forcodedancing/revm?rev=2f7e9c0#2f7e9c022c94328fcb1ccf86f16f61d4ba469b55"
 dependencies = [
  "alloy-rlp",
  "aurora-engine-modexp",
@@ -9925,7 +9925,7 @@ dependencies = [
 [[package]]
 name = "revm-primitives"
 version = "6.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=0fceb6332b50ece91aabe3f90df06ce5aa44111f#0fceb6332b50ece91aabe3f90df06ce5aa44111f"
+source = "git+https://github.com/forcodedancing/revm?rev=2f7e9c0#2f7e9c022c94328fcb1ccf86f16f61d4ba469b55"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
