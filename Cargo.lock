@@ -6794,18 +6794,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quick_cache"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac3327c42419cab9678a66fb21f4c6222b6df3ad9114e56816b0defcd7649e0c"
-dependencies = [
- "ahash",
- "equivalent",
- "hashbrown 0.14.5",
- "parking_lot 0.12.3",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9527,12 +9515,11 @@ dependencies = [
  "futures-util",
  "itertools 0.13.0",
  "lazy_static",
- "lru",
+ "moka",
  "num-traits",
  "parking_lot 0.12.3",
  "paste",
  "pprof",
- "quick_cache",
  "rand 0.8.5",
  "rayon",
  "reth-chainspec",

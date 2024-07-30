@@ -37,12 +37,8 @@ pub enum MetricEvent {
     },
     /// Execution cache total access and hits.
     ExecutionCache {
-        /// Account access
-        account_access: bool,
         /// Account access hit cache
         account_hit: bool,
-        /// Storage access
-        storage_access: bool,
         /// Storage access hit cache
         storage_hit: bool,
     },
@@ -96,20 +92,9 @@ impl MetricsListener {
             MetricEvent::ExecutionStageGas { gas } => {
                 self.sync_metrics.execution_stage.mgas_processed_total.increment(gas / MEGAGAS)
             }
-            MetricEvent::ExecutionCache {
-                account_access,
-                account_hit,
-                storage_access,
-                storage_hit,
-            } => {
-                if account_access {
-                    self.sync_metrics.execution_cache.account_access_total.increment(1);
-                }
+            MetricEvent::ExecutionCache { account_hit, storage_hit } => {
                 if account_hit {
                     self.sync_metrics.execution_cache.account_cache_hit_total.increment(1);
-                }
-                if storage_access {
-                    self.sync_metrics.execution_cache.storage_access_total.increment(1);
                 }
                 if storage_hit {
                     self.sync_metrics.execution_cache.storage_cache_hit_total.increment(1);

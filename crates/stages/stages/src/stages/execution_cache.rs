@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashSet, sync::atomic::AtomicU64, time::Instant};
 
 use lazy_static::lazy_static;
-use tracing::debug;
+use parking_lot::RwLock;
+use tracing::info;
 
-use quick_cache::sync::Cache;
+use moka::sync::Cache;
 use reth_db_api::transaction::DbTx;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
@@ -14,23 +15,52 @@ use reth_revm::db::{states::StateChangeset, BundleState};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, AccountProof};
+
 /// The size of cache, counted by the number of accounts.
-const CACHE_SIZE: usize = 10240;
+const CACHE_SIZE: u64 = 10240;
+
+type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
-        /// Account cache
-    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE);
+    /// Account cache
+    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE).build();
+
+    /// Contract cache
+    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<Address, HashMap<StorageKey, StorageValue>> = Cache::new(CACHE_SIZE);
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE).build();
+
+    /// Block hash cache
+    static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
+
+
+    static ref TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+    static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_total(block: u64, inc: u64) {
+    let mut binding = TOTAL_TIME.write();
+
+    let current = binding.get_mut();
+    let new = *current + inc;
+    *current = new;
+
+    if block % 500 == 0 {
+        let mut binding = CHANGE_SET_TOTAL_TIME.write();
+        let change_set_time = *binding.get_mut();
+        let total = new + change_set_time;
+        info!(target: "blockchain_tree", total = ?total, execution = ?new, change_set = ?change_set_time, block = ?block, "Total execution time");
+    }
 }
 
 pub(crate) fn apply_changeset_to_cache(change_set: StateChangeset) {
+    let execute_start = Instant::now();
+
     for (address, account_info) in change_set.accounts.iter() {
         match account_info {
             None => {
-                ACCOUNT_CACHE.remove(address);
-                STORAGE_CACHE.remove(address);
+                ACCOUNT_CACHE.invalidate(address);
             }
             Some(acc) => {
                 ACCOUNT_CACHE.insert(
@@ -45,22 +75,36 @@ pub(crate) fn apply_changeset_to_cache(change_set: StateChangeset) {
         }
     }
 
+    let mut to_wipe = HashSet::new();
     for storage in change_set.storage.iter() {
         if storage.wipe_storage {
-            STORAGE_CACHE.remove(&storage.address);
+            to_wipe.insert(storage.address);
         } else {
-            let mut map = HashMap::new();
             for (k, v) in storage.storage.clone() {
-                map.insert(k.into(), v);
+                STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
             }
-            STORAGE_CACHE.insert(storage.address, map);
         }
     }
+    if !to_wipe.is_empty() {
+        for (address_storage_key, _storage_value) in STORAGE_CACHE.iter() {
+            if to_wipe.contains(&address_storage_key.0) {
+                STORAGE_CACHE.invalidate(&address_storage_key);
+            }
+        }
+    }
+
+    let mut binding = CHANGE_SET_TOTAL_TIME.write();
+
+    let current = binding.get_mut();
+    let new = *current + execute_start.elapsed().as_micros() as u64;
+    *current = new;
 }
 
 pub(crate) fn clear_cache() {
-    ACCOUNT_CACHE.clear();
-    STORAGE_CACHE.clear();
+    ACCOUNT_CACHE.invalidate_all();
+    STORAGE_CACHE.invalidate_all();
+    CONTRACT_CACHE.invalidate_all();
+    BLOCK_HASH_CACHE.invalidate_all();
 }
 
 /// State provider over latest state that takes tx reference.
@@ -83,49 +127,32 @@ impl<'b, TX: DbTx> CachedLatestStateProviderRef<'b, TX> {
 impl<'b, TX: DbTx> AccountReader for CachedLatestStateProviderRef<'b, TX> {
     /// Get basic account information.
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
-        if let Some(metrics_tx) = &self.metrics_tx {
-            let _ = metrics_tx.send(MetricEvent::ExecutionCache {
-                account_access: true,
-                account_hit: false,
-                storage_access: false,
-                storage_hit: false,
-            });
-        }
-        let cached = ACCOUNT_CACHE.get(&address);
-        return match cached {
-            Some(account) => {
-                debug!(target: "sync::stages::execution", address = ?address.to_string(), "Hit execution stage account cache");
-                if let Some(metrics_tx) = &self.metrics_tx {
-                    let _ = metrics_tx.send(MetricEvent::ExecutionCache {
-                        account_access: false,
-                        account_hit: true,
-                        storage_access: false,
-                        storage_hit: false,
-                    });
-                }
-                Ok(Some(account))
+        if let Some(v) = ACCOUNT_CACHE.get(&address) {
+            if let Some(metrics_tx) = &self.metrics_tx {
+                let _ = metrics_tx
+                    .send(MetricEvent::ExecutionCache { account_hit: true, storage_hit: false });
             }
-            None => {
-                let db_value = AccountReader::basic_account(&self.provider, address);
-                match db_value {
-                    Ok(account) => {
-                        if let Some(_) = account {
-                            ACCOUNT_CACHE.insert(address, account.unwrap());
-                            debug!(target: "sync::stages::execution", address = ?address.to_string(), "Add execution stage account cache");
-                        }
-                        Ok(account)
-                    }
-                    Err(err) => Err(err.into()),
-                }
-            }
+            return Ok(Some(v))
         }
+        if let Some(value) = self.provider.basic_account(address)? {
+            ACCOUNT_CACHE.insert(address, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }
 
 impl<'b, TX: DbTx> BlockHashReader for CachedLatestStateProviderRef<'b, TX> {
     /// Get block hash by number.
-    fn block_hash(&self, number: u64) -> ProviderResult<Option<B256>> {
-        BlockHashReader::block_hash(&self.provider, number)
+    fn block_hash(&self, block_number: u64) -> ProviderResult<Option<B256>> {
+        if let Some(v) = BLOCK_HASH_CACHE.get(&block_number) {
+            return Ok(Some(v))
+        }
+        if let Some(value) = self.provider.block_hash(block_number)? {
+            BLOCK_HASH_CACHE.insert(block_number, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 
     fn canonical_hashes_range(
@@ -168,34 +195,16 @@ impl<'b, TX: DbTx> StateProvider for CachedLatestStateProviderRef<'b, TX> {
         account: Address,
         storage_key: StorageKey,
     ) -> ProviderResult<Option<StorageValue>> {
-        if let Some(metrics_tx) = &self.metrics_tx {
-            let _ = metrics_tx.send(MetricEvent::ExecutionCache {
-                account_access: false,
-                account_hit: false,
-                storage_access: true,
-                storage_hit: false,
-            });
-        }
-
-        let mut cached = STORAGE_CACHE.get(&account).unwrap_or_else(|| HashMap::new());
-
-        if let Some(v) = cached.get(&storage_key) {
-            debug!(target: "sync::stages::execution", address = ?account.to_string(), storage_key = ?storage_key, "Hit execution stage storage cache");
+        let cache_key = (account, storage_key);
+        if let Some(v) = STORAGE_CACHE.get(&cache_key) {
             if let Some(metrics_tx) = &self.metrics_tx {
-                let _ = metrics_tx.send(MetricEvent::ExecutionCache {
-                    account_access: false,
-                    account_hit: false,
-                    storage_access: false,
-                    storage_hit: true,
-                });
+                let _ = metrics_tx
+                    .send(MetricEvent::ExecutionCache { account_hit: false, storage_hit: true });
             }
-            return Ok(Some(*v))
+            return Ok(Some(v))
         }
-
-        if let Some(value) = StateProvider::storage(&self.provider, account, storage_key)? {
-            cached.insert(storage_key, value);
-            STORAGE_CACHE.insert(account, cached);
-            debug!(target: "sync::stages::execution", address = ?account.to_string(), storage_key = ?storage_key, "Add execution stage storage cache");
+        if let Some(value) = self.provider.storage(account, storage_key)? {
+            STORAGE_CACHE.insert(cache_key, value);
             return Ok(Some(value))
         }
         Ok(None)
@@ -203,7 +212,14 @@ impl<'b, TX: DbTx> StateProvider for CachedLatestStateProviderRef<'b, TX> {
 
     /// Get account code by its hash
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
-        StateProvider::bytecode_by_hash(&self.provider, code_hash)
+        if let Some(v) = CONTRACT_CACHE.get(&code_hash) {
+            return Ok(Some(v))
+        }
+        if let Some(value) = self.provider.bytecode_by_hash(code_hash)? {
+            CONTRACT_CACHE.insert(code_hash, value.clone());
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }
 

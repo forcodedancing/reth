@@ -43,7 +43,7 @@ futures-util.workspace = true
 tracing.workspace = true
 
 # cache
-quick_cache = "0.6.1"
+moka = { version = "0.12", features = ["sync"] }
 
 # misc
 thiserror.workspace = true
@@ -51,7 +51,6 @@ itertools.workspace = true
 rayon.workspace = true
 num-traits = "0.2.15"
 tempfile = { workspace = true, optional = true }
-lru = "0.12.3"
 parking_lot = "0.12.3"
 lazy_static = "1.4.0"
 
