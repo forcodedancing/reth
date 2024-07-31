@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::atomic::AtomicU128, time::Instant};
+use std::{collections::HashSet, sync::atomic::AtomicU64, time::Instant};
 
 use lazy_static::lazy_static;
 use metrics::counter;
@@ -33,15 +33,15 @@ lazy_static! {
     static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
 
 
-    static ref TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
-    static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU128> = RwLock::new(AtomicU128::new(0));
+    static ref TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+    static ref CHANGE_SET_TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
 }
 
 pub(crate) fn update_total(block: u64, inc: u128) {
     let mut binding = TOTAL_TIME.write();
 
     let current = binding.get_mut();
-    let new = *current + inc;
+    let new = *current + inc as u64;
     *current = new;
 
     if block % 500 == 0 {
@@ -95,7 +95,7 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
     let mut binding = CHANGE_SET_TOTAL_TIME.write();
 
     let current = binding.get_mut();
-    let new = *current + execute_start.elapsed().as_micros();
+    let new = *current + execute_start.elapsed().as_micros() as u64;
     *current = new;
 }
 
