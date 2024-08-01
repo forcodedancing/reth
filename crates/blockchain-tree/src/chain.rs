@@ -46,7 +46,7 @@ pub(crate) fn update_total(block: u64, inc: u128) {
     *current = new;
 
     if block % 500 == 0 {
-        info!(target: "blockchain_tree", total = ?new , "Total execution time");
+        info!(target: "blockchain_tree", total = ?new , block = ?block , "Total execution time");
     }
 }
 
