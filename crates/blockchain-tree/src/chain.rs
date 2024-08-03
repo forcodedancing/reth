@@ -45,7 +45,7 @@ pub(crate) fn update_total(block: u64, inc: u128) {
     let new = *current + inc as u64;
     *current = new;
 
-    if block % 500 == 0 {
+    if block % 100 == 0 {
         info!(target: "blockchain_tree", total = ?new , block = ?block , "Total execution time");
     }
 }
