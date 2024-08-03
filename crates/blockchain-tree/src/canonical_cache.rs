@@ -44,7 +44,7 @@ pub(crate) fn update_total(block: u64, inc: u128) {
     let new = *current + inc as u64;
     *current = new;
 
-    if block % 500 == 0 {
+    if block % 100 == 0 {
         let mut binding = CHANGE_SET_TOTAL_TIME.write();
         let change_set_time = *binding.get_mut();
         let total = new + change_set_time;
