@@ -1,19 +1,16 @@
+#![cfg(feature = "bsc")]
+
+use crate::chain::{BSC_MAINNET, BSC_TESTNET};
 use crate::{error, ChainSpec};
 use alloy_chains::{Chain, NamedChain};
 use alloy_primitives::BlockNumber;
 use include_dir::{include_dir, Dir};
+use lazy_static::lazy_static;
 use reth_ethereum_forks::Hardfork;
 use revm::primitives::{Address, Bytecode};
 use revm_primitives::hex;
 use std::collections::HashMap;
 use thiserror::Error;
-
-/// System contracts with their names as keys and addresses as values.
-#[derive(Debug)]
-pub struct SystemContract {
-    name: String,
-    address: String,
-}
 
 const VALIDATOR_CONTRACT: &str = "0x0000000000000000000000000000000000001000";
 const SLASH_CONTRACT: &str = "0x0000000000000000000000000000000000001001";
@@ -33,77 +30,84 @@ const GOV_TOKEN_CONTRACT: &str = "0x0000000000000000000000000000000000002005";
 const TIMELOCK_CONTRACT: &str = "0x0000000000000000000000000000000000002006";
 const TOKEN_RECOVER_PORTAL_CONTRACT: &str = "0x0000000000000000000000000000000000003000";
 
-fn get_all_system_contracts() -> Vec<SystemContract> {
+/// System contracts with their names as keys and addresses as values.
+#[derive(Debug)]
+pub struct SystemContractName {
+    name: String,
+    address: String,
+}
+
+fn get_all_system_contracts() -> Vec<SystemContractName> {
     let mut res = vec![];
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "ValidatorContract".to_string(),
         address: VALIDATOR_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "SlashContract".to_string(),
         address: SLASH_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "SystemRewardContract".to_string(),
         address: SYSTEM_REWARD_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "LightClientContract".to_string(),
         address: LIGHT_CLIENT_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "TokenHubContract".to_string(),
         address: TOKEN_HUB_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "RelayerIncentivizeContract".to_string(),
         address: RELAYER_INCENTIVIZE_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "RelayerHubContract".to_string(),
         address: RELAYER_HUB_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "GovHubContract".to_string(),
         address: GOV_HUB_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "TokenHubContract".to_string(),
         address: TOKEN_HUB_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "TokenManagerContract".to_string(),
         address: TOKEN_MANAGER_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "CrossChainContract".to_string(),
         address: CROSS_CHAIN_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "StakingContract".to_string(),
         address: STAKING_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "StakeHubContract".to_string(),
         address: STAKE_HUB_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "StakeCreditContract".to_string(),
         address: STAKE_CREDIT_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "GovTokenContract".to_string(),
         address: GOV_TOKEN_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "GovernorContract".to_string(),
         address: GOVERNOR_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "TimelockContract".to_string(),
         address: TIMELOCK_CONTRACT.to_string(),
     });
-    res.push(SystemContract {
+    res.push(SystemContractName {
         name: "TokenRecoverPortalContract".to_string(),
         address: TOKEN_RECOVER_PORTAL_CONTRACT.to_string(),
     });
@@ -115,34 +119,48 @@ fn get_all_system_contracts() -> Vec<SystemContract> {
 #[derive(Error, Debug)]
 pub enum SystemContractError {
     /// Error when invalid chain spec is provided.
-    #[error("System contract not found")]
+    #[error("Invalid spec")]
     InvalidSpec,
 
-    /// Error when read invalid content from file.
-    #[error("Cannot read contract from file")]
-    FailToRead,
+    /// Error when invalid chain spec is provided.
+    #[error("Invalid hardfork")]
+    InvalidHardfork,
 
     /// Error when updating the contract fails.
     #[error("Cannot deploy contract")]
     FailToUpdate,
 }
 
-/// Read system contract code from the given directory.
-fn read_system_contract_code(
-    spec: &ChainSpec,
-    hardfork: &Hardfork,
-) -> Result<HashMap<String, Option<Bytecode>>, SystemContractError> {
-    #[warn(unused_assignments)]
-    let mut dir = String::new();
-    if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChain)) {
-        dir = "mainnet".to_string();
-    } else if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChainTestnet)) {
-        dir = "chapel".to_string();
-    } else {
-        return Err(SystemContractError::InvalidSpec);
-    }
+lazy_static! {
+    /// mainnet system contracts: hardfork -> address -> Bytecode
+    pub(crate) static ref BSC_MAINNET_CONTRACTS: HashMap<Hardfork, HashMap<String, Option<Bytecode>>> =
+        read_all_system_contracts(BSC_MAINNET.as_ref());
 
-    let parent_dir = match hardfork {
+    /// testnet system contracts: hardfork -> address -> Bytecode
+    pub(crate) static ref BSC_TESTNET_CONTRACTS: HashMap<Hardfork, HashMap<String, Option<Bytecode>>> =
+        read_all_system_contracts(BSC_TESTNET.as_ref());
+}
+
+fn hardforks_with_system_contracts() -> Vec<Hardfork> {
+    vec![
+        Hardfork::Bruno,
+        Hardfork::Euler,
+        Hardfork::Feynman,
+        Hardfork::FeynmanFix,
+        Hardfork::Gibbs,
+        Hardfork::Kepler,
+        Hardfork::Luban,
+        Hardfork::MirrorSync,
+        Hardfork::Moran,
+        Hardfork::Niels,
+        Hardfork::Planck,
+        Hardfork::Plato,
+        Hardfork::Ramanujan,
+    ]
+}
+
+fn hardfork_to_dir_name(hardfork: &Hardfork) -> Result<String, SystemContractError> {
+    let name = match hardfork {
         Hardfork::Bruno => "bruno",
         Hardfork::Euler => "euler",
         Hardfork::Feynman => "feynman",
@@ -157,51 +175,86 @@ fn read_system_contract_code(
         Hardfork::Plato => "plato",
         Hardfork::Ramanujan => "ramanujan",
         _ => {
-            return Err(SystemContractError::InvalidSpec);
+            return Err(SystemContractError::InvalidHardfork);
         }
     };
-
-    static PROJECT_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR");
-
-    let mut map = HashMap::new();
-
-    let all_contracts = get_all_system_contracts();
-
-    for c in all_contracts {
-        let file_path = format!("src/system_contracts/{}/{}/{}", parent_dir, dir, c.name);
-
-        let contract_file = match PROJECT_DIR.get_file(file_path) {
-            Some(f) => f,
-            None => continue, // the file does not exist, ignore the contract
-        };
-
-        let body = match contract_file.contents_utf8() {
-            Some(body) => body.to_string(),
-            _ => return Err(SystemContractError::FailToRead),
-        };
-
-        let bytes = hex::decode(body).unwrap();
-        let body_hex = hex::encode(bytes.clone());
-        print!("{}", body_hex);
-        map.insert(c.address.to_string(), Some(Bytecode::new_raw(bytes.into())));
-    }
-
-    Ok(map)
+    Ok(name.to_string())
 }
 
-/// Deploy system contracts to the given chain.
+fn read_all_system_contracts(
+    spec: &ChainSpec,
+) -> HashMap<Hardfork, HashMap<String, Option<Bytecode>>> {
+    let dir: String;
+    if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChain)) {
+        dir = "mainnet".to_string();
+    } else if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChainTestnet)) {
+        dir = "chapel".to_string();
+    } else {
+        panic!("invalid spec");
+    }
+
+    static PROJECT_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR");
+    let all_contracts = get_all_system_contracts();
+    let hardforks = hardforks_with_system_contracts();
+
+    let mut outer_map = HashMap::new();
+    for hardfork in hardforks {
+        let parent_dir = hardfork_to_dir_name(&hardfork).unwrap();
+        let mut inner_map = HashMap::new();
+        for c in &all_contracts {
+            let file_path = format!("src/system_contracts/{}/{}/{}", parent_dir, dir, c.name);
+
+            let contract_file = match PROJECT_DIR.get_file(file_path) {
+                Some(f) => f,
+                None => continue, // the file does not exist, ignore the contract
+            };
+
+            let body = match contract_file.contents_utf8() {
+                Some(body) => body.to_string(),
+                _ => panic!("fail to open file"),
+            };
+
+            let bytes = hex::decode(body).unwrap();
+            inner_map.insert(c.address.to_string(), Some(Bytecode::new_raw(bytes.into())));
+        }
+        outer_map.insert(hardfork, inner_map);
+    }
+
+    outer_map
+}
+
+fn get_system_contract_codes(
+    spec: &ChainSpec,
+    hardfork: &Hardfork,
+) -> Result<HashMap<String, Option<Bytecode>>, SystemContractError> {
+    #[warn(unused_assignments)]
+    if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChain)) {
+        match BSC_MAINNET_CONTRACTS.get(hardfork) {
+            Some(m) => return Ok(m.clone()),
+            None => return Ok(HashMap::new()),
+        };
+    } else if spec.chain.eq(&Chain::from_named(NamedChain::BinanceSmartChainTestnet)) {
+        match BSC_TESTNET_CONTRACTS.get(hardfork) {
+            Some(m) => return Ok(m.clone()),
+            None => return Ok(HashMap::new()),
+        };
+    } else {
+        return Err(SystemContractError::InvalidSpec);
+    }
+}
+
 pub fn get_upgrade_system_contracts(
     spec: &ChainSpec,
     block_number: BlockNumber,
-    last_block_time: u64,
+    parent_block_time: u64,
     block_time: u64,
 ) -> Result<HashMap<Address, Option<Bytecode>>, SystemContractError> {
     let mut m = HashMap::new();
     for hardfork in spec.hardforks.iter() {
         if hardfork.1.transitions_at_block(block_number)
-            || hardfork.1.transitions_at_timestamp(block_time, last_block_time)
+            || hardfork.1.transitions_at_timestamp(block_time, parent_block_time)
         {
-            let contracts = match read_system_contract_code(spec, hardfork.0) {
+            let contracts = match get_system_contract_codes(spec, hardfork.0) {
                 Ok(m) => m,
                 Err(_) => return Err(SystemContractError::FailToUpdate),
             };
@@ -218,23 +271,13 @@ pub fn get_upgrade_system_contracts(
 
 #[cfg(test)]
 mod tests {
+
+    use super::*;
     use revm_primitives::hex;
 
-    #[cfg(feature = "bsc")]
-    use super::*;
-    #[cfg(feature = "bsc")]
-    use crate::chain::BSC_MAINNET;
-    #[cfg(feature = "bsc")]
-    use crate::ChainSpecBuilder;
-
     #[test]
-    fn test_read_system_contract_code() {
-        let mainnet = ChainSpecBuilder::default()
-            .chain(BSC_MAINNET.chain)
-            .genesis(BSC_MAINNET.genesis.clone())
-            .shanghai_activated()
-            .build();
-        let res = read_system_contract_code(&mainnet, &Hardfork::Feynman).unwrap();
+    fn test_get_system_contract_code() {
+        let res = get_system_contract_codes(&BSC_MAINNET, &Hardfork::Feynman).unwrap();
         assert!(res.len() > 0);
 
         let bytes = res.get(STAKE_HUB_CONTRACT).unwrap();

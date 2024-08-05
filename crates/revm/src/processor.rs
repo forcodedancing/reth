@@ -1,5 +1,6 @@
 #[cfg(not(feature = "optimism"))]
 use revm::DatabaseCommit;
+#[cfg(feature = "bsc")]
 use reth_primitives::system_contracts;
 use revm::{
     db::StateDBBox,
@@ -325,6 +326,8 @@ where
             self.stats.receipt_root_duration += time.elapsed();
         }
 
+        // TODO: integrate with Parlia
+        #[cfg(feature = "bsc")]
         match system_contracts::get_upgrade_system_contracts(
             &self.chain_spec,
             block.number,
@@ -572,6 +575,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0,
             )
             .unwrap();
 
@@ -769,6 +773,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0,
             )
             .unwrap();
 
@@ -828,6 +833,7 @@ mod tests {
                     senders: vec![],
                 },
                 U256::ZERO,
+                0
             )
             .unwrap();
 
