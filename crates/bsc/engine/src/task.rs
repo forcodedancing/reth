@@ -142,7 +142,7 @@ impl<
         let consensus = self.consensus.clone();
         let fork_choice_tx = self.fork_choice_tx.clone();
         let chain_tracker_tx = self.chain_tracker_tx.clone();
-        let fetch_header_timeout_duration = Duration::from_secs(block_interval);
+        let fetch_header_timeout_duration = Duration::from_secs(600);
 
         tokio::spawn(async move {
             loop {
