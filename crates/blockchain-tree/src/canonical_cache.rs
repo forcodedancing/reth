@@ -21,13 +21,13 @@ type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
     /// Account cache
-    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE).build();
+    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
 
     /// Contract cache
-    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE).build();
+    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE).build();
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
 
     /// Block hash cache
     static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
@@ -118,11 +118,6 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
     for CachedBundleStateProvider<SP, EDP>
 {
     fn block_hash(&self, block_number: BlockNumber) -> ProviderResult<Option<B256>> {
-        let block_hash = self.block_execution_data_provider.block_hash(block_number);
-        if block_hash.is_some() {
-            return Ok(block_hash)
-        }
-
         if let Some(v) = BLOCK_HASH_CACHE.get(&block_number) {
             return Ok(Some(v))
         }
@@ -146,13 +141,6 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> AccountReader
     for CachedBundleStateProvider<SP, EDP>
 {
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
-        if let Some(account) =
-            self.block_execution_data_provider.execution_outcome().account(&address)
-        {
-            counter!("blockchain.tree.cache.account.outcome.hit").increment(1);
-            return Ok(account)
-        }
-
         if let Some(v) = ACCOUNT_CACHE.get(&address) {
             counter!("blockchain.tree.cache.account.canonical.hit").increment(1);
             return Ok(Some(v))
@@ -207,16 +195,6 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         account: Address,
         storage_key: StorageKey,
     ) -> ProviderResult<Option<StorageValue>> {
-        let u256_storage_key = storage_key.into();
-        if let Some(value) = self
-            .block_execution_data_provider
-            .execution_outcome()
-            .storage(&account, u256_storage_key)
-        {
-            counter!("blockchain.tree.cache.storage.outcome.hit").increment(1);
-            return Ok(Some(value))
-        }
-
         let cache_key = (account, storage_key);
         if let Some(v) = STORAGE_CACHE.get(&cache_key) {
             counter!("blockchain.tree.cache.storage.canonical.hit").increment(1);
@@ -230,12 +208,6 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
     }
 
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
-        if let Some(bytecode) =
-            self.block_execution_data_provider.execution_outcome().bytecode(&code_hash)
-        {
-            return Ok(Some(bytecode))
-        }
-
         if let Some(v) = CONTRACT_CACHE.get(&code_hash) {
             return Ok(Some(v))
         }
