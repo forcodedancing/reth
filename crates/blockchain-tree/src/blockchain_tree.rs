@@ -1262,7 +1262,7 @@ where
         };
         recorder.record_relative(MakeCanonicalAction::RetrieveStateTrieUpdates);
 
-        let cloned_bundle = state.clone().bundle;
+        let cloned_bundle = state.bundle.clone();
         let provider_rw = self.externals.provider_factory.provider_rw()?;
         provider_rw
             .append_blocks_with_state(
