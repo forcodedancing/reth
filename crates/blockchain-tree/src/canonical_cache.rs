@@ -19,13 +19,14 @@ lazy_static! {
     pub static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE);
 
     /// Contract cache
-    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::new(CACHE_SIZE);
+    /// The size of contract is large and the hot contracts should be limited.
+    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::new(CACHE_SIZE/10);
 
     /// Storage cache
     static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::new(CACHE_SIZE*10);
 
     /// Block hash cache
-    static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::new(CACHE_SIZE);
+    static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::new(CACHE_SIZE/10);
 }
 
 /// Apply committed state to canonical cache.
