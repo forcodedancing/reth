@@ -6,6 +6,7 @@ use parking_lot::RwLock;
 use tracing::info;
 
 use moka::sync::Cache;
+use quick_cache;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
     AccountReader, BlockHashReader, ExecutionDataProvider, StateProofProvider, StateProvider,
@@ -21,7 +22,9 @@ type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
     /// Account cache
-    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
+    pub static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
+
+    pub static ref ACCOUNT_CACHE_QUICK: quick_cache::sync::Cache<Address, Account> = quick_cache::sync::Cache::new((CACHE_SIZE*5) as usize);
 
     /// Contract cache
     static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE*5).build();

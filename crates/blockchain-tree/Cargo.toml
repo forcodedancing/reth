@@ -32,6 +32,7 @@ reth-primitives-traits.workspace = true
 
 # cache
 moka = { version = "0.12", features = ["sync"] }
+quick_cache = "0.6.2"
 
 # common
 parking_lot.workspace = true
@@ -46,6 +47,8 @@ metrics.workspace = true
 aquamarine.workspace = true
 linked_hash_set.workspace = true
 lazy_static = "1.4.0"
+criterion = "0.5.1"
+rand = "0.8.5"
 
 [dev-dependencies]
 reth-chainspec.workspace = true
@@ -60,7 +63,13 @@ reth-evm-ethereum.workspace = true
 parking_lot.workspace = true
 assert_matches.workspace = true
 alloy-genesis.workspace = true
+criterion = "0.5.1"
 
 [features]
 test-utils = []
 optimism = ["reth-primitives/optimism", "reth-provider/optimism"]
+bsc = ["reth-primitives/bsc"]
+
+[[bench]]
+name = "canonical_cache"
+harness = false

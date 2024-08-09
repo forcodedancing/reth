@@ -54,7 +54,7 @@ pub use block_buffer::BlockBuffer;
 /// Implementation of Tree traits that does nothing.
 pub mod noop;
 
-mod canonical_cache;
+pub mod canonical_cache;
 mod state;
 
 use aquamarine as _;
