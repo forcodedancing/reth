@@ -5,8 +5,7 @@ use metrics::counter;
 use parking_lot::RwLock;
 use tracing::info;
 
-use moka::sync::Cache;
-use quick_cache;
+use quick_cache::sync::Cache;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
     AccountReader, BlockHashReader, ExecutionDataProvider, StateProofProvider, StateProvider,
@@ -16,24 +15,22 @@ use reth_revm::db::BundleState;
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, AccountProof};
 /// The size of cache, counted by the number of accounts.
-const CACHE_SIZE: u64 = 10240;
+const CACHE_SIZE: usize = 10240;
 
 type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
     /// Account cache
-    pub static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
-
-    pub static ref ACCOUNT_CACHE_QUICK: quick_cache::sync::Cache<Address, Account> = quick_cache::sync::Cache::new((CACHE_SIZE*5) as usize);
+    pub static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE*5);
 
     /// Contract cache
-    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
+    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::new(CACHE_SIZE*5);
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::builder().max_capacity(CACHE_SIZE*5).build();
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::new(CACHE_SIZE*10);
 
     /// Block hash cache
-    static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::builder().max_capacity(CACHE_SIZE).build();
+    static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::new(CACHE_SIZE*5);
 
 
     static ref TOTAL_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
@@ -62,7 +59,7 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
     for (address, account_info) in change_set.accounts.iter() {
         match account_info {
             None => {
-                ACCOUNT_CACHE.invalidate(address);
+                ACCOUNT_CACHE.remove(address);
             }
             Some(acc) => {
                 ACCOUNT_CACHE.insert(
@@ -77,22 +74,19 @@ pub(crate) fn apply_bundle_state_to_cache(bundle: BundleState) {
         }
     }
 
-    let mut to_wipe = HashSet::new();
+    let mut to_wipe = false;
     for storage in change_set.storage.iter() {
         if storage.wipe_storage {
-            to_wipe.insert(storage.address);
+            to_wipe = true;
+            break;
         } else {
             for (k, v) in storage.storage.clone() {
                 STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
             }
         }
     }
-    if !to_wipe.is_empty() {
-        for (address_storage_key, _storage_value) in STORAGE_CACHE.iter() {
-            if to_wipe.contains(&address_storage_key.0) {
-                STORAGE_CACHE.invalidate(&address_storage_key);
-            }
-        }
+    if to_wipe {
+        STORAGE_CACHE.clear();
     }
 
     let mut binding = CHANGE_SET_TOTAL_TIME.write();
