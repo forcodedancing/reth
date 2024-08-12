@@ -44,6 +44,7 @@ tracing.workspace = true
 
 # cache
 moka = { version = "0.12", features = ["sync"] }
+quick_cache = "0.6.2"
 
 # misc
 thiserror.workspace = true

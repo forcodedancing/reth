@@ -9535,6 +9535,7 @@ dependencies = [
  "parking_lot 0.12.3",
  "paste",
  "pprof",
+ "quick_cache",
  "rand 0.8.5",
  "rayon",
  "reth-chainspec",
