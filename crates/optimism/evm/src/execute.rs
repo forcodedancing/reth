@@ -606,6 +606,7 @@ mod tests {
                         senders: vec![addr, addr],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -688,6 +689,7 @@ mod tests {
                         senders: vec![addr, addr],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
