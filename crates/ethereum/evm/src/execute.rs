@@ -567,6 +567,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -666,6 +667,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -720,6 +722,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -765,6 +768,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -793,6 +797,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -853,6 +858,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -924,6 +930,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -975,6 +982,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1033,6 +1041,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1097,6 +1106,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1152,6 +1162,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1192,6 +1203,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1235,6 +1247,7 @@ mod tests {
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1325,6 +1338,7 @@ mod tests {
                     .with_recovered_senders()
                     .unwrap(),
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1414,6 +1428,7 @@ mod tests {
                 .with_recovered_senders()
                 .unwrap(),
                 U256::ZERO,
+                None,
             )
                 .into(),
         );

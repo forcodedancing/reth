@@ -227,7 +227,7 @@ mod tests {
     struct TestExecutor<DB>(PhantomData<DB>);
 
     impl<DB> Executor<DB> for TestExecutor<DB> {
-        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
         type Output = BlockExecutionOutput<Receipt>;
         type Error = BlockExecutionError;
 
@@ -237,7 +237,7 @@ mod tests {
     }
 
     impl<DB> BatchExecutor<DB> for TestExecutor<DB> {
-        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
         type Output = ExecutionOutcome;
         type Error = BlockExecutionError;
 
@@ -276,6 +276,6 @@ mod tests {
             requests: None,
         };
         let block = BlockWithSenders::new(block, Default::default()).unwrap();
-        let _ = executor.execute(BlockExecutionInput::new(&block, U256::ZERO));
+        let _ = executor.execute(BlockExecutionInput::new(&block, U256::ZERO, None));
     }
 }

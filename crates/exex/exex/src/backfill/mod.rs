@@ -287,7 +287,11 @@ mod tests {
                 provider.tx_ref(),
                 provider.static_file_provider().clone(),
             )))
-            .execute(BlockExecutionInput { block, total_difficulty: U256::ZERO })?;
+            .execute(BlockExecutionInput {
+                block,
+                total_difficulty: U256::ZERO,
+                parent_header: None,
+            })?;
         block_execution_output.state.reverts.sort();
 
         // Convert the block execution output to an execution outcome for committing to the database
