@@ -15,7 +15,7 @@ use reth_revm::db::BundleState;
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, AccountProof};
 /// The size of cache, counted by the number of accounts.
-const CACHE_SIZE: usize = 10240;
+const CACHE_SIZE: usize = 200000;
 
 type AddressStorageKey = (Address, StorageKey);
 
@@ -27,7 +27,7 @@ lazy_static! {
     static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::new(CACHE_SIZE*5);
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::new(CACHE_SIZE*10);
+    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::new(CACHE_SIZE*50);
 
     /// Block hash cache
     static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::new(CACHE_SIZE*5);
