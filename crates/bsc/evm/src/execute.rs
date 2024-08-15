@@ -323,9 +323,14 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
+        parent_header: Option<&Header>,
     ) -> Result<BscExecuteOutput, BlockExecutionError> {
         // 1. get parent header and snapshot
-        let parent = &(self.get_header_by_hash(block.parent_hash)?);
+        let parent = match parent_header {
+            // during live sync, the parent may not have been committed to the underlying database
+            Some(p) => p,
+            None => &(self.get_header_by_hash(block.parent_hash)?),
+        };
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
         let snap = &(snapshot_reader.snapshot(parent, None)?);
 
@@ -670,7 +675,7 @@ where
     DB: Database<Error: Into<ProviderError> + std::fmt::Display>,
     P: ParliaProvider,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -682,9 +687,9 @@ where
     ///
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, parent_header } = input;
         let BscExecuteOutput { receipts, gas_used, snapshot } =
-            self.execute_and_verify(block, total_difficulty)?;
+            self.execute_and_verify(block, total_difficulty, parent_header)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
@@ -726,15 +731,15 @@ where
     DB: Database<Error: Into<ProviderError> + std::fmt::Display>,
     P: ParliaProvider,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 
     fn execute_and_verify_one(&mut self, input: Self::Input<'_>) -> Result<(), Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
         let execute_start = Instant::now();
         let BscExecuteOutput { receipts, gas_used: _, snapshot } =
-            self.executor.execute_and_verify(block, total_difficulty)?;
+            self.executor.execute_and_verify(block, total_difficulty, None)?;
         self.stats.execution_duration += execute_start.elapsed();
 
         validate_block_post_execution(block, self.executor.chain_spec(), &receipts)?;

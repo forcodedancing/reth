@@ -7,7 +7,7 @@ use crate::execute::{
 };
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::ExecutionOutcome;
-use reth_primitives::{BlockNumber, BlockWithSenders, Receipt};
+use reth_primitives::{BlockNumber, BlockWithSenders, Header, Receipt};
 use reth_prune_types::PruneModes;
 use reth_storage_errors::provider::ProviderError;
 use revm_primitives::db::Database;
@@ -51,19 +51,19 @@ impl<A, B, DB> Executor<DB> for Either<A, B>
 where
     A: for<'a> Executor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = BlockExecutionOutput<Receipt>,
         Error = BlockExecutionError,
     >,
     B: for<'a> Executor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = BlockExecutionOutput<Receipt>,
         Error = BlockExecutionError,
     >,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -79,19 +79,19 @@ impl<A, B, DB> BatchExecutor<DB> for Either<A, B>
 where
     A: for<'a> BatchExecutor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = ExecutionOutcome,
         Error = BlockExecutionError,
     >,
     B: for<'a> BatchExecutor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = ExecutionOutcome,
         Error = BlockExecutionError,
     >,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 

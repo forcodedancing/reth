@@ -279,8 +279,8 @@ impl Command {
                 #[cfg(not(feature = "bsc"))]
                 let executor = block_executor!(provider_factory.chain_spec()).executor(db);
 
-                let BlockExecutionOutput { state, receipts, requests, .. } =
-                    executor.execute((&block_with_senders.clone().unseal(), U256::MAX).into())?;
+                let BlockExecutionOutput { state, receipts, requests, .. } = executor
+                    .execute((&block_with_senders.clone().unseal(), U256::MAX, None).into())?;
                 let execution_outcome = ExecutionOutcome::new(
                     state,
                     receipts.into(),

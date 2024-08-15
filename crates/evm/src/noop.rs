@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::ExecutionOutcome;
-use reth_primitives::{BlockNumber, BlockWithSenders, Receipt};
+use reth_primitives::{BlockNumber, BlockWithSenders, Header, Receipt};
 use reth_prune_types::PruneModes;
 use reth_storage_errors::provider::ProviderError;
 use revm_primitives::db::Database;
@@ -41,7 +41,7 @@ impl BlockExecutorProvider for NoopBlockExecutorProvider {
 }
 
 impl<DB> Executor<DB> for NoopBlockExecutorProvider {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -51,7 +51,7 @@ impl<DB> Executor<DB> for NoopBlockExecutorProvider {
 }
 
 impl<DB> BatchExecutor<DB> for NoopBlockExecutorProvider {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 
