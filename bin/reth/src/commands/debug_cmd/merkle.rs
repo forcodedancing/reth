@@ -153,7 +153,7 @@ impl Command {
                     provider_rw.static_file_provider().clone(),
                 ),
             ));
-            executor.execute_and_verify_one((&sealed_block.clone().unseal(), td).into())?;
+            executor.execute_and_verify_one((&sealed_block.clone().unseal(), td, None).into())?;
             executor.finalize().write_to_storage(&provider_rw, None, OriginalValuesKnown::Yes)?;
 
             let checkpoint = Some(StageCheckpoint::new(
