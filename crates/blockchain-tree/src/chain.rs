@@ -29,6 +29,7 @@ use std::{
     ops::{Deref, DerefMut},
     time::Instant,
 };
+use tracing::debug;
 
 /// A chain in the blockchain tree that has functionality to execute blocks and append them to
 /// itself.
@@ -183,8 +184,11 @@ impl AppendableChain {
         // some checks are done before blocks comes here.
         externals.consensus.validate_header_against_parent(&block, parent_block)?;
 
+        debug!(target: "blockchain_tree", ?block, "Before canonical_fork");
+
         // get the state provider.
         let canonical_fork = bundle_state_data_provider.canonical_fork();
+        debug!(target: "blockchain_tree", ?canonical_fork, "After canonical_fork");
 
         // SAFETY: For block execution and parallel state root computation below we open multiple
         // independent database transactions. Upon opening the database transaction the consistent
@@ -195,20 +199,26 @@ impl AppendableChain {
         // The usage has to be re-evaluated if that was ever to change.
         let consistent_view =
             ConsistentDbView::new_with_latest_tip(externals.provider_factory.clone())?;
+        debug!(target: "blockchain_tree", ?canonical_fork, "After consistent_view");
+
         let state_provider = consistent_view
             .provider_ro()?
             // State root calculation can take a while, and we're sure no write transaction
             // will be open in parallel. See https://github.com/paradigmxyz/reth/issues/7509.
             .disable_long_read_transaction_safety()
             .state_provider_by_block_number(canonical_fork.number)?;
+        debug!(target: "blockchain_tree", ?canonical_fork, "After state_provider");
 
         let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
+        debug!(target: "blockchain_tree", ?canonical_fork, "After BundleStateProvider");
 
         let db = StateProviderDatabase::new(&provider);
         let executor = externals.executor_factory.executor(db);
+        debug!(target: "blockchain_tree", ?canonical_fork, "After executor");
         let block_hash = block.hash();
         let block = block.unseal();
 
+        debug!(target: "blockchain_tree", ?canonical_fork, "Before execute");
         let state = executor.execute((&block, U256::MAX, Some(parent_block.header())).into())?;
         let BlockExecutionOutput { state, receipts, requests, .. } = state;
         externals
