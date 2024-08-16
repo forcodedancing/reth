@@ -867,11 +867,14 @@ where
                     block_hash = header.parent_hash;
                     header = h.clone();
                 }
-            } else if let Ok(h) = self.get_header_by_hash(header.parent_hash) {
-                found = true;
-                block_number = h.number;
-                block_hash = header.parent_hash;
-                header = h;
+            }
+            if !found {
+                if let Ok(h) = self.get_header_by_hash(header.parent_hash) {
+                    found = true;
+                    block_number = h.number;
+                    block_hash = header.parent_hash;
+                    header = h;
+                }
             }
             if !found {
                 return Err(
