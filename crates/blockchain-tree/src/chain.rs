@@ -15,7 +15,8 @@ use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_primitives::{
-    BlockHash, BlockNumber, ForkBlock, GotExpected, SealedBlockWithSenders, SealedHeader, U256,
+    BlockHash, BlockNumber, ForkBlock, GotExpected, Header, SealedBlockWithSenders, SealedHeader,
+    B256, U256,
 };
 use reth_provider::{
     providers::{BundleStateProvider, ConsistentDbView},
@@ -25,11 +26,10 @@ use reth_revm::database::StateProviderDatabase;
 use reth_trie::updates::TrieUpdates;
 use reth_trie_parallel::parallel_root::ParallelStateRoot;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     ops::{Deref, DerefMut},
     time::Instant,
 };
-use tracing::debug;
 
 /// A chain in the blockchain tree that has functionality to execute blocks and append them to
 /// itself.
@@ -93,6 +93,7 @@ impl AppendableChain {
         let (bundle_state, trie_updates) = Self::validate_and_execute(
             block.clone(),
             parent_header,
+            None,
             state_provider,
             externals,
             block_attachment,
@@ -139,6 +140,7 @@ impl AppendableChain {
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
             parent,
+            None,
             bundle_state_data,
             externals,
             BlockAttachment::HistoricalFork,
@@ -171,6 +173,7 @@ impl AppendableChain {
     fn validate_and_execute<EDP, DB, E>(
         block: SealedBlockWithSenders,
         parent_block: &SealedHeader,
+        ancestor_blocks: Option<&HashMap<B256, Header>>,
         bundle_state_data_provider: EDP,
         externals: &TreeExternals<DB, E>,
         block_attachment: BlockAttachment,
@@ -184,11 +187,8 @@ impl AppendableChain {
         // some checks are done before blocks comes here.
         externals.consensus.validate_header_against_parent(&block, parent_block)?;
 
-        debug!(target: "blockchain_tree", ?block, "Before canonical_fork");
-
         // get the state provider.
         let canonical_fork = bundle_state_data_provider.canonical_fork();
-        debug!(target: "blockchain_tree", ?canonical_fork, "After canonical_fork");
 
         // SAFETY: For block execution and parallel state root computation below we open multiple
         // independent database transactions. Upon opening the database transaction the consistent
@@ -199,29 +199,21 @@ impl AppendableChain {
         // The usage has to be re-evaluated if that was ever to change.
         let consistent_view =
             ConsistentDbView::new_with_latest_tip(externals.provider_factory.clone())?;
-        debug!(target: "blockchain_tree", ?canonical_fork, "After consistent_view");
-
         let state_provider = consistent_view
             .provider_ro()?
             // State root calculation can take a while, and we're sure no write transaction
             // will be open in parallel. See https://github.com/paradigmxyz/reth/issues/7509.
             .disable_long_read_transaction_safety()
             .state_provider_by_block_number(canonical_fork.number)?;
-        debug!(target: "blockchain_tree", ?canonical_fork, "After state_provider");
 
         let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
-        debug!(target: "blockchain_tree", ?canonical_fork, "After BundleStateProvider");
 
         let db = StateProviderDatabase::new(&provider);
         let executor = externals.executor_factory.executor(db);
-        debug!(target: "blockchain_tree", ?canonical_fork, "After executor");
         let block_hash = block.hash();
         let block = block.unseal();
 
-        debug!(target: "blockchain_tree", ?canonical_fork, "Before execute");
-        let state = executor.execute((&block, U256::MAX, Some(parent_block.header())).into())?;
-        debug!(target: "blockchain_tree", ?canonical_fork, "After execute");
-
+        let state = executor.execute((&block, U256::MAX, ancestor_blocks).into())?;
         let BlockExecutionOutput { state, receipts, requests, .. } = state;
         externals
             .consensus
@@ -230,29 +222,21 @@ impl AppendableChain {
         let initial_execution_outcome =
             ExecutionOutcome::new(state, receipts.into(), block.number, vec![requests.into()]);
 
-        debug!(target: "blockchain_tree", ?canonical_fork, "Before validate");
         // check state root if the block extends the canonical chain __and__ if state root
         // validation was requested.
         if block_validation_kind.is_exhaustive() {
-            debug!(target: "blockchain_tree", ?canonical_fork, "Before AAAA");
             // calculate and check state root
             let start = Instant::now();
             let (state_root, trie_updates) = if block_attachment.is_canonical() {
-                debug!(target: "blockchain_tree", ?canonical_fork, "Before BBBB");
                 let mut execution_outcome =
                     provider.block_execution_data_provider.execution_outcome().clone();
                 execution_outcome.extend(initial_execution_outcome.clone());
-                debug!(target: "blockchain_tree", ?canonical_fork, "Before CCCC");
                 let hashed_state = execution_outcome.hash_state_slow();
                 ParallelStateRoot::new(consistent_view, hashed_state)
                     .incremental_root_with_updates()
-                    .map(|(root, updates)| {
-                        debug!(target: "blockchain_tree", ?canonical_fork, "Before DDDD");
-                        (root, Some(updates))
-                    })
+                    .map(|(root, updates)| (root, Some(updates)))
                     .map_err(ProviderError::from)?
             } else {
-                debug!(target: "blockchain_tree", ?canonical_fork, "Before EEEE");
                 (provider.state_root(initial_execution_outcome.state())?, None)
             };
             if block.state_root != state_root {
@@ -305,6 +289,9 @@ impl AppendableChain {
     {
         let parent_block = self.chain.tip();
 
+        let ancestor_blocks =
+            self.headers().map(|h| return (h.hash() as B256, h.header().clone())).collect();
+
         let bundle_state_data = BundleStateDataRef {
             execution_outcome: self.execution_outcome(),
             sidechain_block_hashes: &side_chain_block_hashes,
@@ -314,7 +301,8 @@ impl AppendableChain {
 
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
-            &(parent_block.clone()),
+            parent_block,
+            Some(&ancestor_blocks),
             bundle_state_data,
             externals,
             block_attachment,

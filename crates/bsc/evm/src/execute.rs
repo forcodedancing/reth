@@ -323,49 +323,38 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
-        parent_header: Option<&Header>,
+        ancestor_blocks: Option<&HashMap<B256, Header>>,
     ) -> Result<BscExecuteOutput, BlockExecutionError> {
         // 1. get parent header and snapshot
-        let parent = match parent_header {
-            // during live sync, the parent may not have been committed to the underlying database
-            Some(p) => {
-                debug!(
-                    "Use the existing parent {:?} with height {:?}, parent {:?}",
-                    p.hash_slow(),
-                    p.number,
-                    p.parent_hash
-                );
-                p
-            }
-            None => &(self.get_header_by_hash(block.parent_hash)?),
-        };
-        let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-        let snap = &(snapshot_reader.snapshot(parent, None)?);
         debug!("AAAAAA");
+        let parent = if let Some(m) = ancestor_blocks { m.get(&block.parent_hash) } else { None };
+        let parent =
+            if let Some(p) = parent { p } else { &(self.get_header_by_hash(block.parent_hash)?) };
+        let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
+        let snap = &(snapshot_reader.snapshot(parent, ancestor_blocks)?);
 
+        debug!("BBBBBB");
         // 2. prepare state on new block
         self.on_new_block(&block.header, parent, snap)?;
-        debug!("BBBBBB");
 
+        debug!("CCCCCC");
         // 3. get data from contracts before execute transactions
         let post_execution_input =
             self.do_system_call_before_execution(&block.header, total_difficulty, parent)?;
-        debug!("CCCCCC");
 
         // 4. execute normal transactions
         let env = self.evm_env_for_block(&block.header, total_difficulty);
-        debug!("DDDDDD");
 
         if !self.chain_spec().is_feynman_active_at_timestamp(block.timestamp) {
             // apply system contract upgrade
             self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
         }
-        debug!("EEEEEE");
+
         let (mut system_txs, mut receipts, mut gas_used) = {
             let evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
             self.executor.execute_pre_and_transactions(block, evm)
         }?;
-        debug!("FFFFFF");
+
         // 5. apply post execution changes
         self.post_execution(
             block,
@@ -699,9 +688,9 @@ where
     ///
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty, parent_header } = input;
+        let BlockExecutionInput { block, total_difficulty, ancestor_headers } = input;
         let BscExecuteOutput { receipts, gas_used, snapshot } =
-            self.execute_and_verify(block, total_difficulty, parent_header)?;
+            self.execute_and_verify(block, total_difficulty, ancestor_headers)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
@@ -823,7 +812,7 @@ where
     pub fn snapshot(
         &self,
         header: &Header,
-        parent: Option<&Header>,
+        ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<Snapshot, BlockExecutionError> {
         let mut cache = RECENT_SNAPS.write();
 
@@ -870,14 +859,24 @@ where
 
             // No snapshot for this header, gather the header and move backward
             skip_headers.push(header.clone());
-            if let Some(parent) = parent {
-                block_number = parent.number;
-                block_hash = header.parent_hash;
-                header = parent.clone();
+            let mut found = false;
+            if let Some(ancestor) = ancestor {
+                if let Some(h) = ancestor.get(&header.parent_hash) {
+                    found = true;
+                    block_number = h.number;
+                    block_hash = header.parent_hash;
+                    header = h.clone();
+                }
             } else if let Ok(h) = self.get_header_by_hash(header.parent_hash) {
+                found = true;
                 block_number = h.number;
                 block_hash = header.parent_hash;
                 header = h;
+            }
+            if !found {
+                return Err(
+                    BscBlockExecutionError::UnknownHeader { block_hash: header.parent_hash }.into()
+                )
             }
         }
 

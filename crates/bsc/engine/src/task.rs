@@ -61,7 +61,7 @@ pub(crate) struct ParliaEngineTask<
 > {
     /// The configured chain spec
     chain_spec: Arc<ChainSpec>,
-    /// The coneensus instance
+    /// The consensus instance
     consensus: Parlia,
     /// The provider used to read the block and header from the inserted chain
     provider: Provider,
