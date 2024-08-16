@@ -294,7 +294,7 @@ impl AppendableChain {
 
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
-            parent_block,
+            &(parent_block.clone()),
             bundle_state_data,
             externals,
             block_attachment,
