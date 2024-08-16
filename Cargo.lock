@@ -691,8 +691,7 @@ dependencies = [
 [[package]]
 name = "alloy-trie"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03704f265cbbb943b117ecb5055fd46e8f41e7dc8a58b1aed20bcd40ace38c15"
+source = "git+https://github.com/forcodedancing/trie?tag=v0.4.1-notrace#454a20a6ecff8c04f307e6fb81fb655aadd03e0d"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
