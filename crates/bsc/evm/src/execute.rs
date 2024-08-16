@@ -328,7 +328,15 @@ where
         // 1. get parent header and snapshot
         let parent = match parent_header {
             // during live sync, the parent may not have been committed to the underlying database
-            Some(p) => p,
+            Some(p) => {
+                debug!(
+                    "Use the existing parent {:?} with height {:?}, parent {:?}",
+                    p.hash_slow(),
+                    p.number,
+                    p.parent_hash
+                );
+                p
+            }
             None => &(self.get_header_by_hash(block.parent_hash)?),
         };
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
