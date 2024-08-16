@@ -206,7 +206,7 @@ where
     }
 
     fn calculate(self, retain_updates: bool) -> Result<StateRootProgress, StateRootError> {
-        trace!(target: "trie::state_root", "calculating state root");
+        //trace!(target: "trie::state_root", "calculating state root");
         let mut tracker = TrieTracker::default();
         let mut trie_updates = TrieUpdates::default();
 
@@ -326,14 +326,14 @@ where
         #[cfg(feature = "metrics")]
         self.metrics.state_trie.record(stats);
 
-        trace!(
-            target: "trie::state_root",
-            %root,
-            duration = ?stats.duration(),
-            branches_added = stats.branches_added(),
-            leaves_added = stats.leaves_added(),
-            "calculated state root"
-        );
+        // trace!(
+        //     target: "trie::state_root",
+        //     %root,
+        //     duration = ?stats.duration(),
+        //     branches_added = stats.branches_added(),
+        //     leaves_added = stats.leaves_added(),
+        //     "calculated state root"
+        // );
 
         Ok(StateRootProgress::Complete(root, hashed_entries_walked, trie_updates))
     }
@@ -478,7 +478,8 @@ where
         self,
         retain_updates: bool,
     ) -> Result<(B256, usize, StorageTrieUpdates), StorageRootError> {
-        trace!(target: "trie::storage_root", hashed_address = ?self.hashed_address, "calculating storage root");
+        //trace!(target: "trie::storage_root", hashed_address = ?self.hashed_address, "calculating
+        // storage root");
 
         let mut hashed_storage_cursor =
             self.hashed_cursor_factory.hashed_storage_cursor(self.hashed_address)?;
@@ -522,15 +523,15 @@ where
         #[cfg(feature = "metrics")]
         self.metrics.record(stats);
 
-        trace!(
-            target: "trie::storage_root",
-            %root,
-            hashed_address = %self.hashed_address,
-            duration = ?stats.duration(),
-            branches_added = stats.branches_added(),
-            leaves_added = stats.leaves_added(),
-            "calculated storage root"
-        );
+        // trace!(
+        //     target: "trie::storage_root",
+        //     %root,
+        //     hashed_address = %self.hashed_address,
+        //     duration = ?stats.duration(),
+        //     branches_added = stats.branches_added(),
+        //     leaves_added = stats.leaves_added(),
+        //     "calculated storage root"
+        // );
 
         let storage_slots_walked = stats.leaves_added() as usize;
         Ok((root, storage_slots_walked, trie_updates))

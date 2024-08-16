@@ -462,7 +462,8 @@ where
                         propagated.0.entry(hash).or_default().push(PropagateKind::Hash(*peer_id));
                     }
 
-                    trace!(target: "net::tx", ?peer_id, num_txs=?new_pooled_hashes.len(), "Propagating tx hashes to peer");
+                    //trace!(target: "net::tx", ?peer_id, num_txs=?new_pooled_hashes.len(),
+                    // "Propagating tx hashes to peer");
 
                     // send hashes of transactions
                     self.network.send_transactions_hashes(*peer_id, new_pooled_hashes);
@@ -477,7 +478,8 @@ where
                             .push(PropagateKind::Full(*peer_id));
                     }
 
-                    trace!(target: "net::tx", ?peer_id, num_txs=?new_full_transactions.len(), "Propagating full transactions to peer");
+                    //trace!(target: "net::tx", ?peer_id, num_txs=?new_full_transactions.len(),
+                    // "Propagating full transactions to peer");
 
                     // send full transactions
                     self.network.send_transactions(*peer_id, new_full_transactions);
