@@ -12,7 +12,7 @@ use reth_primitives::{
     hex,
     parlia::{Snapshot, VoteAddress, VoteAttestation},
     system_contracts::SYSTEM_REWARD_CONTRACT,
-    Address, BlockWithSenders, GotExpected, Header, Receipt, TransactionSigned, U256,
+    Address, BlockWithSenders, GotExpected, Header, Receipt, TransactionSigned, B256, U256,
 };
 use reth_provider::ParliaProvider;
 use reth_revm::bsc::SYSTEM_ADDRESS;
@@ -41,6 +41,7 @@ where
         &mut self,
         block: &BlockWithSenders,
         parent: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
         snap: &Snapshot,
         post_execution_input: PostExecutionInput,
         system_txs: &mut Vec<TransactionSigned>,
@@ -107,6 +108,7 @@ where
         if self.chain_spec().is_plato_active_at_block(number) {
             self.distribute_finality_reward(
                 header,
+                ancestor,
                 system_txs,
                 receipts,
                 cumulative_gas_used,
@@ -375,6 +377,7 @@ where
     fn distribute_finality_reward(
         &mut self,
         header: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
         system_txs: &mut Vec<TransactionSigned>,
         receipts: &mut Vec<Receipt>,
         cumulative_gas_used: &mut u64,
@@ -391,14 +394,14 @@ where
         let end = header.number;
         let mut target_hash = header.parent_hash;
         for _ in (start..end).rev() {
-            let header = &(self.get_header_by_hash(target_hash)?);
+            let header = &(self.get_header_by_hash(target_hash, ancestor)?);
 
             if let Some(attestation) =
                 self.parlia().get_vote_attestation_from_header(header).map_err(|err| {
                     BscBlockExecutionError::ParliaConsensusInnerError { error: err.into() }
                 })?
             {
-                self.process_attestation(&attestation, header, &mut accumulated_weights)?;
+                self.process_attestation(&attestation, header, ancestor, &mut accumulated_weights)?;
             }
 
             target_hash = header.parent_hash;
@@ -451,10 +454,11 @@ where
         &self,
         attestation: &VoteAttestation,
         parent_header: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
         accumulated_weights: &mut HashMap<Address, U256>,
     ) -> Result<(), BlockExecutionError> {
-        let justified_header = self.get_header_by_hash(attestation.data.target_hash)?;
-        let parent = self.get_header_by_hash(justified_header.parent_hash)?;
+        let justified_header = self.get_header_by_hash(attestation.data.target_hash, ancestor)?;
+        let parent = self.get_header_by_hash(justified_header.parent_hash, ancestor)?;
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
         let snapshot = &(snapshot_reader.snapshot(&parent, None)?);
         let validators = &snapshot.validators;

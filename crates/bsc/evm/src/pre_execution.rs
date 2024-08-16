@@ -113,7 +113,7 @@ where
             // the attestation source block should be the highest justified block.
             let source_block = attestation.data.source_number;
             let source_hash = attestation.data.source_hash;
-            let justified = &(self.get_justified_header(snap)?);
+            let justified = &(self.get_justified_header(ancestor, snap)?);
             if source_block != justified.number || source_hash != justified.hash_slow() {
                 return Err(BscBlockExecutionError::InvalidAttestationSource {
                     block_number: GotExpected { got: source_block, expected: justified.number },
@@ -124,7 +124,7 @@ where
             }
 
             // Get the target_number - 1 block's snapshot.
-            let pre_target_header = &(self.get_header_by_hash(parent.parent_hash)?);
+            let pre_target_header = &(self.get_header_by_hash(parent.parent_hash, ancestor)?);
             let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
             let snap = &(snapshot_reader.snapshot(pre_target_header, ancestor)?);
 

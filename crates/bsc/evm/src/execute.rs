@@ -323,25 +323,24 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
-        ancestor_blocks: Option<&HashMap<B256, Header>>,
+        ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<BscExecuteOutput, BlockExecutionError> {
         // 1. get parent header and snapshot
-        debug!("AAAAAA");
-        let parent = if let Some(m) = ancestor_blocks { m.get(&block.parent_hash) } else { None };
-        let parent =
-            if let Some(p) = parent { p } else { &(self.get_header_by_hash(block.parent_hash)?) };
+        debug!("AAAA");
+        let parent = &(self.get_header_by_hash(block.parent_hash, ancestor)?);
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-        let snap = &(snapshot_reader.snapshot(parent, ancestor_blocks)?);
+        let snap = &(snapshot_reader.snapshot(parent, ancestor)?);
 
-        debug!("BBBBBB");
+        debug!("BBBB");
         // 2. prepare state on new block
-        self.on_new_block(&block.header, parent, ancestor_blocks, snap)?;
+        self.on_new_block(&block.header, parent, ancestor, snap)?;
 
-        debug!("CCCCCC");
+        debug!("CCCC");
         // 3. get data from contracts before execute transactions
         let post_execution_input =
             self.do_system_call_before_execution(&block.header, total_difficulty, parent)?;
 
+        debug!("DDDD");
         // 4. execute normal transactions
         let env = self.evm_env_for_block(&block.header, total_difficulty);
 
@@ -350,15 +349,18 @@ where
             self.upgrade_system_contracts(block.number, block.timestamp, parent.timestamp)?;
         }
 
+        debug!("EEEE");
         let (mut system_txs, mut receipts, mut gas_used) = {
             let evm = self.executor.evm_config.evm_with_env(&mut self.state, env.clone());
             self.executor.execute_pre_and_transactions(block, evm)
         }?;
 
+        debug!("FFFF");
         // 5. apply post execution changes
         self.post_execution(
             block,
             parent,
+            ancestor,
             snap,
             post_execution_input,
             &mut system_txs,
@@ -367,6 +369,7 @@ where
             env,
         )?;
 
+        debug!("GGGG");
         if snap.block_number % CHECKPOINT_INTERVAL == 0 {
             Ok(BscExecuteOutput { receipts, gas_used, snapshot: Some(snap.clone()) })
         } else {
@@ -376,6 +379,7 @@ where
 
     pub(crate) fn get_justified_header(
         &self,
+        ancestor: Option<&HashMap<B256, Header>>,
         snap: &Snapshot,
     ) -> Result<Header, BlockExecutionError> {
         if snap.vote_data.source_hash == B256::ZERO && snap.vote_data.target_hash == B256::ZERO {
@@ -384,21 +388,28 @@ where
                 .header_by_number(0)
                 .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
                 .ok_or_else(|| {
+                    debug!("UU22");
                     BscBlockExecutionError::UnknownHeader { block_hash: B256::ZERO }.into()
                 });
         }
 
-        self.get_header_by_hash(snap.vote_data.target_hash)
+        self.get_header_by_hash(snap.vote_data.target_hash, ancestor)
     }
 
     pub(crate) fn get_header_by_hash(
         &self,
         block_hash: B256,
+        ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<Header, BlockExecutionError> {
-        self.provider
-            .header(&block_hash)
-            .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
-            .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into())
+        let header = if let Some(m) = ancestor { m.get(&block_hash) } else { None };
+        match header {
+            Some(h) => Ok(h.clone()),
+            None => self
+                .provider
+                .header(&block_hash)
+                .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
+                .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into()),
+        }
     }
 
     /// Upgrade system contracts based on the hardfork rules.
@@ -859,24 +870,12 @@ where
 
             // No snapshot for this header, gather the header and move backward
             skip_headers.push(header.clone());
-            let mut found = false;
-            if let Some(ancestor) = ancestor {
-                if let Some(h) = ancestor.get(&header.parent_hash) {
-                    found = true;
-                    block_number = h.number;
-                    block_hash = header.parent_hash;
-                    header = h.clone();
-                }
-            }
-            if !found {
-                if let Ok(h) = self.get_header_by_hash(header.parent_hash) {
-                    found = true;
-                    block_number = h.number;
-                    block_hash = header.parent_hash;
-                    header = h;
-                }
-            }
-            if !found {
+            if let Ok(h) = self.get_header_by_hash(header.parent_hash, ancestor) {
+                block_number = h.number;
+                block_hash = header.parent_hash;
+                header = h;
+            } else {
+                debug!("UU11");
                 return Err(
                     BscBlockExecutionError::UnknownHeader { block_hash: header.parent_hash }.into()
                 )
@@ -899,7 +898,7 @@ where
             {
                 // change validator set
                 let checkpoint_header =
-                    self.find_ancient_header(header, snap.miner_history_check_len())?;
+                    self.find_ancient_header(header, ancestor, snap.miner_history_check_len())?;
 
                 let validators_info = self
                     .parlia
@@ -943,21 +942,31 @@ where
         Ok(snap)
     }
 
-    fn get_header_by_hash(&self, block_hash: B256) -> Result<Header, BlockExecutionError> {
-        self.provider
-            .header(&block_hash)
-            .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
-            .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into())
+    fn get_header_by_hash(
+        &self,
+        block_hash: B256,
+        ancestor: Option<&HashMap<B256, Header>>,
+    ) -> Result<Header, BlockExecutionError> {
+        let header = if let Some(m) = ancestor { m.get(&block_hash) } else { None };
+        match header {
+            Some(h) => Ok(h.clone()),
+            None => self
+                .provider
+                .header(&block_hash)
+                .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
+                .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into()),
+        }
     }
 
     fn find_ancient_header(
         &self,
         header: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
         count: u64,
     ) -> Result<Header, BlockExecutionError> {
         let mut result = header.clone();
         for _ in 0..count {
-            result = self.get_header_by_hash(result.parent_hash)?;
+            result = self.get_header_by_hash(result.parent_hash, ancestor)?;
         }
         Ok(result)
     }
