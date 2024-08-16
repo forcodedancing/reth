@@ -462,14 +462,19 @@ where
         let canonical_fork = self.canonical_fork(chain_id).ok_or_else(|| {
             BlockchainTreeError::BlockSideChainIdConsistency { chain_id: chain_id.into() }
         })?;
+        debug!(target: "blockchain_tree", ?canonical_fork, "canonical_fork");
 
         // get chain that block needs to join to.
         let parent_chain = self.state.chains.get_mut(&chain_id).ok_or_else(|| {
             BlockchainTreeError::BlockSideChainIdConsistency { chain_id: chain_id.into() }
         })?;
+        debug!(target: "blockchain_tree", "parent_chain");
 
         let chain_tip = parent_chain.tip().hash();
+        debug!(target: "blockchain_tree", ?chain_tip,"parent_chain");
+
         let canonical_chain = self.state.block_indices.canonical_chain();
+        debug!(target: "blockchain_tree", "canonical_chain");
 
         // append the block if it is continuing the side chain.
         let block_attachment = if chain_tip == block.parent_hash {
