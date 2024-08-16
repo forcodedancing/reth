@@ -61,7 +61,7 @@ pub(crate) struct ParliaEngineTask<
 > {
     /// The configured chain spec
     chain_spec: Arc<ChainSpec>,
-    /// The coneensus instance
+    /// The consensus instance
     consensus: Parlia,
     /// The provider used to read the block and header from the inserted chain
     provider: Provider,
@@ -486,7 +486,7 @@ impl<
                             ForkChoiceMessage::NewHeader(event) => {
                                 let new_header = event.local_header;
 
-                                let snap = match snapshot_reader.snapshot(&new_header, None) {
+                                let snap = match snapshot_reader.snapshot(&new_header, None, None) {
                                     Ok(snap) => snap,
                                     Err(err) => {
                                         error!(target: "consensus::parlia", %err, "Snapshot not found");

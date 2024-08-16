@@ -15,7 +15,8 @@ use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_primitives::{
-    BlockHash, BlockNumber, ForkBlock, GotExpected, SealedBlockWithSenders, SealedHeader, U256,
+    BlockHash, BlockNumber, ForkBlock, GotExpected, Header, SealedBlockWithSenders, SealedHeader,
+    B256, U256,
 };
 use reth_provider::{
     providers::{BundleStateProvider, ConsistentDbView},
@@ -25,7 +26,7 @@ use reth_revm::database::StateProviderDatabase;
 use reth_trie::updates::TrieUpdates;
 use reth_trie_parallel::parallel_root::ParallelStateRoot;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     ops::{Deref, DerefMut},
     time::Instant,
 };
@@ -92,6 +93,7 @@ impl AppendableChain {
         let (bundle_state, trie_updates) = Self::validate_and_execute(
             block.clone(),
             parent_header,
+            None,
             state_provider,
             externals,
             block_attachment,
@@ -138,6 +140,7 @@ impl AppendableChain {
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
             parent,
+            None,
             bundle_state_data,
             externals,
             BlockAttachment::HistoricalFork,
@@ -170,6 +173,7 @@ impl AppendableChain {
     fn validate_and_execute<EDP, DB, E>(
         block: SealedBlockWithSenders,
         parent_block: &SealedHeader,
+        ancestor_blocks: Option<&HashMap<B256, Header>>,
         bundle_state_data_provider: EDP,
         externals: &TreeExternals<DB, E>,
         block_attachment: BlockAttachment,
@@ -209,7 +213,7 @@ impl AppendableChain {
         let block_hash = block.hash();
         let block = block.unseal();
 
-        let state = executor.execute((&block, U256::MAX, Some(parent_block.header())).into())?;
+        let state = executor.execute((&block, U256::MAX, ancestor_blocks).into())?;
         let BlockExecutionOutput { state, receipts, requests, .. } = state;
         externals
             .consensus
@@ -285,6 +289,9 @@ impl AppendableChain {
     {
         let parent_block = self.chain.tip();
 
+        let ancestor_blocks =
+            self.headers().map(|h| return (h.hash() as B256, h.header().clone())).collect();
+
         let bundle_state_data = BundleStateDataRef {
             execution_outcome: self.execution_outcome(),
             sidechain_block_hashes: &side_chain_block_hashes,
@@ -294,7 +301,8 @@ impl AppendableChain {
 
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
-            &(parent_block.clone()),
+            parent_block,
+            Some(&ancestor_blocks),
             bundle_state_data,
             externals,
             block_attachment,

@@ -2,7 +2,7 @@
 
 use reth_execution_types::ExecutionOutcome;
 use reth_primitives::{
-    parlia::Snapshot, BlockNumber, BlockWithSenders, Header, Receipt, Request, U256,
+    parlia::Snapshot, BlockNumber, BlockWithSenders, Header, Receipt, Request, B256, U256,
 };
 use reth_prune_types::PruneModes;
 use revm::db::BundleState;
@@ -11,6 +11,7 @@ use std::fmt::Display;
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use std::collections::HashMap;
 
 pub use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 pub use reth_storage_errors::provider::ProviderError;
@@ -127,7 +128,7 @@ pub struct BlockExecutionInput<'a, Block, Header> {
     /// The total difficulty of the block.
     pub total_difficulty: U256,
     /// The header of the block's parent
-    pub parent_header: Option<&'a Header>,
+    pub parent_header: Option<&'a HashMap<B256, Header>>,
 }
 
 impl<'a, Block, Header> BlockExecutionInput<'a, Block, Header> {
@@ -135,17 +136,21 @@ impl<'a, Block, Header> BlockExecutionInput<'a, Block, Header> {
     pub const fn new(
         block: &'a Block,
         total_difficulty: U256,
-        parent_header: Option<&'a Header>,
+        parent_header: Option<&'a HashMap<B256, Header>>,
     ) -> Self {
         Self { block, total_difficulty, parent_header }
     }
 }
 
-impl<'a, Block, Header> From<(&'a Block, U256, Option<&'a Header>)>
+impl<'a, Block, Header> From<(&'a Block, U256, Option<&'a HashMap<B256, Header>>)>
     for BlockExecutionInput<'a, Block, Header>
 {
     fn from(
-        (block, total_difficulty, parent_header): (&'a Block, U256, Option<&'a Header>),
+        (block, total_difficulty, parent_header): (
+            &'a Block,
+            U256,
+            Option<&'a HashMap<B256, Header>>,
+        ),
     ) -> Self {
         Self::new(block, total_difficulty, parent_header)
     }

@@ -456,7 +456,7 @@ where
         let justified_header = self.get_header_by_hash(attestation.data.target_hash)?;
         let parent = self.get_header_by_hash(justified_header.parent_hash)?;
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-        let snapshot = &(snapshot_reader.snapshot(&parent, None)?);
+        let snapshot = &(snapshot_reader.snapshot(&parent, None, None)?);
         let validators = &snapshot.validators;
         let validators_bit_set = BitSet::from_u64(attestation.vote_address_set);
 

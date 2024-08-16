@@ -79,7 +79,7 @@ where
         let mut safe_hash = None;
         let snapshot_reader =
             SnapshotReader::new(Arc::new(parlia_provider), Arc::new(parlia.clone()));
-        let snapshot_result = snapshot_reader.snapshot(&latest_header, None);
+        let snapshot_result = snapshot_reader.snapshot(&latest_header, None, None);
         if snapshot_result.is_ok() {
             let snap = snapshot_result.unwrap();
             finalized_hash = Some(snap.vote_data.source_hash);

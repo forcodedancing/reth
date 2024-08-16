@@ -323,16 +323,22 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
-        parent_header: Option<&Header>,
+        ancestor_blocks: Option<&HashMap<B256, Header>>,
     ) -> Result<BscExecuteOutput, BlockExecutionError> {
         // 1. get parent header and snapshot
-        let parent = match parent_header {
+        let parent = if !ancestor_blocks.is_none() {
             // during live sync, the parent may not have been committed to the underlying database
-            Some(p) => p,
-            None => &(self.get_header_by_hash(block.parent_hash)?),
+            ancestor_blocks.unwrap().get(&block.parent_hash)
+        } else {
+            None
+        };
+        let parent = if parent.is_none() {
+            &(self.get_header_by_hash(block.parent_hash)?)
+        } else {
+            parent.unwrap()
         };
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-        let snap = &(snapshot_reader.snapshot(parent, None)?);
+        let snap = &(snapshot_reader.snapshot(parent, None, ancestor_blocks)?);
 
         // 2. prepare state on new block
         self.on_new_block(&block.header, parent, snap)?;
@@ -812,6 +818,7 @@ where
         &self,
         header: &Header,
         parent: Option<&Header>,
+        ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<Snapshot, BlockExecutionError> {
         let mut cache = RECENT_SNAPS.write();
 
@@ -866,6 +873,21 @@ where
                 block_number = h.number;
                 block_hash = header.parent_hash;
                 header = h;
+            } else if let Some(ancestor) = ancestor {
+                if let Some(h) = ancestor.get(&header.parent_hash) {
+                    block_number = h.number;
+                    block_hash = header.parent_hash;
+                    header = h.clone();
+                } else {
+                    return Err(BscBlockExecutionError::UnknownHeader {
+                        block_hash: header.parent_hash,
+                    }
+                    .into())
+                }
+            } else {
+                return Err(
+                    BscBlockExecutionError::UnknownHeader { block_hash: header.parent_hash }.into()
+                )
             }
         }
 
