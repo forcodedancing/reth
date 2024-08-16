@@ -220,6 +220,8 @@ impl AppendableChain {
 
         debug!(target: "blockchain_tree", ?canonical_fork, "Before execute");
         let state = executor.execute((&block, U256::MAX, Some(parent_block.header())).into())?;
+        debug!(target: "blockchain_tree", ?canonical_fork, "After execute");
+
         let BlockExecutionOutput { state, receipts, requests, .. } = state;
         externals
             .consensus
@@ -228,21 +230,29 @@ impl AppendableChain {
         let initial_execution_outcome =
             ExecutionOutcome::new(state, receipts.into(), block.number, vec![requests.into()]);
 
+        debug!(target: "blockchain_tree", ?canonical_fork, "Before validate");
         // check state root if the block extends the canonical chain __and__ if state root
         // validation was requested.
         if block_validation_kind.is_exhaustive() {
+            debug!(target: "blockchain_tree", ?canonical_fork, "Before AAAA");
             // calculate and check state root
             let start = Instant::now();
             let (state_root, trie_updates) = if block_attachment.is_canonical() {
+                debug!(target: "blockchain_tree", ?canonical_fork, "Before BBBB");
                 let mut execution_outcome =
                     provider.block_execution_data_provider.execution_outcome().clone();
                 execution_outcome.extend(initial_execution_outcome.clone());
+                debug!(target: "blockchain_tree", ?canonical_fork, "Before CCCC");
                 let hashed_state = execution_outcome.hash_state_slow();
                 ParallelStateRoot::new(consistent_view, hashed_state)
                     .incremental_root_with_updates()
-                    .map(|(root, updates)| (root, Some(updates)))
+                    .map(|(root, updates)| {
+                        debug!(target: "blockchain_tree", ?canonical_fork, "Before DDDD");
+                        (root, Some(updates))
+                    })
                     .map_err(ProviderError::from)?
             } else {
+                debug!(target: "blockchain_tree", ?canonical_fork, "Before EEEE");
                 (provider.state_root(initial_execution_outcome.state())?, None)
             };
             if block.state_root != state_root {
