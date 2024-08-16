@@ -10,10 +10,11 @@ use reth_ethereum_forks::{BscHardforks, EthereumHardforks};
 use reth_evm::ConfigureEvm;
 use reth_primitives::{
     parlia::{Snapshot, VoteAddress, MAX_ATTESTATION_EXTRA_LENGTH},
-    GotExpected, Header,
+    GotExpected, Header, B256,
 };
 use reth_provider::ParliaProvider;
 use revm_primitives::db::Database;
+use std::collections::HashMap;
 
 const BLST_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 
@@ -28,23 +29,25 @@ where
         &mut self,
         header: &Header,
         parent: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
         snap: &Snapshot,
     ) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
         let state_clear_flag = self.chain_spec().is_spurious_dragon_active_at_block(header.number);
         self.state.set_state_clear_flag(state_clear_flag);
 
-        self.verify_cascading_fields(header, parent, snap)
+        self.verify_cascading_fields(header, parent, ancestor, snap)
     }
 
     fn verify_cascading_fields(
         &self,
         header: &Header,
         parent: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
         snap: &Snapshot,
     ) -> Result<(), BlockExecutionError> {
         self.verify_block_time_for_ramanujan(snap, header, parent)?;
-        self.verify_vote_attestation(snap, header, parent)?;
+        self.verify_vote_attestation(snap, header, parent, ancestor)?;
         self.verify_seal(snap, header)?;
 
         Ok(())
@@ -77,6 +80,7 @@ where
         snap: &Snapshot,
         header: &Header,
         parent: &Header,
+        ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<(), BlockExecutionError> {
         if !self.chain_spec().is_plato_active_at_block(header.number) {
             return Ok(());
@@ -122,7 +126,7 @@ where
             // Get the target_number - 1 block's snapshot.
             let pre_target_header = &(self.get_header_by_hash(parent.parent_hash)?);
             let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-            let snap = &(snapshot_reader.snapshot(pre_target_header, None)?);
+            let snap = &(snapshot_reader.snapshot(pre_target_header, ancestor)?);
 
             // query bls keys from snapshot.
             let validators_count = snap.validators.len();

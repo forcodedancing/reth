@@ -335,7 +335,7 @@ where
 
         debug!("BBBBBB");
         // 2. prepare state on new block
-        self.on_new_block(&block.header, parent, snap)?;
+        self.on_new_block(&block.header, parent, ancestor_blocks, snap)?;
 
         debug!("CCCCCC");
         // 3. get data from contracts before execute transactions
