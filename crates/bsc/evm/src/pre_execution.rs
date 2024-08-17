@@ -122,7 +122,7 @@ where
             // Get the target_number - 1 block's snapshot.
             let pre_target_header = &(self.get_header_by_hash(parent.parent_hash)?);
             let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-            let snap = &(snapshot_reader.snapshot(pre_target_header, None, None)?);
+            let snap = &(snapshot_reader.snapshot(pre_target_header, None)?);
 
             // query bls keys from snapshot.
             let validators_count = snap.validators.len();

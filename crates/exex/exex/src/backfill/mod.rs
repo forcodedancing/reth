@@ -290,7 +290,7 @@ mod tests {
             .execute(BlockExecutionInput {
                 block,
                 total_difficulty: U256::ZERO,
-                parent_header: None,
+                ancestor_headers: None,
             })?;
         block_execution_output.state.reverts.sort();
 

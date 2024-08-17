@@ -127,8 +127,8 @@ pub struct BlockExecutionInput<'a, Block, Header> {
     pub block: &'a Block,
     /// The total difficulty of the block.
     pub total_difficulty: U256,
-    /// The header of the block's parent
-    pub parent_header: Option<&'a HashMap<B256, Header>>,
+    /// The headers of the block's ancestor
+    pub ancestor_headers: Option<&'a HashMap<B256, Header>>,
 }
 
 impl<'a, Block, Header> BlockExecutionInput<'a, Block, Header> {
@@ -136,9 +136,9 @@ impl<'a, Block, Header> BlockExecutionInput<'a, Block, Header> {
     pub const fn new(
         block: &'a Block,
         total_difficulty: U256,
-        parent_header: Option<&'a HashMap<B256, Header>>,
+        ancestor_headers: Option<&'a HashMap<B256, Header>>,
     ) -> Self {
-        Self { block, total_difficulty, parent_header }
+        Self { block, total_difficulty, ancestor_headers }
     }
 }
 
@@ -146,13 +146,13 @@ impl<'a, Block, Header> From<(&'a Block, U256, Option<&'a HashMap<B256, Header>>
     for BlockExecutionInput<'a, Block, Header>
 {
     fn from(
-        (block, total_difficulty, parent_header): (
+        (block, total_difficulty, ancestor_headers): (
             &'a Block,
             U256,
             Option<&'a HashMap<B256, Header>>,
         ),
     ) -> Self {
-        Self::new(block, total_difficulty, parent_header)
+        Self::new(block, total_difficulty, ancestor_headers)
     }
 }
 

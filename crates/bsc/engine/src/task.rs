@@ -486,7 +486,7 @@ impl<
                             ForkChoiceMessage::NewHeader(event) => {
                                 let new_header = event.local_header;
 
-                                let snap = match snapshot_reader.snapshot(&new_header, None, None) {
+                                let snap = match snapshot_reader.snapshot(&new_header, None) {
                                     Ok(snap) => snap,
                                     Err(err) => {
                                         error!(target: "consensus::parlia", %err, "Snapshot not found");

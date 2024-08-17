@@ -326,19 +326,11 @@ where
         ancestor_blocks: Option<&HashMap<B256, Header>>,
     ) -> Result<BscExecuteOutput, BlockExecutionError> {
         // 1. get parent header and snapshot
-        let parent = if !ancestor_blocks.is_none() {
-            // during live sync, the parent may not have been committed to the underlying database
-            ancestor_blocks.unwrap().get(&block.parent_hash)
-        } else {
-            None
-        };
-        let parent = if parent.is_none() {
-            &(self.get_header_by_hash(block.parent_hash)?)
-        } else {
-            parent.unwrap()
-        };
+        let parent = if let Some(m) = ancestor_blocks { m.get(&block.parent_hash) } else { None };
+        let parent =
+            if let Some(p) = parent { p } else { &(self.get_header_by_hash(block.parent_hash)?) };
         let snapshot_reader = SnapshotReader::new(self.provider.clone(), self.parlia.clone());
-        let snap = &(snapshot_reader.snapshot(parent, None, ancestor_blocks)?);
+        let snap = &(snapshot_reader.snapshot(parent, ancestor_blocks)?);
 
         // 2. prepare state on new block
         self.on_new_block(&block.header, parent, snap)?;
@@ -693,9 +685,9 @@ where
     ///
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty, parent_header } = input;
+        let BlockExecutionInput { block, total_difficulty, ancestor_headers } = input;
         let BscExecuteOutput { receipts, gas_used, snapshot } =
-            self.execute_and_verify(block, total_difficulty, parent_header)?;
+            self.execute_and_verify(block, total_difficulty, ancestor_headers)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
@@ -817,7 +809,6 @@ where
     pub fn snapshot(
         &self,
         header: &Header,
-        parent: Option<&Header>,
         ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<Snapshot, BlockExecutionError> {
         let mut cache = RECENT_SNAPS.write();
@@ -865,26 +856,21 @@ where
 
             // No snapshot for this header, gather the header and move backward
             skip_headers.push(header.clone());
-            if let Some(parent) = parent {
-                block_number = parent.number;
-                block_hash = header.parent_hash;
-                header = parent.clone();
-            } else if let Ok(h) = self.get_header_by_hash(header.parent_hash) {
-                block_number = h.number;
-                block_hash = header.parent_hash;
-                header = h;
-            } else if let Some(ancestor) = ancestor {
+            let mut found = false;
+            if let Some(ancestor) = ancestor {
                 if let Some(h) = ancestor.get(&header.parent_hash) {
+                    found = true;
                     block_number = h.number;
                     block_hash = header.parent_hash;
                     header = h.clone();
-                } else {
-                    return Err(BscBlockExecutionError::UnknownHeader {
-                        block_hash: header.parent_hash,
-                    }
-                    .into())
                 }
-            } else {
+            } else if let Ok(h) = self.get_header_by_hash(header.parent_hash) {
+                found = true;
+                block_number = h.number;
+                block_hash = header.parent_hash;
+                header = h;
+            }
+            if !found {
                 return Err(
                     BscBlockExecutionError::UnknownHeader { block_hash: header.parent_hash }.into()
                 )
