@@ -393,15 +393,16 @@ where
         block_hash: B256,
         ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<Header, BlockExecutionError> {
-        let header = if let Some(m) = ancestor { m.get(&block_hash) } else { None };
-        match header {
-            Some(h) => Ok(h.clone()),
-            None => self
-                .provider
-                .header(&block_hash)
-                .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
-                .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into()),
-        }
+        ancestor
+            .and_then(|m| m.get(&block_hash).cloned())
+            .or_else(|| {
+                self.provider
+                    .header(&block_hash)
+                    .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })
+                    .ok()
+                    .flatten()
+            })
+            .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into())
     }
 
     /// Upgrade system contracts based on the hardfork rules.
@@ -938,15 +939,16 @@ where
         block_hash: B256,
         ancestor: Option<&HashMap<B256, Header>>,
     ) -> Result<Header, BlockExecutionError> {
-        let header = if let Some(m) = ancestor { m.get(&block_hash) } else { None };
-        match header {
-            Some(h) => Ok(h.clone()),
-            None => self
-                .provider
-                .header(&block_hash)
-                .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })?
-                .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into()),
-        }
+        ancestor
+            .and_then(|m| m.get(&block_hash).cloned())
+            .or_else(|| {
+                self.provider
+                    .header(&block_hash)
+                    .map_err(|err| BscBlockExecutionError::ProviderInnerError { error: err.into() })
+                    .ok()
+                    .flatten()
+            })
+            .ok_or_else(|| BscBlockExecutionError::UnknownHeader { block_hash }.into())
     }
 
     fn find_ancient_header(
