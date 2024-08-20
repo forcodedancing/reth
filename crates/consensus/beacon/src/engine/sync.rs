@@ -6,6 +6,7 @@ use crate::{
     engine::metrics::EngineSyncMetrics, BeaconConsensusEngineEvent, ConsensusEngineLiveSyncProgress,
 };
 use futures::FutureExt;
+use reth_blockchain_tree::canonical_cache;
 #[cfg(feature = "bsc")]
 use reth_bsc_consensus::Parlia;
 use reth_chainspec::ChainSpec;
@@ -287,6 +288,8 @@ where
                 // we also clear any pending full block requests because we expect them to be
                 // outdated (included in the range the pipeline is syncing anyway)
                 self.clear_block_download_requests();
+
+                canonical_cache::clear_accounts_and_storages();
 
                 Some(EngineSyncEvent::PipelineStarted(Some(target)))
             }

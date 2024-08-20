@@ -4,7 +4,7 @@
 //! blocks, as well as a list of the blocks the chain is composed of.
 
 use super::externals::TreeExternals;
-use crate::BundleStateDataRef;
+use crate::{canonical_cache::CachedBundleStateProvider, BundleStateDataRef};
 use reth_blockchain_tree_api::{
     error::{BlockchainTreeError, InsertBlockErrorKind},
     BlockAttachment, BlockValidationKind,
@@ -18,8 +18,7 @@ use reth_primitives::{
     BlockHash, BlockNumber, ForkBlock, GotExpected, SealedBlockWithSenders, SealedHeader, U256,
 };
 use reth_provider::{
-    providers::{BundleStateProvider, ConsistentDbView},
-    FullExecutionDataProvider, ProviderError, StateRootProvider,
+    providers::ConsistentDbView, FullExecutionDataProvider, ProviderError, StateRootProvider,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_trie::updates::TrieUpdates;
@@ -202,7 +201,7 @@ impl AppendableChain {
             .disable_long_read_transaction_safety()
             .state_provider_by_block_number(canonical_fork.number)?;
 
-        let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
+        let provider = CachedBundleStateProvider::new(state_provider, bundle_state_data_provider);
 
         let db = StateProviderDatabase::new(&provider);
         let executor = externals.executor_factory.executor(db);

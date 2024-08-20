@@ -56,4 +56,7 @@ pub mod noop;
 
 mod state;
 
+/// The global canonical cache for live sync.
+pub mod canonical_cache;
+
 use aquamarine as _;

@@ -38,6 +38,10 @@ tokio = { workspace = true, features = ["macros", "sync"] }
 reth-metrics = { workspace = true, features = ["common"] }
 metrics.workspace = true
 
+# cache
+quick_cache = "0.6.2"
+lazy_static = "1.4.0"
+
 # misc
 aquamarine.workspace = true
 linked_hash_set.workspace = true
