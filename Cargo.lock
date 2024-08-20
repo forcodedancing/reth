@@ -4202,7 +4202,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.7",
  "tokio",
  "tower-service",
  "tracing",
@@ -6648,6 +6648,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick_cache"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec932c60e6faf77dc6601ea149a23d821598b019b450bb1d98fe89c0301c0b61"
+dependencies = [
+ "ahash",
+ "equivalent",
+ "hashbrown 0.14.5",
+ "parking_lot 0.12.3",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7269,9 +7281,11 @@ dependencies = [
  "alloy-genesis",
  "aquamarine",
  "assert_matches",
+ "lazy_static",
  "linked_hash_set",
  "metrics",
  "parking_lot 0.12.3",
+ "quick_cache",
  "reth-blockchain-tree-api",
  "reth-chainspec",
  "reth-consensus",

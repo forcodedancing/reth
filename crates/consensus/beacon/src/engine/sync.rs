@@ -6,6 +6,7 @@ use crate::{
     engine::metrics::EngineSyncMetrics, BeaconConsensusEngineEvent, ConsensusEngineLiveSyncProgress,
 };
 use futures::FutureExt;
+use reth_blockchain_tree::canonical_cache;
 #[cfg(feature = "bsc")]
 use reth_bsc_consensus::Parlia;
 use reth_chainspec::ChainSpec;
@@ -27,7 +28,7 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tokio::sync::oneshot;
-use tracing::trace;
+use tracing::{debug, trace};
 
 /// Manages syncing under the control of the engine.
 ///
@@ -220,6 +221,11 @@ where
             // precaution to never sync to the zero hash
             return
         }
+        debug!(
+            target: "consensus::engine::sync",
+            "Clear global canonical cache."
+        );
+        canonical_cache::clear_accounts_and_storages();
         self.pending_pipeline_target = Some(target);
     }
 

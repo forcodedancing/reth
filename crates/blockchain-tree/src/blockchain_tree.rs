@@ -1,6 +1,7 @@
 //! Implementation of [`BlockchainTree`]
 
 use crate::{
+    canonical_cache::{apply_bundle_state, clear_accounts_and_storages},
     metrics::{MakeCanonicalAction, MakeCanonicalDurationsRecorder, TreeMetrics},
     state::{BlockchainId, TreeState},
     AppendableChain, BlockIndices, BlockchainTreeConfig, ExecutionData, TreeExternals,
@@ -1261,6 +1262,7 @@ where
         };
         recorder.record_relative(MakeCanonicalAction::RetrieveStateTrieUpdates);
 
+        let cloned_bundle = state.clone().bundle;
         let provider_rw = self.externals.provider_factory.provider_rw()?;
         provider_rw
             .append_blocks_with_state(
@@ -1273,6 +1275,9 @@ where
 
         provider_rw.commit()?;
         recorder.record_relative(MakeCanonicalAction::CommitCanonicalChainToDatabase);
+
+        // update global canonical cache
+        apply_bundle_state(cloned_bundle);
 
         Ok(())
     }
@@ -1338,6 +1343,9 @@ where
             .map_err(|e| CanonicalError::CanonicalRevert(e.to_string()))?;
 
         provider_rw.commit()?;
+
+        // clear global canonical cache
+        clear_accounts_and_storages();
 
         if blocks_and_execution.is_empty() {
             Ok(None)
