@@ -1,4 +1,5 @@
 use crate::utils::eth_payload_attributes;
+use reth::blockchain_tree::canonical_cache;
 use reth_chainspec::{ChainSpecBuilder, MAINNET};
 use reth_e2e_test_utils::{setup, transaction::TransactionTestContext};
 use reth_node_ethereum::EthereumNode;
@@ -39,6 +40,10 @@ async fn can_sync() -> eyre::Result<()> {
 
     // only send forkchoice update to second node
     second_node.engine_api.update_forkchoice(block_hash, block_hash).await?;
+
+    // The canonical cache is static, which means that the two nodes will share the same cache.
+    // Need to clear the cache to advance the second node.
+    canonical_cache::clear_accounts_and_storages();
 
     // expect second node advanced via p2p gossip
     second_node.assert_new_block(tx_hash, block_hash, 1).await?;
