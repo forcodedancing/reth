@@ -48,10 +48,12 @@ pub(crate) fn apply_execution_outcome(outcome: ExecutionOutcome) {
     let committed = COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed);
     if committed == 0 {
         COMMITTED_OUTCOME_HEIGHT.store(outcome.first_block, Ordering::Relaxed);
+        debug!(target: "canonical_cache", ?committed, ?outcome.first_block, "Extend execution outcome");
         OUTCOME_CACHE.write().extend(outcome);
         return;
     }
 
+    debug!(target: "canonical_cache", ?committed, ?outcome.first_block, "Extend execution outcome");
     OUTCOME_CACHE.write().extend(outcome.clone());
 
     if outcome.first_block <= committed + SAFE_INTERVAL {
