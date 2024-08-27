@@ -5,7 +5,7 @@
 
 use super::externals::TreeExternals;
 use crate::{
-    canonical_cache::{clear_accounts_and_storages, CachedBundleStateProvider},
+    canonical_cache::{revert_states, CachedBundleStateProvider},
     BundleStateDataRef,
 };
 use reth_blockchain_tree_api::{
@@ -88,7 +88,7 @@ impl AppendableChain {
         if block_attachment == BlockAttachment::HistoricalFork {
             // The fork is a historical fork, the global canonical cache could be dirty.
             // The case should be rare for bsc & op.
-            clear_accounts_and_storages();
+            revert_states(Some(canonical_fork.number));
         }
 
         let state_provider = BundleStateDataRef {

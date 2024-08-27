@@ -1,5 +1,7 @@
 use lazy_static::lazy_static;
+use parking_lot::RwLock;
 use quick_cache::sync::Cache;
+use reth_execution_types::ExecutionOutcome;
 use reth_primitives::{Account, Address, BlockNumber, Bytecode, StorageKey, StorageValue, B256};
 use reth_provider::{
     AccountReader, BlockHashReader, ExecutionDataProvider, StateProofProvider, StateProvider,
@@ -8,15 +10,27 @@ use reth_provider::{
 use reth_revm::db::BundleState;
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, AccountProof, HashedPostState};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::debug;
+
+type AddressStorageKey = (Address, StorageKey);
 
 /// The size of cache, counted by the number of accounts.
 const CACHE_SIZE: usize = 1000000;
 
-type AddressStorageKey = (Address, StorageKey);
+/// The safe interval from the canonical height for committing `EXECUTION_OUTCOME_CACHE` to the
+/// quick cache.
+const SAFE_INTERVAL: u64 = 32;
+
+/// Tracking the committed (to the quick cache) execution outcome.
+static COMMITTED_OUTCOME_HEIGHT: AtomicU64 = AtomicU64::new(0);
 
 lazy_static! {
+    /// Execution outcome for the recent blocks, which states have not been moved to quick cache.
+    static ref OUTCOME_CACHE: RwLock<ExecutionOutcome> = RwLock::new(ExecutionOutcome::default());
+
     /// Account cache
-    pub static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE);
+    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(CACHE_SIZE);
 
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
@@ -29,48 +43,108 @@ lazy_static! {
     static ref BLOCK_HASH_CACHE: Cache<u64, B256> = Cache::new(CACHE_SIZE/10);
 }
 
-/// Apply committed state to canonical cache.
-pub(crate) fn apply_bundle_state(bundle: BundleState) {
-    let change_set = bundle.into_plain_state(reth_provider::OriginalValuesKnown::Yes);
-
-    for (address, account_info) in &change_set.accounts {
-        match account_info {
-            None => {
-                ACCOUNT_CACHE.remove(address);
-            }
-            Some(acc) => {
-                ACCOUNT_CACHE.insert(
-                    *address,
-                    Account {
-                        nonce: acc.nonce,
-                        balance: acc.balance,
-                        bytecode_hash: Some(acc.code_hash),
-                    },
-                );
-            }
-        }
+/// Apply committed execution outcome to canonical cache.
+pub(crate) fn apply_execution_outcome(outcome: ExecutionOutcome) {
+    let committed = COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed);
+    if committed == 0 {
+        COMMITTED_OUTCOME_HEIGHT.store(outcome.first_block, Ordering::Relaxed);
+        OUTCOME_CACHE.write().extend(outcome);
+        return;
     }
 
-    let mut to_wipe = false;
-    for storage in &change_set.storage {
-        if storage.wipe_storage {
-            to_wipe = true;
-            break;
-        } else {
-            for (k, v) in storage.storage.clone() {
-                STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
+    OUTCOME_CACHE.write().extend(outcome.clone());
+
+    if outcome.first_block <= committed + SAFE_INTERVAL {
+        return;
+    }
+
+    debug!(target: "canonical_cache", ?committed, ?outcome.first_block, "Split execution outcome for commit");
+    // The two splits ([..at], [at..]) will include the split height both.
+    let (lower, higher) =
+        OUTCOME_CACHE.read().clone().split_at(outcome.first_block - SAFE_INTERVAL);
+
+    if let Some(outcome) = lower {
+        // Only keep the higher outcome
+        OUTCOME_CACHE.write().clone_from(&higher);
+        COMMITTED_OUTCOME_HEIGHT.store(higher.first_block, Ordering::Relaxed);
+
+        debug!(target: "canonical_cache", ?committed, ?higher.first_block, "Commit split execution outcome");
+        // Commit the lower outcome
+        let change_set = outcome.bundle.into_plain_state(reth_provider::OriginalValuesKnown::Yes);
+
+        for (address, account_info) in &change_set.accounts {
+            match account_info {
+                None => {
+                    ACCOUNT_CACHE.remove(address);
+                }
+                Some(acc) => {
+                    ACCOUNT_CACHE.insert(
+                        *address,
+                        Account {
+                            nonce: acc.nonce,
+                            balance: acc.balance,
+                            bytecode_hash: Some(acc.code_hash),
+                        },
+                    );
+                }
             }
         }
-    }
-    if to_wipe {
-        STORAGE_CACHE.clear();
+
+        let mut to_wipe = false;
+        for storage in &change_set.storage {
+            if storage.wipe_storage {
+                to_wipe = true;
+                break;
+            } else {
+                for (k, v) in storage.storage.clone() {
+                    STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
+                }
+            }
+        }
+        if to_wipe {
+            STORAGE_CACHE.clear();
+        }
     }
 }
 
-/// Clear cached accounts and storages.
-pub fn clear_accounts_and_storages() {
-    ACCOUNT_CACHE.clear();
-    STORAGE_CACHE.clear();
+/// Revert cached accounts and storages. The states in `block_number` will be reserved.
+pub fn revert_states(block_number: Option<u64>) {
+    let mut should_clear = match block_number {
+        None => true,
+        Some(block_number) => {
+            let committed = COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed);
+            debug!(target: "canonical_cache", ?committed, ?block_number, "Prepare revert states");
+            // Revert to a height which has been committed
+            committed > block_number
+        }
+    };
+
+    if !should_clear {
+        debug!(target: "canonical_cache", ?block_number, "Revert execution outcome");
+        let cloned = OUTCOME_CACHE.read().clone();
+        let panics = std::panic::catch_unwind(|| cloned.split_at(block_number.unwrap()));
+        match panics {
+            Ok((lower, _higher)) => match lower {
+                None => {
+                    OUTCOME_CACHE.write().clone_from(&ExecutionOutcome::default());
+                }
+                Some(lower) => {
+                    OUTCOME_CACHE.write().clone_from(&lower);
+                }
+            },
+            Err(_) => {
+                should_clear = true;
+            }
+        }
+    }
+
+    if should_clear {
+        debug!(target: "canonical_cache", ?block_number, "Clear canonical cache");
+        OUTCOME_CACHE.write().clone_from(&ExecutionOutcome::default());
+        COMMITTED_OUTCOME_HEIGHT.store(0, Ordering::Relaxed);
+        ACCOUNT_CACHE.clear();
+        STORAGE_CACHE.clear();
+    }
 }
 
 #[derive(Debug)]
@@ -92,10 +166,6 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
     for CachedBundleStateProvider<SP, EDP>
 {
     fn block_hash(&self, block_number: BlockNumber) -> ProviderResult<Option<B256>> {
-        let block_hash = self.block_execution_data_provider.block_hash(block_number);
-        if block_hash.is_some() {
-            return Ok(block_hash)
-        }
         if let Some(v) = BLOCK_HASH_CACHE.get(&block_number) {
             return Ok(Some(v))
         }
@@ -122,6 +192,10 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> AccountReader
         if let Some(account) =
             self.block_execution_data_provider.execution_outcome().account(&address)
         {
+            return Ok(account)
+        }
+
+        if let Some(account) = OUTCOME_CACHE.read().account(&address) {
             return Ok(account)
         }
         if let Some(v) = ACCOUNT_CACHE.get(&address) {
@@ -203,6 +277,10 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         {
             return Ok(Some(value))
         }
+
+        if let Some(value) = OUTCOME_CACHE.read().storage(&account, u256_storage_key) {
+            return Ok(Some(value))
+        }
         let cache_key = (account, storage_key);
         if let Some(v) = STORAGE_CACHE.get(&cache_key) {
             return Ok(Some(v))
@@ -218,6 +296,10 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         if let Some(bytecode) =
             self.block_execution_data_provider.execution_outcome().bytecode(&code_hash)
         {
+            return Ok(Some(bytecode))
+        }
+
+        if let Some(bytecode) = OUTCOME_CACHE.read().bytecode(&code_hash) {
             return Ok(Some(bytecode))
         }
         if let Some(v) = CONTRACT_CACHE.get(&code_hash) {
