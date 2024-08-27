@@ -43,7 +43,7 @@ async fn can_sync() -> eyre::Result<()> {
 
     // The canonical cache is static, which means that the two nodes will share the same cache.
     // Need to clear the cache to advance the second node.
-    canonical_cache::clear_accounts_and_storages();
+    canonical_cache::revert_states(None);
 
     // expect second node advanced via p2p gossip
     second_node.assert_new_block(tx_hash, block_hash, 1).await?;

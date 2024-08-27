@@ -1,7 +1,7 @@
 //! Implementation of [`BlockchainTree`]
 
 use crate::{
-    canonical_cache::apply_bundle_state,
+    canonical_cache::apply_execution_outcome,
     metrics::{MakeCanonicalAction, MakeCanonicalDurationsRecorder, TreeMetrics},
     state::{BlockchainId, TreeState},
     AppendableChain, BlockIndices, BlockchainTreeConfig, ExecutionData, TreeExternals,
@@ -1262,12 +1262,11 @@ where
         };
         recorder.record_relative(MakeCanonicalAction::RetrieveStateTrieUpdates);
 
-        let cloned_bundle = state.bundle.clone();
         let provider_rw = self.externals.provider_factory.provider_rw()?;
         provider_rw
             .append_blocks_with_state(
                 blocks.into_blocks().collect(),
-                state,
+                state.clone(),
                 hashed_state_sorted,
                 trie_updates,
             )
@@ -1277,7 +1276,7 @@ where
         recorder.record_relative(MakeCanonicalAction::CommitCanonicalChainToDatabase);
 
         // update global canonical cache
-        apply_bundle_state(cloned_bundle);
+        apply_execution_outcome(state);
 
         Ok(())
     }

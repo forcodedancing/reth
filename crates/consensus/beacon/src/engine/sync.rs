@@ -225,7 +225,7 @@ where
             target: "consensus::engine::sync",
             "Clear global canonical cache."
         );
-        canonical_cache::clear_accounts_and_storages();
+        canonical_cache::revert_states(None);
         self.pending_pipeline_target = Some(target);
     }
 
