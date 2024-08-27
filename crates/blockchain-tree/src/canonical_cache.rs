@@ -48,10 +48,12 @@ pub(crate) fn apply_execution_outcome(outcome: ExecutionOutcome) {
     let committed = COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed);
     if committed == 0 {
         COMMITTED_OUTCOME_HEIGHT.store(outcome.first_block, Ordering::Relaxed);
-        OUTCOME_CACHE.write().extend(outcome);
+        debug!(target: "canonical_cache", ?committed, ?outcome.first_block, "Extend execution outcome");
+        OUTCOME_CACHE.write().clone_from(&outcome);
         return;
     }
 
+    debug!(target: "canonical_cache", ?committed, ?outcome.first_block, "Extend execution outcome");
     OUTCOME_CACHE.write().extend(outcome.clone());
 
     if outcome.first_block <= committed + SAFE_INTERVAL {
@@ -109,7 +111,7 @@ pub(crate) fn apply_execution_outcome(outcome: ExecutionOutcome) {
 
 /// Revert cached accounts and storages. The states in `block_number` will be reserved.
 pub fn revert_states(block_number: Option<u64>) {
-    let mut should_clear = match block_number {
+    let should_clear = match block_number {
         None => true,
         Some(block_number) => {
             let committed = COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed);
@@ -119,31 +121,15 @@ pub fn revert_states(block_number: Option<u64>) {
         }
     };
 
-    if !should_clear {
-        debug!(target: "canonical_cache", ?block_number, "Revert execution outcome");
-        let cloned = OUTCOME_CACHE.read().clone();
-        let panics = std::panic::catch_unwind(|| cloned.split_at(block_number.unwrap()));
-        match panics {
-            Ok((lower, _higher)) => match lower {
-                None => {
-                    OUTCOME_CACHE.write().clone_from(&ExecutionOutcome::default());
-                }
-                Some(lower) => {
-                    OUTCOME_CACHE.write().clone_from(&lower);
-                }
-            },
-            Err(_) => {
-                should_clear = true;
-            }
-        }
-    }
-
     if should_clear {
         debug!(target: "canonical_cache", ?block_number, "Clear canonical cache");
         OUTCOME_CACHE.write().clone_from(&ExecutionOutcome::default());
         COMMITTED_OUTCOME_HEIGHT.store(0, Ordering::Relaxed);
         ACCOUNT_CACHE.clear();
         STORAGE_CACHE.clear();
+    } else {
+        debug!(target: "canonical_cache", ?block_number, "Revert execution outcome");
+        OUTCOME_CACHE.write().revert_to(block_number.unwrap());
     }
 }
 
