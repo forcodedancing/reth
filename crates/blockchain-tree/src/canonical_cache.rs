@@ -18,7 +18,7 @@ type AddressStorageKey = (Address, StorageKey);
 /// The size of cache, counted by the number of accounts.
 const CACHE_SIZE: usize = 1000000;
 
-/// The safe interval from the canonical height for committing `EXECUTION_OUTCOME_CACHE` to the
+/// The safe interval from the canonical height for committing [`OUTCOME_CACHE`] to the
 /// quick cache.
 const SAFE_INTERVAL: u64 = 32;
 
@@ -60,7 +60,6 @@ pub(crate) fn apply_execution_outcome(outcome: ExecutionOutcome) {
         return;
     }
 
-    debug!(target: "canonical_cache", ?committed, ?outcome.first_block, "Split execution outcome for commit");
     // The two splits ([..at], [at..]) will include the split height both.
     let (lower, higher) =
         OUTCOME_CACHE.read().clone().split_at(outcome.first_block - SAFE_INTERVAL);
@@ -121,6 +120,7 @@ pub fn revert_states(block_number: Option<u64>) {
         }
     };
 
+    // Clear account and storage cache.
     if should_clear {
         debug!(target: "canonical_cache", ?block_number, "Clear canonical cache");
         OUTCOME_CACHE.write().clone_from(&ExecutionOutcome::default());
@@ -128,8 +128,18 @@ pub fn revert_states(block_number: Option<u64>) {
         ACCOUNT_CACHE.clear();
         STORAGE_CACHE.clear();
     } else {
-        debug!(target: "canonical_cache", ?block_number, "Revert execution outcome");
-        OUTCOME_CACHE.write().revert_to(block_number.unwrap());
+        let outcome = OUTCOME_CACHE.read().clone();
+        let outcome_tip = (outcome.first_block + outcome.len() as u64).checked_sub(1).or(Some(0));
+        if outcome_tip.unwrap() >= block_number.unwrap() {
+            // Revert outcome cache
+            debug!(target: "canonical_cache", ?block_number, ?outcome_tip, "Revert execution outcome");
+            OUTCOME_CACHE.write().revert_to(block_number.unwrap());
+        } else {
+            // Reset outcome for missing some state
+            debug!(target: "canonical_cache", ?block_number, ?outcome_tip, "Reset execution outcome");
+            OUTCOME_CACHE.write().clone_from(&ExecutionOutcome::default());
+            COMMITTED_OUTCOME_HEIGHT.store(0, Ordering::Relaxed);
+        }
     }
 }
 
@@ -152,6 +162,11 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> BlockHashReader
     for CachedBundleStateProvider<SP, EDP>
 {
     fn block_hash(&self, block_number: BlockNumber) -> ProviderResult<Option<B256>> {
+        let block_hash = self.block_execution_data_provider.block_hash(block_number);
+        if block_hash.is_some() {
+            return Ok(block_hash)
+        }
+
         if let Some(v) = BLOCK_HASH_CACHE.get(&block_number) {
             return Ok(Some(v))
         }
@@ -296,5 +311,115 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
             return Ok(Some(value))
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reth_primitives::{Receipt, Receipts};
+
+    #[serial_test::serial]
+    #[test]
+    fn test_append_execution_outcomes() {
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 0);
+
+        apply_execution_outcome(ExecutionOutcome::new(
+            BundleState::default(),
+            Receipts::from(vec![Receipt::default()]),
+            1,
+            vec![],
+        ));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 1);
+
+        // States are still in execution outcome
+        for height in 2..34 {
+            apply_execution_outcome(ExecutionOutcome::new(
+                BundleState::default(),
+                Receipts::from(vec![Receipt::default()]),
+                height,
+                vec![],
+            ));
+            assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 1);
+        }
+
+        // first outcome to trigger moving outcome to quick cache
+        apply_execution_outcome(ExecutionOutcome::new(
+            BundleState::default(),
+            Receipts::from(vec![Receipt::default()]),
+            34,
+            vec![],
+        ));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 2);
+
+        // second outcome to trigger moving outcome to quick cache
+        apply_execution_outcome(ExecutionOutcome::new(
+            BundleState::default(),
+            Receipts::from(vec![Receipt::default()]),
+            35,
+            vec![],
+        ));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 3);
+
+        revert_states(None);
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_revert_states_without_height() {
+        revert_states(None);
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 0);
+        assert_eq!(OUTCOME_CACHE.read().first_block, 0);
+
+        apply_execution_outcome(ExecutionOutcome::new(
+            BundleState::default(),
+            Receipts::from(vec![Receipt::default()]),
+            10,
+            vec![],
+        ));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 10);
+        assert_eq!(OUTCOME_CACHE.read().first_block, 10);
+
+        revert_states(None);
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 0);
+        assert_eq!(OUTCOME_CACHE.read().first_block, 0);
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_revert_states_with_height() {
+        for height in 10..100 {
+            apply_execution_outcome(ExecutionOutcome::new(
+                BundleState::default(),
+                Receipts::from(vec![Receipt::default()]),
+                height,
+                vec![],
+            ));
+        }
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 67);
+
+        // revert outcome only
+        revert_states(Some(80));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 67); // no influence on committed
+        assert_eq!(OUTCOME_CACHE.read().len(), 80 - 67 + 1); // 80 should be kept
+
+        // revert outcome only
+        revert_states(Some(67));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 67); // no influence on committed
+        assert_eq!(OUTCOME_CACHE.read().len(), 1); // only 67 is kept
+
+        // clear cache
+        for height in 68..88 {
+            apply_execution_outcome(ExecutionOutcome::new(
+                BundleState::default(),
+                Receipts::from(vec![Receipt::default()]),
+                height,
+                vec![],
+            ));
+        }
+
+        revert_states(Some(66));
+        assert_eq!(COMMITTED_OUTCOME_HEIGHT.load(Ordering::Relaxed), 0);
+        assert_eq!(OUTCOME_CACHE.read().len(), 0);
     }
 }

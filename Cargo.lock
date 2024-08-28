@@ -7306,6 +7306,7 @@ dependencies = [
  "reth-testing-utils",
  "reth-trie",
  "reth-trie-parallel",
+ "serial_test",
  "tokio",
  "tracing",
 ]
