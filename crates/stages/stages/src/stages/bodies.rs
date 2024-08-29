@@ -407,8 +407,8 @@ impl<DB: Database, D: BodyDownloader> Stage<DB> for BodyStage<D> {
         }
 
         // Unwinds static file
-        static_file_producer_sc
-            .prune_sidecars(static_file_block_num.saturating_sub(db_block_num))?;
+        // static_file_producer_sc
+        //    .prune_sidecars(static_file_block_num.saturating_sub(db_block_num))?;
 
         Ok(UnwindOutput {
             checkpoint: StageCheckpoint::new(input.unwind_to)
