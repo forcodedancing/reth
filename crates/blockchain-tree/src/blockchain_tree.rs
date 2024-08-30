@@ -20,9 +20,10 @@ use reth_primitives::{
     SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment, B256, U256,
 };
 use reth_provider::{
-    BlockExecutionWriter, BlockNumReader, BlockWriter, CanonStateNotification,
-    CanonStateNotificationSender, CanonStateNotifications, ChainSpecProvider, ChainSplit,
-    ChainSplitTarget, DisplayBlocksChain, HeaderProvider, ProviderError, StaticFileProviderFactory,
+    BlockExecutionReader, BlockExecutionWriter, BlockNumReader, BlockWriter,
+    CanonStateNotification, CanonStateNotificationSender, CanonStateNotifications,
+    ChainSpecProvider, ChainSplit, ChainSplitTarget, DisplayBlocksChain, HeaderProvider,
+    ProviderError, StaticFileProviderFactory,
 };
 use reth_prune_types::PruneModes;
 use reth_stages_api::{MetricEvent, MetricEventsSender};
@@ -30,6 +31,7 @@ use reth_storage_errors::provider::{ProviderResult, RootMismatch};
 use reth_trie::{hashed_cursor::HashedPostStateCursorFactory, StateRoot};
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
+    ops::Deref,
     sync::Arc,
 };
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -427,15 +429,70 @@ where
             BlockAttachment::HistoricalFork
         };
 
-        let chain = AppendableChain::new_canonical_fork(
+        // Find the state between (finalized_block, block)
+        let mut chains = vec![];
+        let mut height = block_num_hash.number;
+        if let Some(chain_id) = self.block_indices().get_block_chain_id(&block_num_hash.hash) {
+            if let Some(another_chain) = self.state.chains.get(&chain_id) {
+                let in_memory = match another_chain
+                    .deref()
+                    .clone()
+                    .split(ChainSplitTarget::Number(block_num_hash.number - 1))
+                {
+                    ChainSplit::Split { canonical: lower, pending: _higher } => Some(lower),
+                    ChainSplit::NoSplitCanonical(lower) => Some(lower),
+                    ChainSplit::NoSplitPending(_) => None,
+                };
+                if let Some(in_memory) = in_memory {
+                    height = in_memory.first().number;
+                    chains.push(in_memory);
+                }
+            };
+        }
+
+        // Need to get states which are canonical and in database (i.e, during restart)
+        if height > self.block_indices().last_finalized_block() + 1 {
+            let range = (self.block_indices().last_finalized_block() + 1)..=height - 1;
+            // Read block and execution result from database.
+            let in_db = provider.get_block_and_execution_range(range).map_err(|_| {
+                InsertBlockErrorKind::Tree(BlockchainTreeError::CanonicalChain {
+                    block_hash: block_num_hash.hash,
+                })
+            })?;
+            chains.push(in_db);
+        }
+
+        let mut parent_chain = chains.pop().unwrap_or_default();
+        for chain in chains.into_iter().rev() {
+            parent_chain.append_chain(chain).map_err(|_| {
+                InsertBlockErrorKind::Tree(BlockchainTreeError::CanonicalChain {
+                    block_hash: block_num_hash.hash,
+                })
+            })?;
+        }
+
+        let mut chain = AppendableChain::new_canonical_fork(
             block,
             &parent_header,
+            parent_chain.execution_outcome().clone(),
             canonical_chain.inner(),
             parent,
             &self.externals,
             block_attachment,
             block_validation_kind,
         )?;
+
+        // For canonical chain, keep the chain as (last_finalized_block, ...)
+        if !parent_chain.is_empty() {
+            let chain_clone = chain.clone();
+            let update = chain_clone.trie_updates();
+            parent_chain.append_chain(chain.clone().into_inner()).expect("fail to append chain");
+            chain = AppendableChain::new(parent_chain);
+            // Keep trie updates
+            if update.is_some() {
+                chain.set_trie_updates(update.unwrap().clone());
+            }
+        }
 
         self.insert_chain(chain);
         self.try_connect_buffered_blocks(block_num_hash);
@@ -797,6 +854,30 @@ where
 
     /// Finalize blocks up until and including `finalized_block`, and remove them from the tree.
     pub fn finalize_block(&mut self, finalized_block: BlockNumber) -> ProviderResult<()> {
+        // Get state between (last_finalized_block, finalized_block]
+        // When creating new canonical fork, the (last_finalized_block, fork_block) will be
+        // pre-append, and when making canonical (commiting db) the (last_finalized_block,
+        // canonical_block) is also reserved
+        let block_hash = self.externals.find_hash_by_number(finalized_block).unwrap();
+        if let Some(chain_id) = self.block_indices().get_block_chain_id(&block_hash) {
+            let canonical = self.state.chains.remove(&chain_id);
+            let mut outcome = ExecutionOutcome::default();
+            match canonical.unwrap().into_inner().split(ChainSplitTarget::Number(finalized_block)) {
+                ChainSplit::Split { canonical: lower, pending: higher } => {
+                    outcome.clone_from(lower.execution_outcome());
+
+                    // Remove finalized blocks and insert back
+                    self.state.block_indices.insert_chain(chain_id, &higher);
+                    self.state.chains.insert(chain_id, AppendableChain::new(higher));
+                }
+                ChainSplit::NoSplitCanonical(lower) => {
+                    outcome.clone_from(lower.execution_outcome());
+                }
+                ChainSplit::NoSplitPending(_) => {}
+            }
+            apply_bundle_state(outcome.bundle);
+        };
+
         // remove blocks
         let mut remove_chains = self.state.block_indices.finalize_canonical_blocks(
             finalized_block,
@@ -1067,7 +1148,7 @@ where
         };
 
         // we are splitting chain at the block hash that we want to make canonical
-        let Some(canonical) = self.remove_and_split_chain(chain_id, block_hash.into()) else {
+        let Some(mut canonical) = self.remove_and_split_chain(chain_id, block_hash.into()) else {
             debug!(target: "blockchain_tree", ?block_hash, ?chain_id, "Chain not present");
             return Err(CanonicalError::from(BlockchainTreeError::BlockSideChainIdConsistency {
                 chain_id: chain_id.into(),
@@ -1077,7 +1158,7 @@ where
         durations_recorder.record_relative(MakeCanonicalAction::SplitChain);
 
         let mut fork_block = canonical.fork_block();
-        let mut chains_to_promote = vec![canonical];
+        let mut chains_to_promote = vec![canonical.clone()];
 
         // loop while fork blocks are found in Tree.
         while let Some(chain_id) = self.block_indices().get_block_chain_id(&fork_block.hash) {
@@ -1118,8 +1199,40 @@ where
         if chain_appended {
             trace!(target: "blockchain_tree", ?new_canon_chain, "Canonical chain appended");
         }
+
+        // For canonical chain, we need to keep the chain from the last_finalized_block
+        let mut chain_to_canonicalize = new_canon_chain.clone();
+        // The dropped canonical part contains the state which should be reserved
+        if canonical.first().number + canonical.len() as u64 >= new_canon_chain.first().number {
+            match canonical
+                .clone()
+                .split(ChainSplitTarget::Number(new_canon_chain.first().number - 1))
+            {
+                ChainSplit::Split { canonical: lower, pending: _higher } => {
+                    canonical = lower;
+                }
+                ChainSplit::NoSplitCanonical(lower) => {
+                    canonical = lower;
+                }
+                ChainSplit::NoSplitPending(_) => {
+                    canonical = Chain::default();
+                }
+            }
+        }
+        if !canonical.is_empty() {
+            canonical.append_chain(new_canon_chain.clone()).map_err(|_| {
+                CanonicalError::from(BlockchainTreeError::BlockHashNotFoundInChain { block_hash })
+            })?;
+            chain_to_canonicalize = canonical;
+        }
+
+        // Reinsert the chain with the recent finalized blocks
+        self.state.chains.remove(&chain_id);
+        self.state.block_indices.insert_chain(chain_id, &chain_to_canonicalize);
+        self.state.chains.insert(chain_id, AppendableChain::new(chain_to_canonicalize.clone()));
+
         // update canonical index
-        self.state.block_indices.canonicalize_blocks(new_canon_chain.blocks());
+        self.state.block_indices.canonicalize_blocks(chain_to_canonicalize.blocks());
         durations_recorder.record_relative(MakeCanonicalAction::UpdateCanonicalIndex);
 
         debug!(
@@ -1262,7 +1375,6 @@ where
         };
         recorder.record_relative(MakeCanonicalAction::RetrieveStateTrieUpdates);
 
-        let cloned_bundle = state.bundle.clone();
         let provider_rw = self.externals.provider_factory.provider_rw()?;
         provider_rw
             .append_blocks_with_state(
@@ -1275,9 +1387,6 @@ where
 
         provider_rw.commit()?;
         recorder.record_relative(MakeCanonicalAction::CommitCanonicalChainToDatabase);
-
-        // update global canonical cache
-        apply_bundle_state(cloned_bundle);
 
         Ok(())
     }

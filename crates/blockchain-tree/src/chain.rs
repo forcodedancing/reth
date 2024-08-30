@@ -4,10 +4,7 @@
 //! blocks, as well as a list of the blocks the chain is composed of.
 
 use super::externals::TreeExternals;
-use crate::{
-    canonical_cache::{clear_accounts_and_storages, CachedBundleStateProvider},
-    BundleStateDataRef,
-};
+use crate::{canonical_cache::CachedBundleStateProvider, BundleStateDataRef};
 use reth_blockchain_tree_api::{
     error::{BlockchainTreeError, InsertBlockErrorKind},
     BlockAttachment, BlockValidationKind,
@@ -71,6 +68,7 @@ impl AppendableChain {
     pub fn new_canonical_fork<DB, E>(
         block: SealedBlockWithSenders,
         parent_header: &SealedHeader,
+        parent_outcome: ExecutionOutcome,
         canonical_block_hashes: &BTreeMap<BlockNumber, BlockHash>,
         canonical_fork: ForkBlock,
         externals: &TreeExternals<DB, E>,
@@ -81,14 +79,8 @@ impl AppendableChain {
         DB: Database + Clone,
         E: BlockExecutorProvider,
     {
-        let execution_outcome = ExecutionOutcome::default();
+        let execution_outcome = parent_outcome;
         let empty = BTreeMap::new();
-
-        if block_attachment == BlockAttachment::HistoricalFork {
-            // The fork is a historical fork, the global canonical cache could be dirty.
-            // The case should be rare for bsc & op.
-            clear_accounts_and_storages();
-        }
 
         let state_provider = BundleStateDataRef {
             execution_outcome: &execution_outcome,
