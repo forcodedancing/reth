@@ -3,10 +3,10 @@
 use reth_consensus::Consensus;
 use reth_db::{static_file::HeaderMask, tables};
 use reth_db_api::{cursor::DbCursorRO, database::Database, transaction::DbTx};
-use reth_primitives::{BlockHash, BlockNumber, StaticFileSegment};
+use reth_primitives::{BlockHash, BlockNumber, StaticFileSegment, B256};
 use reth_provider::{
-    FinalizedBlockReader, FinalizedBlockWriter, ProviderFactory, StaticFileProviderFactory,
-    StatsReader,
+    BlockHashReader, FinalizedBlockReader, FinalizedBlockWriter, ProviderFactory,
+    StaticFileProviderFactory, StatsReader,
 };
 use reth_storage_errors::provider::ProviderResult;
 use std::{collections::BTreeMap, sync::Arc};
@@ -97,5 +97,11 @@ impl<DB: Database, E> TreeExternals<DB, E> {
         provider_rw.save_finalized_block_number(block_number)?;
         provider_rw.commit()?;
         Ok(())
+    }
+
+    pub(crate) fn find_hash_by_number(&self, block_number: BlockNumber) -> ProviderResult<B256> {
+        let provider_ro = self.provider_factory.provider()?;
+        let hash = provider_ro.block_hash(block_number)?;
+        Ok(hash.unwrap_or_default())
     }
 }

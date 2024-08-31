@@ -4,10 +4,7 @@
 //! blocks, as well as a list of the blocks the chain is composed of.
 
 use super::externals::TreeExternals;
-use crate::{
-    canonical_cache::{clear_accounts_and_storages, CachedBundleStateProvider},
-    BundleStateDataRef,
-};
+use crate::{canonical_cache::CachedBundleStateProvider, BundleStateDataRef};
 use reth_blockchain_tree_api::{
     error::{BlockchainTreeError, InsertBlockErrorKind},
     BlockAttachment, BlockValidationKind,
@@ -21,7 +18,8 @@ use reth_primitives::{
     BlockHash, BlockNumber, ForkBlock, GotExpected, SealedBlockWithSenders, SealedHeader, U256,
 };
 use reth_provider::{
-    providers::ConsistentDbView, FullExecutionDataProvider, ProviderError, StateRootProvider,
+    providers::ConsistentDbView, FinalizedBlockReader, FullExecutionDataProvider, ProviderError,
+    StateRootProvider,
 };
 use reth_revm::database::StateProviderDatabase;
 use reth_trie::updates::TrieUpdates;
@@ -71,6 +69,7 @@ impl AppendableChain {
     pub fn new_canonical_fork<DB, E>(
         block: SealedBlockWithSenders,
         parent_header: &SealedHeader,
+        parent_outcome: ExecutionOutcome,
         canonical_block_hashes: &BTreeMap<BlockNumber, BlockHash>,
         canonical_fork: ForkBlock,
         externals: &TreeExternals<DB, E>,
@@ -81,14 +80,8 @@ impl AppendableChain {
         DB: Database + Clone,
         E: BlockExecutorProvider,
     {
-        let execution_outcome = ExecutionOutcome::default();
+        let execution_outcome = parent_outcome;
         let empty = BTreeMap::new();
-
-        if block_attachment == BlockAttachment::HistoricalFork {
-            // The fork is a historical fork, the global canonical cache could be dirty.
-            // The case should be rare for bsc & op.
-            clear_accounts_and_storages();
-        }
 
         let state_provider = BundleStateDataRef {
             execution_outcome: &execution_outcome,
@@ -192,7 +185,9 @@ impl AppendableChain {
         externals.consensus.validate_header_against_parent(&block, parent_block)?;
 
         // get the state provider.
-        let canonical_fork = bundle_state_data_provider.canonical_fork();
+        //let canonical_fork = bundle_state_data_provider.canonical_fork();
+        let provider = externals.provider_factory.provider()?;
+        let finalized_block = provider.last_finalized_block_number()?;
 
         // SAFETY: For block execution and parallel state root computation below we open multiple
         // independent database transactions. Upon opening the database transaction the consistent
@@ -208,7 +203,7 @@ impl AppendableChain {
             // State root calculation can take a while, and we're sure no write transaction
             // will be open in parallel. See https://github.com/paradigmxyz/reth/issues/7509.
             .disable_long_read_transaction_safety()
-            .state_provider_by_block_number(canonical_fork.number)?;
+            .state_provider_by_block_number(finalized_block)?;
 
         let provider = CachedBundleStateProvider::new(state_provider, bundle_state_data_provider);
 

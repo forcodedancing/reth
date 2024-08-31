@@ -857,11 +857,12 @@ where
         //
         // This ensures that the finalized block is consistent with the head block, i.e. the
         // finalized block is an ancestor of the head block.
-        if !state.finalized_block_hash.is_zero() &&
-            !self.blockchain.is_canonical(state.finalized_block_hash)?
-        {
-            return Ok(Some(OnForkChoiceUpdated::invalid_state()))
-        }
+        // TODO: fixme
+        // if !state.finalized_block_hash.is_zero() &&
+        //     !self.blockchain.is_canonical(state.finalized_block_hash)?
+        // {
+        //     return Ok(Some(OnForkChoiceUpdated::invalid_state()))
+        // }
 
         // Finalized block is consistent, so update it in the canon chain tracker.
         self.update_finalized_block(state.finalized_block_hash)?;

@@ -1,13 +1,16 @@
 use crate::utils::{advance_chain, setup};
 use reth::blockchain_tree::error::BlockchainTreeError;
 use reth_rpc_types::engine::PayloadStatusEnum;
+use reth_tracing::tracing_subscriber;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn can_sync() -> eyre::Result<()> {
-    reth_tracing::init_test_tracing();
-
+    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
+        .or_else(|_| tracing_subscriber::EnvFilter::try_new("debug"))
+        .unwrap();
+    let _ = tracing_subscriber::fmt().with_env_filter(filter_layer).try_init();
     let (mut nodes, _tasks, wallet) = setup(3).await?;
     let wallet = Arc::new(Mutex::new(wallet));
 
