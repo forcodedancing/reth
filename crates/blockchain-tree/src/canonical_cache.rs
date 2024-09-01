@@ -230,3 +230,168 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateProvider
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{canonical_cache::CachedBundleStateProvider, BundleStateDataRef};
+    use reth_execution_types::ExecutionOutcome;
+    use reth_primitives::{
+        revm_primitives::{AccountInfo, KECCAK_EMPTY},
+        ForkBlock,
+    };
+    use reth_provider::{providers::ConsistentDbView, test_utils::create_test_provider_factory};
+    use reth_revm::{db::AccountStatus, primitives::U256};
+    use std::collections::{BTreeMap, HashMap};
+
+    #[test]
+    fn test_basic() {
+        let execution_outcome = ExecutionOutcome::default();
+        let empty = BTreeMap::new();
+
+        let factory = create_test_provider_factory();
+        let consistent_view = ConsistentDbView::new_with_latest_tip(factory.clone()).unwrap();
+        let state_provider = consistent_view
+            .provider_ro()
+            .unwrap()
+            .disable_long_read_transaction_safety()
+            .state_provider_by_block_number(1)
+            .unwrap();
+        let bdp = BundleStateDataRef {
+            execution_outcome: &execution_outcome,
+            sidechain_block_hashes: &empty,
+            canonical_block_hashes: &empty,
+            canonical_fork: ForkBlock::new(1, B256::random()),
+        };
+        let cached_bundle_provider = CachedBundleStateProvider::new(state_provider, bdp);
+
+        let account = Address::random();
+        let result = cached_bundle_provider.basic_account(account).unwrap();
+        assert_eq!(result.is_none(), true);
+
+        ACCOUNT_CACHE
+            .insert(account, Account { nonce: 100, balance: U256::ZERO, bytecode_hash: None });
+        let result = cached_bundle_provider.basic_account(account).unwrap();
+        assert_eq!(result.unwrap().nonce, 100);
+
+        BLOCK_HASH_CACHE.insert(100, B256::with_last_byte(9));
+        let result = cached_bundle_provider.block_hash(100).unwrap();
+        assert_eq!(result.unwrap(), B256::with_last_byte(9));
+    }
+
+    #[test]
+    fn test_apply_bundle_state() {
+        let execution_outcome = ExecutionOutcome::default();
+        let empty = BTreeMap::new();
+
+        let factory = create_test_provider_factory();
+        let consistent_view = ConsistentDbView::new_with_latest_tip(factory.clone()).unwrap();
+        let state_provider = consistent_view
+            .provider_ro()
+            .unwrap()
+            .disable_long_read_transaction_safety()
+            .state_provider_by_block_number(1)
+            .unwrap();
+        let bdp = BundleStateDataRef {
+            execution_outcome: &execution_outcome,
+            sidechain_block_hashes: &empty,
+            canonical_block_hashes: &empty,
+            canonical_fork: ForkBlock::new(1, B256::random()),
+        };
+        let cached_bundle_provider = CachedBundleStateProvider::new(state_provider, bdp);
+
+        // apply bundle state to set cache
+        let account1 = Address::random();
+        let account2 = Address::random();
+        let bundle_state = BundleState::new(
+            vec![
+                (
+                    account1,
+                    None,
+                    Some(AccountInfo {
+                        nonce: 1,
+                        balance: U256::from(10),
+                        code_hash: KECCAK_EMPTY,
+                        code: None,
+                    }),
+                    HashMap::from([
+                        (U256::from(2), (U256::from(0), U256::from(10))),
+                        (U256::from(5), (U256::from(0), U256::from(15))),
+                    ]),
+                ),
+                (
+                    account2,
+                    None,
+                    Some(AccountInfo {
+                        nonce: 1,
+                        balance: U256::from(10),
+                        code_hash: KECCAK_EMPTY,
+                        code: None,
+                    }),
+                    HashMap::from([]),
+                ),
+            ],
+            vec![vec![
+                (
+                    account1,
+                    Some(None),
+                    vec![(U256::from(2), U256::from(0)), (U256::from(5), U256::from(0))],
+                ),
+                (account2, Some(None), vec![]),
+            ]],
+            vec![],
+        );
+        apply_bundle_state(bundle_state);
+
+        let account1_result = cached_bundle_provider.basic_account(account1).unwrap();
+        assert_eq!(account1_result.unwrap().nonce, 1);
+        let storage1_result =
+            cached_bundle_provider.storage(account1, B256::with_last_byte(2)).unwrap();
+        assert_eq!(storage1_result.unwrap(), U256::from(10));
+        let storage2_result =
+            cached_bundle_provider.storage(account1, B256::with_last_byte(5)).unwrap();
+        assert_eq!(storage2_result.unwrap(), U256::from(15));
+
+        let account2_result = cached_bundle_provider.basic_account(account2).unwrap();
+        assert_eq!(account2_result.unwrap().nonce, 1);
+
+        // apply bundle state to set clear cache
+        let account3 = Address::random();
+        let mut bundle_state = BundleState::new(
+            vec![(
+                account3,
+                Some(AccountInfo {
+                    nonce: 3,
+                    balance: U256::from(10),
+                    code_hash: KECCAK_EMPTY,
+                    code: None,
+                }),
+                None,
+                HashMap::from([
+                    (U256::from(2), (U256::from(0), U256::from(10))),
+                    (U256::from(5), (U256::from(0), U256::from(15))),
+                ]),
+            )],
+            vec![vec![(
+                account3,
+                Some(None),
+                vec![(U256::from(2), U256::from(0)), (U256::from(5), U256::from(0))],
+            )]],
+            vec![],
+        );
+        bundle_state.state.get_mut(&account3).unwrap().status = AccountStatus::Destroyed;
+        apply_bundle_state(bundle_state);
+
+        let account1_result = cached_bundle_provider.basic_account(account1).unwrap();
+        assert_eq!(account1_result.unwrap().nonce, 1);
+        let storage1_result =
+            cached_bundle_provider.storage(account1, B256::with_last_byte(2)).unwrap();
+        assert_eq!(storage1_result.is_none(), true);
+        let storage2_result =
+            cached_bundle_provider.storage(account1, B256::with_last_byte(5)).unwrap();
+        assert_eq!(storage2_result.is_none(), true);
+
+        let account2_result = cached_bundle_provider.basic_account(account2).unwrap();
+        assert_eq!(account2_result.unwrap().nonce, 1);
+    }
+}
