@@ -46,6 +46,11 @@ triehash = { version = "0.8", optional = true }
 
 # `serde` feature
 serde = { workspace = true, optional = true }
+tracing-subscriber = "0.3.18"
+
+# cache
+lazy_static = "1.5.0"
+quick_cache = "0.6.6"
 
 [dev-dependencies]
 # reth
@@ -60,6 +65,7 @@ reth-node-types.workspace = true
 
 # trie
 triehash = "0.8"
+
 
 # misc
 proptest.workspace = true

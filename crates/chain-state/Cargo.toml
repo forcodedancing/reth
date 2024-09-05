@@ -20,6 +20,8 @@ reth-metrics.workspace = true
 reth-primitives.workspace = true
 reth-storage-api.workspace = true
 reth-trie.workspace = true
+reth-trie-db.workspace = true
+reth-revm.workspace = true
 
 # alloy
 alloy-primitives.workspace = true
@@ -30,6 +32,11 @@ tokio-stream = { workspace = true, features = ["sync"] }
 
 # tracing
 tracing.workspace = true
+
+# cache
+lazy_static = "1.5.0"
+quick_cache = "0.6.6"
+itertools = "0.10.5"
 
 # misc
 auto_impl.workspace = true
@@ -52,8 +59,8 @@ revm.workspace = true
 
 [features]
 test-utils = [
-  "alloy-signer",
-  "alloy-signer-local",
-  "rand",
-  "revm"
+    "alloy-signer",
+    "alloy-signer-local",
+    "rand",
+    "revm"
 ]
