@@ -46,6 +46,10 @@ triehash = { version = "0.8", optional = true }
 # `serde` feature
 serde = { workspace = true, optional = true }
 
+# cache
+lazy_static = "1.5.0"
+quick_cache = "0.6.2"
+
 [dev-dependencies]
 # reth
 reth-chainspec.workspace = true

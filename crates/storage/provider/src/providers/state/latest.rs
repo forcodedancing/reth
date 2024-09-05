@@ -11,13 +11,14 @@ use reth_db_api::{
 };
 use reth_primitives::{
     Account, Address, BlockNumber, Bytecode, Bytes, StaticFileSegment, StorageKey, StorageValue,
-    B256,
+    B256, U256,
 };
 use reth_storage_api::{StateProofProvider, StorageRootProvider};
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie::{
-    prefix_set::TriePrefixSetsMut, proof::Proof, updates::TrieUpdates, witness::TrieWitness,
-    AccountProof, HashedPostState, HashedStorage, StateRoot, StorageRoot,
+    cache::TrieCache, prefix_set::TriePrefixSetsMut, proof::Proof, updates::TrieUpdates,
+    witness::TrieWitness, AccountProof, BranchNodeCompact, HashedPostState, HashedStorage, Nibbles,
+    StateRoot, StorageRoot,
 };
 use reth_trie_db::{DatabaseProof, DatabaseStateRoot, DatabaseStorageRoot, DatabaseTrieWitness};
 
@@ -112,6 +113,30 @@ impl<'b, TX: DbTx> StateRootProvider for LatestStateProviderRef<'b, TX> {
     ) -> ProviderResult<(B256, TrieUpdates)> {
         StateRoot::overlay_root_from_nodes_with_updates(self.tx, nodes, hashed_state, prefix_sets)
             .map_err(|err| ProviderError::Database(err.into()))
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        nodes: TrieUpdates,
+        hashed_state: HashedPostState,
+        prefix_sets: TriePrefixSetsMut,
+        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
+        trie_cache: &'static dyn TrieCache<
+            Nibbles,
+            BranchNodeCompact,
+            (B256, Nibbles),
+            BranchNodeCompact,
+        >,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        StateRoot::overlay_root_from_nodes_caches_with_updates(
+            self.tx,
+            nodes,
+            hashed_state,
+            prefix_sets,
+            hashed_cache,
+            trie_cache,
+        )
+        .map_err(|err| ProviderError::Database(err.into()))
     }
 }
 

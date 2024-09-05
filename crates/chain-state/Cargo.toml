@@ -49,8 +49,8 @@ revm.workspace = true
 
 [features]
 test-utils = [
-  "alloy-signer",
-  "alloy-signer-local",
-  "rand",
-  "revm"
+    "alloy-signer",
+    "alloy-signer-local",
+    "rand",
+    "revm"
 ]

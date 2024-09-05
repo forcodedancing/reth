@@ -24,8 +24,8 @@ use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_api::{SidecarsProvider, StateProofProvider, StorageRootProvider};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{
-    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, HashedPostState,
-    HashedStorage,
+    cache::TrieCache, prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof,
+    BranchNodeCompact, HashedPostState, HashedStorage, Nibbles,
 };
 use revm::primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use tokio::sync::{broadcast, watch};
@@ -350,6 +350,22 @@ impl StateRootProvider for NoopProvider {
         _prefix_sets: TriePrefixSetsMut,
     ) -> ProviderResult<(B256, TrieUpdates)> {
         Ok((B256::default(), TrieUpdates::default()))
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        nodes: TrieUpdates,
+        hashed_state: HashedPostState,
+        prefix_sets: TriePrefixSetsMut,
+        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
+        trie_cache: &'static dyn TrieCache<
+            Nibbles,
+            BranchNodeCompact,
+            (B256, Nibbles),
+            BranchNodeCompact,
+        >,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        unimplemented!("not implemented")
     }
 }
 

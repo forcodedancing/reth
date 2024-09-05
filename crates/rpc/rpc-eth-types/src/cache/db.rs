@@ -3,10 +3,14 @@
 //! `reth_rpc_eth_api::helpers::Call`.
 
 use reth_errors::ProviderResult;
-use reth_primitives::{Address, B256, U256};
+use reth_primitives::{Account, Address, B256, U256};
 use reth_revm::{database::StateProviderDatabase, db::CacheDB, DatabaseRef};
 use reth_storage_api::StateProvider;
-use reth_trie::HashedStorage;
+use reth_trie::{
+    cache::TrieCache, prefix_set::TriePrefixSetsMut, updates::TrieUpdates, BranchNodeCompact,
+    HashedPostState, HashedStorage, Nibbles,
+};
+
 use revm::Database;
 
 /// Helper alias type for the state's [`CacheDB`]
@@ -48,6 +52,28 @@ impl<'a> reth_storage_api::StateRootProvider for StateProviderTraitObjWrapper<'a
         prefix_sets: reth_trie::prefix_set::TriePrefixSetsMut,
     ) -> reth_errors::ProviderResult<(B256, reth_trie::updates::TrieUpdates)> {
         self.0.state_root_from_nodes_with_updates(nodes, hashed_state, prefix_sets)
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        nodes: reth_trie::updates::TrieUpdates,
+        hashed_state: HashedPostState,
+        prefix_sets: TriePrefixSetsMut,
+        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
+        trie_cache: &'static dyn TrieCache<
+            Nibbles,
+            BranchNodeCompact,
+            (B256, Nibbles),
+            BranchNodeCompact,
+        >,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        self.0.state_root_from_nodes_caches_with_updates(
+            nodes,
+            hashed_state,
+            prefix_sets,
+            hashed_cache,
+            trie_cache,
+        )
     }
 }
 

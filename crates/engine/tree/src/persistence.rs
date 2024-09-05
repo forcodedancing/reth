@@ -111,6 +111,13 @@ where
             UnifiedStorageWriter::commit(provider_rw, static_file_provider)?;
         }
         self.metrics.save_blocks_duration_seconds.record(start_time.elapsed());
+
+        if last_block_hash.is_some() {
+            // update plain state, hashed states, trie nodes for finalized blocks' cache
+            debug!(target: "tree::persistence", "Updating finalized cache state");
+            crate::cache::write_to_cache(blocks);
+        }
+
         Ok(last_block_hash)
     }
 }

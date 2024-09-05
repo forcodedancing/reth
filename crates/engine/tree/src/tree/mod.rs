@@ -13,7 +13,8 @@ use reth_blockchain_tree::{
     BlockBuffer, BlockStatus2, InsertPayloadOk2,
 };
 use reth_chain_state::{
-    CanonicalInMemoryState, ExecutedBlock, MemoryOverlayStateProvider, NewCanonicalChain,
+    CachedStateProvider, CanonicalInMemoryState, ExecutedBlock, MemoryOverlayStateProvider,
+    NewCanonicalChain,
 };
 use reth_consensus::{Consensus, PostExecutionInput};
 use reth_engine_primitives::EngineTypes;
@@ -1024,6 +1025,9 @@ where
         // the canonical chain
         self.canonical_in_memory_state.clear_state();
 
+        // clear finalized state/hashed/trie caches
+        crate::cache::clear_all_cache();
+
         if let Ok(Some(new_head)) = self.provider.sealed_header(backfill_height) {
             // update the tracked chain height, after backfill sync both the canonical height and
             // persisted height are the same
@@ -1245,7 +1249,15 @@ where
             trace!(target: "engine", %hash, "found canonical state for block in memory");
             // the block leads back to the canonical chain
             let historical = self.provider.state_by_block_hash(historical)?;
-            return Ok(Some(Box::new(MemoryOverlayStateProvider::new(historical, blocks))))
+
+            let cached = CachedStateProvider::new(
+                historical,
+                &crate::cache::CACHED_PLAIN_STATES,
+                &crate::cache::CACHED_HASH_STATES,
+                &crate::cache::CACHED_TRIE_NODES,
+            );
+
+            return Ok(Some(Box::new(MemoryOverlayStateProvider::new(cached.boxed(), blocks))))
         }
 
         // the hash could belong to an unknown block or a persisted block
@@ -1716,6 +1728,8 @@ where
             return Ok(InsertPayloadOk2::AlreadySeen(BlockStatus2::Valid))
         }
 
+        let block_number = block.number;
+        debug!(target: "engine", ?block_number, "State to execute block");
         let start = Instant::now();
 
         // validate block consensus rules

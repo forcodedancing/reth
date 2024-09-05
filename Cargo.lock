@@ -6422,6 +6422,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick_cache"
+version = "0.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ec0b6fed0a0ff01fa82d0c8982389375dd59c72dae84d4f8a15b1a894c273f7"
+dependencies = [
+ "ahash",
+ "equivalent",
+ "hashbrown 0.14.5",
+ "parking_lot 0.12.3",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7752,7 +7764,10 @@ dependencies = [
  "alloy-rlp",
  "assert_matches",
  "futures",
+ "itertools 0.10.5",
+ "lazy_static",
  "metrics",
+ "quick_cache",
  "rand 0.8.5",
  "reth-beacon-consensus",
  "reth-blockchain-tree",
@@ -9680,9 +9695,11 @@ dependencies = [
  "criterion",
  "derive_more 1.0.0",
  "itertools 0.13.0",
+ "lazy_static",
  "metrics",
  "proptest",
  "proptest-arbitrary-interop",
+ "quick_cache",
  "rayon",
  "reth-chainspec",
  "reth-db",
