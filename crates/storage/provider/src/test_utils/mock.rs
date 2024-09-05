@@ -22,8 +22,8 @@ use reth_storage_api::{
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie::{
-    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, HashedPostState,
-    HashedStorage,
+    cache::TrieCache, prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof,
+    BranchNodeCompact, HashedPostState, HashedStorage, Nibbles,
 };
 use revm::primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use std::{
@@ -599,6 +599,15 @@ impl StateRootProvider for MockEthProvider {
     ) -> ProviderResult<(B256, TrieUpdates)> {
         let state_root = self.state_roots.lock().pop().unwrap_or_default();
         Ok((state_root, Default::default()))
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        _nodes: TrieUpdates,
+        _hashed_state: HashedPostState,
+        _prefix_sets: TriePrefixSetsMut,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        unimplemented!("not implemented")
     }
 }
 

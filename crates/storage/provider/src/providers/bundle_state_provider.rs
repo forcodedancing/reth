@@ -1,12 +1,12 @@
 use crate::{
     AccountReader, BlockHashReader, ExecutionDataProvider, StateProvider, StateRootProvider,
 };
-use reth_primitives::{Account, Address, BlockNumber, Bytecode, Bytes, B256};
+use reth_primitives::{Account, Address, BlockNumber, Bytecode, Bytes, B256, U256};
 use reth_storage_api::{StateProofProvider, StorageRootProvider};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{
-    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, HashedPostState,
-    HashedStorage,
+    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, BranchNodeCompact,
+    HashedPostState, HashedStorage, Nibbles,
 };
 use std::collections::HashMap;
 
@@ -106,6 +106,15 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateRootProvider
         state.extend(hashed_state);
         state_prefix_sets.extend(prefix_sets);
         self.state_provider.state_root_from_nodes_with_updates(nodes, state, state_prefix_sets)
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        _nodes: TrieUpdates,
+        _state: HashedPostState,
+        _prefix_sets: TriePrefixSetsMut,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        unimplemented!("not implemented")
     }
 }
 

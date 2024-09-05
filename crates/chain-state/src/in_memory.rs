@@ -492,7 +492,6 @@ impl CanonicalInMemoryState {
         } else {
             Vec::new()
         };
-
         MemoryOverlayStateProvider::new(historical, in_memory)
     }
 
@@ -816,7 +815,9 @@ mod tests {
         AccountReader, BlockHashReader, StateProofProvider, StateProvider, StateRootProvider,
         StorageRootProvider,
     };
-    use reth_trie::{prefix_set::TriePrefixSetsMut, AccountProof, HashedStorage};
+    use reth_trie::{
+        prefix_set::TriePrefixSetsMut, AccountProof, BranchNodeCompact, HashedStorage, Nibbles,
+    };
 
     fn create_mock_state(
         test_block_builder: &mut TestBlockBuilder,
@@ -907,6 +908,14 @@ mod tests {
         }
 
         fn state_root_from_nodes_with_updates(
+            &self,
+            _nodes: TrieUpdates,
+            _post_state: HashedPostState,
+            _prefix_sets: TriePrefixSetsMut,
+        ) -> ProviderResult<(B256, TrieUpdates)> {
+            Ok((B256::random(), TrieUpdates::default()))
+        }
+        fn state_root_from_nodes_caches_with_updates(
             &self,
             _nodes: TrieUpdates,
             _post_state: HashedPostState,

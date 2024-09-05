@@ -1,3 +1,4 @@
+pub(crate) use metrics::histogram;
 use reth_metrics::{
     metrics::{Counter, Gauge, Histogram},
     Metrics,

@@ -6422,6 +6422,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick_cache"
+version = "0.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ec0b6fed0a0ff01fa82d0c8982389375dd59c72dae84d4f8a15b1a894c273f7"
+dependencies = [
+ "ahash",
+ "equivalent",
+ "hashbrown 0.14.5",
+ "parking_lot 0.12.3",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7199,17 +7211,22 @@ dependencies = [
  "alloy-signer-local",
  "auto_impl",
  "derive_more 1.0.0",
+ "itertools 0.10.5",
+ "lazy_static",
  "metrics",
  "parking_lot 0.12.3",
  "pin-project",
+ "quick_cache",
  "rand 0.8.5",
  "reth-chainspec",
  "reth-errors",
  "reth-execution-types",
  "reth-metrics",
  "reth-primitives",
+ "reth-revm",
  "reth-storage-api",
  "reth-trie",
+ "reth-trie-db",
  "revm",
  "tokio",
  "tokio-stream",
@@ -7752,7 +7769,9 @@ dependencies = [
  "alloy-rlp",
  "assert_matches",
  "futures",
+ "lazy_static",
  "metrics",
+ "parking_lot 0.12.3",
  "rand 0.8.5",
  "reth-beacon-consensus",
  "reth-blockchain-tree",
@@ -9680,9 +9699,11 @@ dependencies = [
  "criterion",
  "derive_more 1.0.0",
  "itertools 0.13.0",
+ "lazy_static",
  "metrics",
  "proptest",
  "proptest-arbitrary-interop",
+ "quick_cache",
  "rayon",
  "reth-chainspec",
  "reth-db",
@@ -9702,6 +9723,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-subscriber",
  "triehash",
 ]
 
@@ -9760,7 +9782,7 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "14.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "auto_impl",
  "cfg-if",
@@ -9792,7 +9814,7 @@ dependencies = [
 [[package]]
 name = "revm-interpreter"
 version = "10.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "revm-primitives",
  "serde",
@@ -9801,7 +9823,7 @@ dependencies = [
 [[package]]
 name = "revm-precompile"
 version = "11.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "alloy-rlp",
  "aurora-engine-modexp",
@@ -9829,7 +9851,7 @@ dependencies = [
 [[package]]
 name = "revm-primitives"
 version = "9.0.0"
-source = "git+https://github.com/bnb-chain/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "alloy-eips",
  "alloy-primitives 0.8.0",

@@ -46,6 +46,7 @@ macro_rules! delegate_provider_impls {
                 fn state_root_from_nodes(&self,  nodes: reth_trie::updates::TrieUpdates, state: reth_trie::HashedPostState, prefix_sets: reth_trie::prefix_set::TriePrefixSetsMut) -> reth_storage_errors::provider::ProviderResult<reth_primitives::B256>;
                 fn state_root_with_updates(&self, state: reth_trie::HashedPostState) -> reth_storage_errors::provider::ProviderResult<(reth_primitives::B256, reth_trie::updates::TrieUpdates)>;
                 fn state_root_from_nodes_with_updates(&self,  nodes: reth_trie::updates::TrieUpdates, state: reth_trie::HashedPostState, prefix_sets: reth_trie::prefix_set::TriePrefixSetsMut) -> reth_storage_errors::provider::ProviderResult<(reth_primitives::B256, reth_trie::updates::TrieUpdates)>;
+                fn state_root_from_nodes_caches_with_updates(&self,  nodes: reth_trie::updates::TrieUpdates, state: reth_trie::HashedPostState, prefix_sets: reth_trie::prefix_set::TriePrefixSetsMut) -> reth_storage_errors::provider::ProviderResult<(reth_primitives::B256, reth_trie::updates::TrieUpdates)>;
             }
             StorageRootProvider $(where [$($generics)*])? {
                 fn storage_root(&self, address: reth_primitives::Address, storage: reth_trie::HashedStorage) ->  reth_storage_errors::provider::ProviderResult<reth_primitives::B256>;

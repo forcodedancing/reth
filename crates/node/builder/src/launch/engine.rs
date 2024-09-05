@@ -353,7 +353,7 @@ where
                     }
                     event =  eth_service.next() => {
                         let Some(event) = event else { break };
-                        debug!(target: "reth::cli", "Event: {event:?}");
+                        //debug!(target: "reth::cli", "Event: {event:?}");
                         match event {
                             ChainEvent::BackfillSyncFinished => {
                                 network_handle.update_sync_state(SyncState::Idle);

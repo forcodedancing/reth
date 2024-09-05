@@ -1,15 +1,15 @@
 use super::ExecutedBlock;
 use reth_errors::ProviderResult;
 use reth_primitives::{
-    keccak256, Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, B256,
+    keccak256, Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, B256, U256,
 };
 use reth_storage_api::{
     AccountReader, BlockHashReader, StateProofProvider, StateProvider, StateProviderBox,
     StateRootProvider, StorageRootProvider,
 };
 use reth_trie::{
-    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, HashedPostState,
-    HashedStorage,
+    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, BranchNodeCompact,
+    HashedPostState, HashedStorage, Nibbles,
 };
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -137,6 +137,22 @@ impl StateRootProvider for MemoryOverlayStateProvider {
         trie_nodes.extend(nodes);
         hashed_state.extend(state);
         self.historical.state_root_from_nodes_with_updates(trie_nodes, hashed_state, prefix_sets)
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        nodes: TrieUpdates,
+        state: HashedPostState,
+        prefix_sets: TriePrefixSetsMut,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        let MemoryOverlayTrieState { mut trie_nodes, mut hashed_state } = self.trie_state().clone();
+        trie_nodes.extend(nodes);
+        hashed_state.extend(state);
+        self.historical.state_root_from_nodes_caches_with_updates(
+            trie_nodes,
+            hashed_state,
+            prefix_sets,
+        )
     }
 }
 

@@ -4,6 +4,7 @@ use crate::{
     engine::{DownloadRequest, EngineApiEvent, FromEngine},
     persistence::PersistenceHandle,
 };
+use parking_lot::RwLock;
 use reth_beacon_consensus::{
     BeaconConsensusEngineEvent, BeaconEngineMessage, ForkchoiceStateTracker, InvalidHeaderCache,
     OnForkChoiceUpdated, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -60,6 +61,35 @@ mod config;
 mod metrics;
 use crate::{engine::EngineApiRequest, tree::metrics::EngineApiMetrics};
 pub use config::TreeConfig;
+use lazy_static::lazy_static;
+use std::sync::atomic::AtomicU64;
+
+lazy_static! {
+    static ref EXECUTION_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+    static ref ROOT_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_execution_total(block: u64, inc: u128) {
+    let mut binding = EXECUTION_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_execution", execution = ?new, block = ?block, "Total execution time");
+    }
+}
+
+pub(crate) fn update_root_total(block: u64, inc: u128) {
+    let mut binding = ROOT_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_root", root = ?new, block = ?block, "Total state root time");
+    }
+}
 
 /// Keeps track of the state of the tree.
 ///
@@ -1024,6 +1054,9 @@ where
         // the canonical chain
         self.canonical_in_memory_state.clear_state();
 
+        // clear finalized state/hashed/trie caches
+        reth_chain_state::cache::clear_all_cache();
+
         if let Ok(Some(new_head)) = self.provider.sealed_header(backfill_height) {
             // update the tracked chain height, after backfill sync both the canonical height and
             // persisted height are the same
@@ -1245,6 +1278,11 @@ where
             trace!(target: "engine", %hash, "found canonical state for block in memory");
             // the block leads back to the canonical chain
             let historical = self.provider.state_by_block_hash(historical)?;
+
+            // if !blocks.is_empty() {
+            //     debug!(target: "engine", %hash, "Use historical block with tip {}",
+            // blocks[blocks.len()-1].block.header.number-1); }
+
             return Ok(Some(Box::new(MemoryOverlayStateProvider::new(historical, blocks))))
         }
 
@@ -1767,8 +1805,13 @@ where
             .collect::<HashMap<_, _>>();
 
         let exec_time = Instant::now();
+        debug!(target: "engine", ?block_number, "Start to execute block");
         let output = executor.execute((&block, U256::MAX, Some(&ancestor_blocks)).into())?;
-        debug!(target: "engine", elapsed=?exec_time.elapsed(), ?block_number, "Executed block");
+        let elapsed = exec_time.elapsed();
+        debug!(target: "engine", elapsed=?elapsed, ?block_number, "Executed block");
+        metrics::histogram!("execution.total").record(elapsed.as_nanos() as f64);
+        update_execution_total(block_number, elapsed.as_millis());
+
         self.consensus.validate_block_post_execution(
             &block,
             PostExecutionInput::new(&output.receipts, &output.requests),
@@ -1777,6 +1820,7 @@ where
         let hashed_state = HashedPostState::from_bundle_state(&output.state.state);
 
         let root_time = Instant::now();
+        debug!(target: "engine", ?block_number, "Start to calculate state root");
         let (state_root, trie_output) =
             state_provider.state_root_with_updates(hashed_state.clone())?;
         if state_root != block.state_root {
@@ -1785,8 +1829,10 @@ where
             )
             .into())
         }
-
-        debug!(target: "engine", elapsed=?root_time.elapsed(), ?block_number, "Calculated state root");
+        let elapsed = root_time.elapsed();
+        debug!(target: "engine", elapsed=?elapsed, ?block_number, "Calculated state root");
+        metrics::histogram!("state-root.total").record(elapsed.as_nanos() as f64);
+        update_root_total(block_number, elapsed.as_millis());
 
         let executed = ExecutedBlock {
             block: sealed_block.clone(),

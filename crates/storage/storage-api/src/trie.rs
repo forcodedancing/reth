@@ -1,4 +1,4 @@
-use reth_primitives::{Address, Bytes, B256};
+use reth_primitives::{Account, Address, Bytes, B256, U256};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{
     prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, HashedPostState,
@@ -38,6 +38,15 @@ pub trait StateRootProvider: Send + Sync {
     /// Returns state root and trie updates.
     /// See [`StateRootProvider::state_root_from_nodes`] for more info.
     fn state_root_from_nodes_with_updates(
+        &self,
+        nodes: TrieUpdates,
+        hashed_state: HashedPostState,
+        prefix_sets: TriePrefixSetsMut,
+    ) -> ProviderResult<(B256, TrieUpdates)>;
+
+    /// Returns state root and trie updates.
+    /// The readonly cached hashed states and trie nodes can be used.
+    fn state_root_from_nodes_caches_with_updates(
         &self,
         nodes: TrieUpdates,
         hashed_state: HashedPostState,

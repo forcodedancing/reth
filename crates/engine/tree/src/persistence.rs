@@ -104,6 +104,11 @@ where
         let last_block_hash = blocks.last().map(|block| block.block().hash());
 
         if last_block_hash.is_some() {
+            // update plain state, hashed states, trie nodes for finalized blocks' cache
+            debug!(target: "tree::persistence", "Start to update finalized state cache");
+            reth_chain_state::cache::write_to_cache(blocks.clone());
+            debug!(target: "tree::persistence", "Finish to update finalized state cache");
+
             let provider_rw = self.provider.provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
 
@@ -111,6 +116,7 @@ where
             UnifiedStorageWriter::commit(provider_rw, static_file_provider)?;
         }
         self.metrics.save_blocks_duration_seconds.record(start_time.elapsed());
+
         Ok(last_block_hash)
     }
 }

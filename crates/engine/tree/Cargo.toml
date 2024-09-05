@@ -54,6 +54,9 @@ reth-stages = { workspace = true, optional = true }
 reth-static-file = { workspace = true, optional = true }
 reth-tracing = { workspace = true, optional = true }
 
+lazy_static = "1.4.0"
+parking_lot = "0.12.3"
+
 [dev-dependencies]
 # reth
 reth-db = { workspace = true, features = ["test-utils"] }
@@ -77,14 +80,14 @@ rand.workspace = true
 
 [features]
 test-utils = [
-  "reth-db/test-utils",
-  "reth-chain-state/test-utils",
-  "reth-chainspec",
-  "reth-network-p2p/test-utils",
-  "reth-prune-types",
-  "reth-stages/test-utils",
-  "reth-static-file",
-  "reth-tracing",
+    "reth-db/test-utils",
+    "reth-chain-state/test-utils",
+    "reth-chainspec",
+    "reth-network-p2p/test-utils",
+    "reth-prune-types",
+    "reth-stages/test-utils",
+    "reth-static-file",
+    "reth-tracing",
 ]
 
 bsc = []
