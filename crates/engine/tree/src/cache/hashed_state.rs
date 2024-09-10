@@ -2,6 +2,7 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
 
+use metrics::counter;
 use reth_primitives::{Account, B256, U256};
 use reth_trie::{cache::TrieCache, HashedPostStateSorted};
 
@@ -41,7 +42,14 @@ impl CACHED_HASH_STATES {
 impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
     /// Get an account from the cache
     fn get_account(&self, k: &B256) -> Option<Account> {
-        self.0.get(k)
+        counter!("hashed-cache.account.total").increment(1);
+        match self.0.get(k) {
+            Some(r) => {
+                counter!("hashed-cache.account.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     /// Insert an account into the cache
@@ -51,7 +59,14 @@ impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
 
     /// Get storage from the cache
     fn get_storage(&self, k: &HashedStorageKey) -> Option<U256> {
-        self.1.get(k)
+        counter!("hashed-cache.storage.total").increment(1);
+        match self.1.get(k) {
+            Some(r) => {
+                counter!("hashed-cache.storage.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     /// Insert storage into the cache

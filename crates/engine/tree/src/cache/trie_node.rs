@@ -10,6 +10,8 @@ use reth_trie::{
     BranchNodeCompact, Nibbles, StoredNibbles, StoredNibblesSubKey,
 };
 
+use metrics::counter;
+
 // Constants for cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
 const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 10;
@@ -49,7 +51,14 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
 {
     // Get an account node from the cache
     fn get_account(&self, k: &Nibbles) -> Option<BranchNodeCompact> {
-        self.0.get(k)
+        counter!("trie-cache.account.total").increment(1);
+        match self.0.get(k) {
+            Some(r) => {
+                counter!("trie-cache.account.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     // Insert an account node into the cache
@@ -59,7 +68,14 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
 
     // Get a storage node from the cache
     fn get_storage(&self, k: &TrieStorageKey) -> Option<BranchNodeCompact> {
-        self.1.get(k)
+        counter!("trie-cache.storage.total").increment(1);
+        match self.1.get(k) {
+            Some(r) => {
+                counter!("trie-cache.storage.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     // Insert a storage node into the cache

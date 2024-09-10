@@ -1782,7 +1782,10 @@ where
 
         let exec_time = Instant::now();
         let output = executor.execute((&block, U256::MAX, Some(&ancestor_blocks)).into())?;
-        debug!(target: "engine", elapsed=?exec_time.elapsed(), ?block_number, "Executed block");
+        let elapsed = exec_time.elapsed();
+        debug!(target: "engine", elapsed=?elapsed, ?block_number, "Executed block");
+        metrics::histogram!("execution.total").record(elapsed.as_nanos() as f64);
+        
         self.consensus.validate_block_post_execution(
             &block,
             PostExecutionInput::new(&output.receipts, &output.requests),
@@ -1799,8 +1802,9 @@ where
             )
             .into())
         }
-
-        debug!(target: "engine", elapsed=?root_time.elapsed(), ?block_number, "Calculated state root");
+        let elapsed=root_time.elapsed();
+        debug!(target: "engine", elapsed=?elapsed, ?block_number, "Calculated state root");
+        metrics::histogram!("state-root.total").record(elapsed.as_nanos() as f64);
 
         let executed = ExecutedBlock {
             block: sealed_block.clone(),
