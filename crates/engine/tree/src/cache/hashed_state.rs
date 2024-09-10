@@ -88,9 +88,11 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
 
     // Write hashed storage changes
     let sorted_storages = hashed_state.account_storages().iter().sorted_by_key(|(key, _)| *key);
+    let mut to_wipe = false;
     for (hashed_address, storage) in sorted_storages {
         if storage.is_wiped() {
-            CACHED_HASH_STATES.1.clear();
+            to_wipe = true;
+            break;
         }
         for (hashed_slot, value) in storage.storage_slots_sorted() {
             let key = (*hashed_address, hashed_slot);
@@ -99,6 +101,9 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
                 CACHED_HASH_STATES.insert_storage(key, value);
             }
         }
+    }
+    if to_wipe {
+        CACHED_HASH_STATES.1.clear();
     }
 }
 

@@ -132,6 +132,7 @@ fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTri
     // The storage trie for this account has to be deleted.
     if updates.is_deleted() {
         CACHED_TRIE_NODES.1.clear();
+        return;
     }
 
     // Merge updated and removed nodes. Updated nodes must take precedence.

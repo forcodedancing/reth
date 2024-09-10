@@ -88,7 +88,6 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
 
 /// Write committed state to cache.
 pub(crate) fn write_plain_state(bundle: BundleState) {
-    // Convert bundle state to plain state
     let change_set = bundle.into_plain_state(reth_provider::OriginalValuesKnown::Yes);
 
     // Update account cache

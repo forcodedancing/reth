@@ -9,6 +9,7 @@ use reth_trie::{
     cache::TrieCache,
     hashed_cursor::{HashedCursor, HashedCursorFactory, HashedStorageCursor},
 };
+use tracing::debug;
 
 /// Factory for creating cached hashed cursors.
 pub(crate) struct CachedHashedCursorFactory<'a, TX> {
@@ -82,15 +83,20 @@ where
     /// Seeks the cursor to the specified key.
     fn seek_inner(&mut self, key: B256) -> Result<Option<(B256, Account)>, DatabaseError> {
         if let Some(result) = self.hashed_cache.get_account(&key) {
+            self.last_key = Some(key);
+
             return Ok(Some((key, result)))
         };
         match self.cursor.seek(key)? {
             Some((key, value)) => {
+                self.last_key = Some(key);
                 self.hashed_cache.insert_account(key, value);
-
                 Ok(Some((key, value)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -99,10 +105,14 @@ where
         let _ = self.cursor.seek(last_key)?;
         match self.cursor.next()? {
             Some(entry) => {
+                self.last_key = Some(entry.0);
                 self.hashed_cache.insert_account(entry.0, entry.1);
                 Ok(Some((entry.0, entry.1)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 }
@@ -116,7 +126,6 @@ where
     /// Seeks the cursor to the specified key.
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
         let entry = self.seek_inner(key)?;
-        self.last_key = entry.as_ref().map(|entry| entry.0);
         Ok(entry)
     }
 
@@ -125,7 +134,6 @@ where
         let next = match self.last_key {
             Some(last_account) => {
                 let entry = self.next_inner(last_account)?;
-                self.last_key = entry.as_ref().map(|entry| entry.0);
                 entry
             }
             // no previous entry was found
@@ -164,31 +172,38 @@ where
     fn seek_inner(&mut self, subkey: B256) -> Result<Option<(B256, U256)>, DatabaseError> {
         let storage_key = (self.hashed_address, subkey);
         if let Some(result) = self.hashed_cache.get_storage(&storage_key) {
+            self.last_key = Some(subkey);
             return Ok(Some((subkey, result)))
         };
 
         match self.cursor.seek_by_key_subkey(self.hashed_address, subkey)? {
             Some(entry) => {
+                self.last_key = Some(entry.key);
                 let storage_key = (self.hashed_address, entry.key);
                 self.hashed_cache.insert_storage(storage_key, entry.value);
-
                 Ok(Some((entry.key, entry.value)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
     /// Finds the storage entry that is right after the current cursor position.
     fn next_inner(&mut self, last_key: B256) -> Result<Option<(B256, U256)>, DatabaseError> {
         let _ = self.cursor.seek_by_key_subkey(self.hashed_address, last_key)?;
-        match self.cursor.next_dup()? {
+        match self.cursor.next_dup_val()? {
             Some(entry) => {
-                let storage_key = (entry.0, entry.1.key);
-                self.hashed_cache.insert_storage(storage_key, entry.1.value);
-
-                Ok(Some((entry.1.key, entry.1.value)))
+                self.last_key = Some(entry.key);
+                let storage_key = (self.hashed_address, entry.key);
+                self.hashed_cache.insert_storage(storage_key, entry.value);
+                Ok(Some((entry.key, entry.value)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 }
@@ -202,7 +217,19 @@ where
     /// Seeks the cursor to the specified subkey.
     fn seek(&mut self, subkey: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
         let entry = self.seek_inner(subkey)?;
-        self.last_key = entry.as_ref().map(|entry| entry.0);
+        
+        // let correct = self.cursor.seek_by_key_subkey(self.hashed_address, subkey)?.map(|e| (e.key, e.value));
+
+        // if entry.is_none() && correct.is_none() {
+        //     return Ok(entry);
+        // }
+
+        // if entry != correct {
+        //     debug!("Error got {} {}", entry.unwrap().0, entry.unwrap().1);
+        //     debug!("Error expected {} {}", correct.unwrap().0, correct.unwrap().1);
+
+        // }
+
         Ok(entry)
     }
 
@@ -211,12 +238,23 @@ where
         let next = match self.last_key {
             Some(last_slot) => {
                 let entry = self.next_inner(last_slot)?;
-                self.last_key = entry.as_ref().map(|entry| entry.0);
                 entry
             }
             // no previous entry was found
             None => None,
         };
+
+        // let correct = self.cursor.next_dup_val()?.map(|e| (e.key, e.value));
+
+        // if next.is_none() && correct.is_none() {
+        //     return Ok(next);
+        // }
+
+        // if next != correct {
+        //     debug!("Error got {} {}", next.unwrap().0, next.unwrap().1);
+        //     debug!("Error expected {} {}", correct.unwrap().0, correct.unwrap().1);
+        // }
+
         Ok(next)
     }
 }

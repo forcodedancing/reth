@@ -1248,16 +1248,21 @@ where
         if let Some((historical, blocks)) = self.state.tree_state.blocks_by_hash(hash) {
             trace!(target: "engine", %hash, "found canonical state for block in memory");
             // the block leads back to the canonical chain
-            let historical = self.provider.state_by_block_hash(historical)?;
+            let mut historical = self.provider.state_by_block_hash(historical)?;
 
-            let cached = CachedStateProvider::new(
-                historical,
-                &crate::cache::CACHED_PLAIN_STATES,
-                &crate::cache::CACHED_HASH_STATES,
-                &crate::cache::CACHED_TRIE_NODES,
-            );
+            if let Ok(_) = self.provider.history_by_block_hash(hash) {
+                historical = CachedStateProvider::new(
+                    historical,
+                    &crate::cache::CACHED_PLAIN_STATES,
+                    &crate::cache::CACHED_HASH_STATES,
+                    &crate::cache::CACHED_TRIE_NODES,
+                ).boxed();
+                debug!(target: "engine", %hash, "use cached state provider");
+            } else {
+                debug!(target: "engine", %hash, "use non cached state provider");
+            }
 
-            return Ok(Some(Box::new(MemoryOverlayStateProvider::new(cached.boxed(), blocks))))
+            return Ok(Some(Box::new(MemoryOverlayStateProvider::new(historical, blocks))))
         }
 
         // the hash could belong to an unknown block or a persisted block
@@ -1729,7 +1734,7 @@ where
         }
 
         let block_number = block.number;
-        debug!(target: "engine", ?block_number, "State to execute block");
+        debug!(target: "engine", ?block_number, "Start to execute block");
         let start = Instant::now();
 
         // validate block consensus rules

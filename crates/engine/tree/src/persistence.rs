@@ -114,8 +114,9 @@ where
 
         if last_block_hash.is_some() {
             // update plain state, hashed states, trie nodes for finalized blocks' cache
-            debug!(target: "tree::persistence", "Updating finalized cache state");
+            debug!(target: "tree::persistence", "Start to update finalized state cache");
             crate::cache::write_to_cache(blocks);
+            debug!(target: "tree::persistence", "Finish to update finalized state cache");
         }
 
         Ok(last_block_hash)

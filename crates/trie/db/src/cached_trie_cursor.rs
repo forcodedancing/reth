@@ -99,16 +99,20 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if let Some(result) = self.trie_cache.get_account(&key) {
+            self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
         match self.cursor.seek_exact(StoredNibbles(key))? {
             Some(value) => {
+                self.last_key = Some(value.0 .0.clone());
                 self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
-
                 Ok(Some((value.0 .0, value.1)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -118,16 +122,20 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if let Some(result) = self.trie_cache.get_account(&key) {
+            self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
         match self.cursor.seek(StoredNibbles(key))? {
             Some(value) => {
+                self.last_key = Some(value.0 .0.clone());
                 self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
-
                 Ok(Some((value.0 .0, value.1)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -139,11 +147,14 @@ where
         let _ = self.cursor.seek(StoredNibbles(last))?;
         match self.cursor.next()? {
             Some(value) => {
+                self.last_key = Some(value.0 .0.clone());
                 self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
-
                 Ok(Some((value.0 .0, value.1)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 }
@@ -158,7 +169,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_exact_inner(key)?;
-        self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
     }
 
@@ -168,7 +178,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_inner(key)?;
-        self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
     }
 
@@ -177,7 +186,6 @@ where
         let next = match &self.last_key {
             Some(last) => {
                 let entry = self.next_inner(last.clone())?;
-                self.last_key = entry.as_ref().map(|entry| entry.0.clone());
                 entry
             }
             // no previous entry was found
@@ -233,6 +241,7 @@ where
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
         if let Some(result) = self.trie_cache.get_storage(&storage_key) {
+            self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
@@ -241,6 +250,7 @@ where
             .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
         {
             Some(entry) => {
+                self.last_key = Some(entry.nibbles.0.clone());
                 let storage_key = (self.hashed_address, entry.nibbles.0.clone());
                 self.trie_cache.insert_storage(storage_key, entry.node.clone());
 
@@ -250,7 +260,10 @@ where
                     Ok(None)
                 }
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -261,17 +274,21 @@ where
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
         if let Some(result) = self.trie_cache.get_storage(&storage_key) {
+            self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
         match self.cursor.seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))? {
             Some(value) => {
+                self.last_key = Some(value.nibbles.0.clone());
                 let key = (self.hashed_address, value.nibbles.0.clone());
                 self.trie_cache.insert_storage(key, value.node.clone());
-
                 Ok(Some((value.nibbles.0, value.node)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -284,12 +301,16 @@ where
 
         match self.cursor.next_dup()? {
             Some((_, value)) => {
+                self.last_key = Some(value.nibbles.0.clone());
                 let storage_key = (self.hashed_address, value.nibbles.0.clone());
                 self.trie_cache.insert_storage(storage_key, value.node.clone());
 
                 Ok(Some((value.nibbles.0, value.node)))
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 }
@@ -304,7 +325,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_exact_inner(key)?;
-        self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
     }
 
@@ -314,7 +334,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_inner(key)?;
-        self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
     }
 
@@ -323,7 +342,6 @@ where
         let next = match &self.last_key {
             Some(last) => {
                 let entry = self.next_inner(last.clone())?;
-                self.last_key = entry.as_ref().map(|entry| entry.0.clone());
                 entry
             }
             // no previous entry was found
@@ -332,7 +350,7 @@ where
         Ok(next)
     }
 
-    /// Retrieves the current value in the storage trie cursor.
+    /// Retrieves the current key in the storage trie cursor.
     fn current(&mut self) -> Result<Option<Nibbles>, DatabaseError> {
         match &self.last_key {
             Some(key) => Ok(Some(key.clone())),
