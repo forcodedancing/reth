@@ -51,7 +51,7 @@ pub struct CachedStateProvider {
 }
 
 impl CachedStateProvider {
-    /// Create a new CachedStateProvider
+    /// Create a new `CachedStateProvider`
     pub fn new(
         underlying: Box<dyn StateProvider>,
         state_cache: &'static dyn StateCache<

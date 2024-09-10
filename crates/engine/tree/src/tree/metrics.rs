@@ -1,8 +1,8 @@
+pub(crate) use metrics::histogram;
 use reth_metrics::{
     metrics::{Counter, Gauge, Histogram},
     Metrics,
 };
-pub(crate) use metrics::histogram as histogram;
 
 /// Metrics for the `EngineApi`.
 #[derive(Metrics)]

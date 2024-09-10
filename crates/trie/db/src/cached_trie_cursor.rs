@@ -121,14 +121,14 @@ where
             return Ok(Some((key, result)))
         };
 
-        return match self.cursor.seek(StoredNibbles(key))? {
+        match self.cursor.seek(StoredNibbles(key))? {
             Some(value) => {
                 self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
 
                 Ok(Some((value.0 .0, value.1)))
             }
             None => Ok(None),
-        };
+        }
     }
 
     /// Move the cursor to the next entry in the account trie.
@@ -136,7 +136,7 @@ where
         &mut self,
         last: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        let _ = self.cursor.seek(StoredNibbles(last.clone()))?;
+        let _ = self.cursor.seek(StoredNibbles(last))?;
         match self.cursor.next()? {
             Some(value) => {
                 self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
@@ -236,7 +236,7 @@ where
             return Ok(Some((key, result)))
         };
 
-        return match self
+        match self
             .cursor
             .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
         {
@@ -251,7 +251,7 @@ where
                 }
             }
             None => Ok(None),
-        };
+        }
     }
 
     /// Seek a key in the storage trie that matches or is greater than the provided key.
@@ -264,10 +264,7 @@ where
             return Ok(Some((key, result)))
         };
 
-        return match self
-            .cursor
-            .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))?
-        {
+        match self.cursor.seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))? {
             Some(value) => {
                 let key = (self.hashed_address, value.nibbles.0.clone());
                 self.trie_cache.insert_storage(key, value.node.clone());
@@ -275,7 +272,7 @@ where
                 Ok(Some((value.nibbles.0, value.node)))
             }
             None => Ok(None),
-        };
+        }
     }
 
     /// Move the cursor to the next entry in the storage trie.

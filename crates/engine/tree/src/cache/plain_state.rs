@@ -26,6 +26,7 @@ lazy_static! {
     static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
 
     /// Cached plain states
+    #[allow(clippy::type_complexity)]
     pub static ref CACHED_PLAIN_STATES: (&'static Cache<Address, Account>, &'static Cache<AddressStorageKey, StorageValue>,  &'static Cache<B256, Bytecode>) = (&ACCOUNT_CACHE, &STORAGE_CACHE, &CONTRACT_CACHE);
 }
 
@@ -115,10 +116,9 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
         if storage.wipe_storage {
             to_wipe = true;
             break;
-        } else {
-            for (k, v) in storage.storage.clone() {
-                STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
-            }
+        }
+        for (k, v) in storage.storage.clone() {
+            STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
         }
     }
     if to_wipe {

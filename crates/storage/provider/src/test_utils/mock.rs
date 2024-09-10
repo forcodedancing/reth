@@ -603,11 +603,11 @@ impl StateRootProvider for MockEthProvider {
 
     fn state_root_from_nodes_caches_with_updates(
         &self,
-        nodes: TrieUpdates,
-        hashed_state: HashedPostState,
-        prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
+        _nodes: TrieUpdates,
+        _hashed_state: HashedPostState,
+        _prefix_sets: TriePrefixSetsMut,
+        _hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
+        _trie_cache: &'static dyn TrieCache<
             Nibbles,
             BranchNodeCompact,
             (B256, Nibbles),
