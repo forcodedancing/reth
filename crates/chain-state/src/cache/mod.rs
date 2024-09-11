@@ -2,9 +2,9 @@ mod plain_state;
 pub use plain_state::CACHED_PLAIN_STATES;
 
 mod hashed_state;
+use crate::ExecutedBlock;
 pub use hashed_state::CACHED_HASH_STATES;
 use tracing::debug;
-use crate::ExecutedBlock;
 
 mod trie_node;
 use crate::cache::{
@@ -17,13 +17,14 @@ pub use trie_node::CACHED_TRIE_NODES;
 /// Writes the execution outcomes, trie updates, and hashed states of the given blocks to the cache.
 pub fn write_to_cache(blocks: Vec<ExecutedBlock>) {
     for block in blocks {
-        debug!("Writing block {} to cache", block.block.header.number);
+        debug!("Start to write block {} to cache", block.block.header.number);
         let bundle_state = block.execution_outcome().clone().bundle;
         let trie_updates = block.trie_updates().clone();
         let hashed_state = block.hashed_state();
         write_plain_state(bundle_state);
         write_hashed_state(&hashed_state.clone().into_sorted());
         write_trie_updates(&trie_updates);
+        debug!("Finish to write block {} to cache", block.block.header.number);
     }
 }
 

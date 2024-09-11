@@ -13,8 +13,7 @@ use reth_blockchain_tree::{
     BlockBuffer, BlockStatus2, InsertPayloadOk2,
 };
 use reth_chain_state::{
-    CanonicalInMemoryState, ExecutedBlock, MemoryOverlayStateProvider,
-    NewCanonicalChain,
+    CanonicalInMemoryState, ExecutedBlock, MemoryOverlayStateProvider, NewCanonicalChain,
 };
 use reth_consensus::{Consensus, PostExecutionInput};
 use reth_engine_primitives::EngineTypes;
@@ -1774,6 +1773,7 @@ where
             .collect::<HashMap<_, _>>();
 
         let exec_time = Instant::now();
+        debug!(target: "engine", ?block_number, "Start to execute block");
         let output = executor.execute((&block, U256::MAX, Some(&ancestor_blocks)).into())?;
         let elapsed = exec_time.elapsed();
         debug!(target: "engine", elapsed=?elapsed, ?block_number, "Executed block");
@@ -1787,6 +1787,7 @@ where
         let hashed_state = HashedPostState::from_bundle_state(&output.state.state);
 
         let root_time = Instant::now();
+        debug!(target: "engine", ?block_number, "Start to calculate state root");
         let (state_root, trie_output) =
             state_provider.state_root_with_updates(hashed_state.clone())?;
         if state_root != block.state_root {

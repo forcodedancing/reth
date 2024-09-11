@@ -42,14 +42,15 @@ impl CACHED_HASH_STATES {
 impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
     /// Get an account from the cache
     fn get_account(&self, k: &B256) -> Option<Account> {
-        counter!("hashed-cache.account.total").increment(1);
-        match self.0.get(k) {
-            Some(r) => {
-                counter!("hashed-cache.account.hit").increment(1);
-                Some(r)
-            }
-            None => None,
-        }
+        self.0.get(k)
+        // counter!("hashed-cache.account.total").increment(1);
+        // match self.0.get(k) {
+        //     Some(r) => {
+        //         counter!("hashed-cache.account.hit").increment(1);
+        //         Some(r)
+        //     }
+        //     None => None,
+        // }
     }
 
     /// Insert an account into the cache
@@ -59,14 +60,15 @@ impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
 
     /// Get storage from the cache
     fn get_storage(&self, k: &HashedStorageKey) -> Option<U256> {
-        counter!("hashed-cache.storage.total").increment(1);
-        match self.1.get(k) {
-            Some(r) => {
-                counter!("hashed-cache.storage.hit").increment(1);
-                Some(r)
-            }
-            None => None,
-        }
+        self.1.get(k)
+        // counter!("hashed-cache.storage.total").increment(1);
+        // match self.1.get(k) {
+        //     Some(r) => {
+        //         counter!("hashed-cache.storage.hit").increment(1);
+        //         Some(r)
+        //     }
+        //     None => None,
+        // }
     }
 
     /// Insert storage into the cache
