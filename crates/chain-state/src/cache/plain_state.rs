@@ -36,51 +36,38 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
 {
     // Get account from cache
     fn get_account(&self, k: &Address) -> Option<Account> {
-        self.0.get(k)
-        // counter!("plain-cache.account.total").increment(1);
-        // match self.0.get(k) {
-        //     Some(r) => {
-        //         counter!("plain-cache.account.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-    }
-
-    // Insert account into cache
-    fn insert_account(&self, k: Address, v: Account) {
-        self.0.insert(k, v);
+        counter!("plain-cache.account.total").increment(1);
+        match self.0.get(k) {
+            Some(r) => {
+                counter!("plain-cache.account.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     // Get storage from cache
     fn get_storage(&self, k: &AddressStorageKey) -> Option<StorageValue> {
-        self.1.get(k)
-        // counter!("plain-cache.storage.total").increment(1);
-        // match self.1.get(k) {
-        //     Some(r) => {
-        //         counter!("plain-cache.storage.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-    }
-
-    // Insert storage into cache
-    fn insert_storage(&self, k: AddressStorageKey, v: StorageValue) {
-        self.1.insert(k, v);
+        counter!("plain-cache.storage.total").increment(1);
+        match self.1.get(k) {
+            Some(r) => {
+                counter!("plain-cache.storage.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     // Get code from cache
     fn get_code(&self, k: &B256) -> Option<Bytecode> {
-        self.2.get(k)
-        // counter!("plain-cache.code.total").increment(1);
-        // match self.2.get(k) {
-        //     Some(r) => {
-        //         counter!("plain-cache.code.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
+        counter!("plain-cache.code.total").increment(1);
+        match self.2.get(k) {
+            Some(r) => {
+                counter!("plain-cache.code.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     // Insert code into cache

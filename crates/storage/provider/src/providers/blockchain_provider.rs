@@ -9,8 +9,8 @@ use crate::{
 };
 use alloy_rpc_types_engine::ForkchoiceState;
 use reth_chain_state::{
-    BlockState, CanonicalInMemoryState, ForkChoiceNotifications, ForkChoiceSubscriptions,
-    MemoryOverlayStateProvider, CachedStateProvider
+    BlockState, CachedStateProvider, CanonicalInMemoryState, ForkChoiceNotifications,
+    ForkChoiceSubscriptions, MemoryOverlayStateProvider,
 };
 use reth_chainspec::{ChainInfo, ChainSpec};
 use reth_db_api::{

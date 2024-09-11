@@ -1249,6 +1249,10 @@ where
             // the block leads back to the canonical chain
             let historical = self.provider.state_by_block_hash(historical)?;
 
+            if !blocks.is_empty() {
+                debug!(target: "engine", %hash, "Use historical block with tip {}", blocks[blocks.len()-1].block.header.number-1);
+            }
+
             return Ok(Some(Box::new(MemoryOverlayStateProvider::new(historical, blocks))))
         }
 
@@ -1720,8 +1724,6 @@ where
             return Ok(InsertPayloadOk2::AlreadySeen(BlockStatus2::Valid))
         }
 
-        let block_number = block.number;
-        debug!(target: "engine", ?block_number, "Start to execute block");
         let start = Instant::now();
 
         // validate block consensus rules

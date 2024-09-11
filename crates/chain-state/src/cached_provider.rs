@@ -17,14 +17,8 @@ pub trait StateCache<AK, AV, SK, SV, CK, CV>: Send + Sync {
     /// Get account from cache
     fn get_account(&self, k: &AK) -> Option<AV>;
 
-    /// Insert account into cache
-    fn insert_account(&self, k: AK, v: AV);
-
     /// Get storage from cache
     fn get_storage(&self, k: &SK) -> Option<SV>;
-
-    /// Insert storage into cache
-    fn insert_storage(&self, k: SK, v: SV);
 
     /// Get code from cache
     fn get_code(&self, k: &CK) -> Option<CV>;
@@ -52,13 +46,12 @@ pub struct CachedStateProvider {
 
 impl CachedStateProvider {
     /// Create a new `CachedStateProvider`
-    pub fn new(
-        underlying: Box<dyn StateProvider>,
-    ) -> Self {
-        Self { underlying,  
+    pub fn new(underlying: Box<dyn StateProvider>) -> Self {
+        Self {
+            underlying,
             state_cache: &crate::cache::CACHED_PLAIN_STATES,
             hashed_cache: &crate::cache::CACHED_HASH_STATES,
-            trie_cache: &crate::cache::CACHED_TRIE_NODES, 
+            trie_cache: &crate::cache::CACHED_TRIE_NODES,
         }
     }
 
@@ -91,7 +84,6 @@ impl AccountReader for CachedStateProvider {
         }
         // Fallback to underlying provider
         if let Some(value) = self.underlying.basic_account(address)? {
-            self.state_cache.insert_account(address, value);
             return Ok(Some(value))
         }
         Ok(None)
@@ -197,7 +189,6 @@ impl StateProvider for CachedStateProvider {
         }
         // Fallback to underlying provider
         if let Some(value) = self.underlying.storage(address, storage_key)? {
-            self.state_cache.insert_storage(key, value);
             return Ok(Some(value))
         }
         Ok(None)

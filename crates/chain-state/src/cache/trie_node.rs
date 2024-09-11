@@ -11,6 +11,7 @@ use reth_trie::{
 };
 
 use metrics::counter;
+use tracing::debug;
 
 // Constants for cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
@@ -34,9 +35,21 @@ lazy_static! {
 
 // Implementation of methods for CACHED_TRIE_NODES
 impl CACHED_TRIE_NODES {
+    // Insert an account node into the cache
+    fn insert_account(&self, k: Nibbles, v: BranchNodeCompact) {
+        debug!("INSERT_TRIE_ACCOUNT: {:?} {:?}", k.clone(), v.clone());
+        self.0.insert(k, v)
+    }
+
     // Remove an account node from the cache
     fn remove_account(&self, k: &Nibbles) {
         self.0.remove(k);
+    }
+
+    // Insert a storage node into the cache
+    fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
+        debug!("INSERT_TRIE_STORAGE: {:?} {:?}", k.clone(), v.clone());
+        self.1.insert(k, v)
     }
 
     // Remove a storage node from the cache
@@ -51,38 +64,26 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
 {
     // Get an account node from the cache
     fn get_account(&self, k: &Nibbles) -> Option<BranchNodeCompact> {
-        self.0.get(k)
-        // counter!("trie-cache.account.total").increment(1);
-        // match self.0.get(k) {
-        //     Some(r) => {
-        //         counter!("trie-cache.account.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-    }
-
-    // Insert an account node into the cache
-    fn insert_account(&self, k: Nibbles, v: BranchNodeCompact) {
-        self.0.insert(k, v)
+        counter!("trie-cache.account.total").increment(1);
+        match self.0.get(k) {
+            Some(r) => {
+                counter!("trie-cache.account.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 
     // Get a storage node from the cache
     fn get_storage(&self, k: &TrieStorageKey) -> Option<BranchNodeCompact> {
-        self.1.get(k)
-        // counter!("trie-cache.storage.total").increment(1);
-        // match self.1.get(k) {
-        //     Some(r) => {
-        //         counter!("trie-cache.storage.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-    }
-
-    // Insert a storage node into the cache
-    fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
-        self.1.insert(k, v)
+        counter!("trie-cache.storage.total").increment(1);
+        match self.1.get(k) {
+            Some(r) => {
+                counter!("trie-cache.storage.hit").increment(1);
+                Some(r)
+            }
+            None => None,
+        }
     }
 }
 

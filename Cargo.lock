@@ -9696,9 +9696,11 @@ dependencies = [
  "criterion",
  "derive_more 1.0.0",
  "itertools 0.13.0",
+ "lazy_static",
  "metrics",
  "proptest",
  "proptest-arbitrary-interop",
+ "quick_cache",
  "rayon",
  "reth-chainspec",
  "reth-db",
@@ -9718,6 +9720,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-subscriber",
  "triehash",
 ]
 

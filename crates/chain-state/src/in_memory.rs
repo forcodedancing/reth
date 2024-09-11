@@ -1,8 +1,8 @@
 //! Types for tracking the canonical chain state in memory.
 
 use crate::{
-    CanonStateNotification, CanonStateNotificationSender,
-    CanonStateNotifications, ChainInfoTracker, MemoryOverlayStateProvider,
+    CanonStateNotification, CanonStateNotificationSender, CanonStateNotifications,
+    ChainInfoTracker, MemoryOverlayStateProvider,
 };
 use parking_lot::RwLock;
 use reth_chainspec::ChainInfo;
@@ -815,7 +815,9 @@ mod tests {
         AccountReader, BlockHashReader, StateProofProvider, StateProvider, StateRootProvider,
         StorageRootProvider,
     };
-    use reth_trie::{prefix_set::TriePrefixSetsMut, AccountProof, HashedStorage};
+    use reth_trie::{
+        prefix_set::TriePrefixSetsMut, AccountProof, BranchNodeCompact, HashedStorage, Nibbles,
+    };
 
     fn create_mock_state(
         test_block_builder: &mut TestBlockBuilder,
@@ -910,6 +912,26 @@ mod tests {
             _nodes: TrieUpdates,
             _post_state: HashedPostState,
             _prefix_sets: TriePrefixSetsMut,
+        ) -> ProviderResult<(B256, TrieUpdates)> {
+            Ok((B256::random(), TrieUpdates::default()))
+        }
+        fn state_root_from_nodes_caches_with_updates(
+            &self,
+            _nodes: TrieUpdates,
+            _post_state: HashedPostState,
+            _prefix_sets: TriePrefixSetsMut,
+            _: &'static (dyn reth_trie::cache::TrieCache<
+                B256,
+                Account,
+                (B256, B256),
+                reth_primitives::alloy_primitives::Uint<256, 4>,
+            > + 'static),
+            _: &'static (dyn reth_trie::cache::TrieCache<
+                Nibbles,
+                BranchNodeCompact,
+                (B256, Nibbles),
+                BranchNodeCompact,
+            > + 'static),
         ) -> ProviderResult<(B256, TrieUpdates)> {
             Ok((B256::random(), TrieUpdates::default()))
         }
