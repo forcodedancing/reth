@@ -27,6 +27,10 @@ pub use memory_overlay::MemoryOverlayStateProvider;
 mod cached_provider;
 pub use cached_provider::{CachedStateProvider, StateCache};
 
+
+/// Cache layer for plain states, hashed states and trie nodes.
+pub mod cache;
+
 #[cfg(any(test, feature = "test-utils"))]
 /// Common test helpers
 pub mod test_utils;

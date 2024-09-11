@@ -97,8 +97,7 @@ pub use reth_blockchain_tree_api::*;
 
 /// Support for backfill sync mode.
 pub mod backfill;
-/// Cache layer for plain states, hashed states and trie nodes.
-pub mod cache;
+
 /// The type that drives the chain forward.
 pub mod chain;
 /// Support for downloading blocks on demand for live sync.

@@ -2,9 +2,10 @@ use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
 
 use metrics::counter;
-use reth_chain_state::StateCache;
+use crate::StateCache;
 use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256};
 use reth_revm::db::BundleState;
+use reth_revm::db::OriginalValuesKnown;
 
 // Cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
@@ -88,7 +89,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
 
 /// Write committed state to cache.
 pub(crate) fn write_plain_state(bundle: BundleState) {
-    let change_set = bundle.into_plain_state(reth_provider::OriginalValuesKnown::Yes);
+    let change_set = bundle.into_plain_state(OriginalValuesKnown::Yes);
 
     // Update account cache
     for (address, account_info) in &change_set.accounts {

@@ -3,7 +3,8 @@ pub use plain_state::CACHED_PLAIN_STATES;
 
 mod hashed_state;
 pub use hashed_state::CACHED_HASH_STATES;
-use reth_chain_state::ExecutedBlock;
+use tracing::debug;
+use crate::ExecutedBlock;
 
 mod trie_node;
 use crate::cache::{
@@ -16,6 +17,7 @@ pub use trie_node::CACHED_TRIE_NODES;
 /// Writes the execution outcomes, trie updates, and hashed states of the given blocks to the cache.
 pub fn write_to_cache(blocks: Vec<ExecutedBlock>) {
     for block in blocks {
+        debug!("Writing block {} to cache", block.block.header.number);
         let bundle_state = block.execution_outcome().clone().bundle;
         let trie_updates = block.trie_updates().clone();
         let hashed_state = block.hashed_state();

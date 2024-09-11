@@ -47,11 +47,6 @@ reth-metrics = { workspace = true, features = ["common"] }
 # misc
 tracing.workspace = true
 
-# cache
-lazy_static = "1.5.0"
-quick_cache = "0.6.6"
-itertools = "0.10.5"
-
 # optional deps for test-utils
 reth-chainspec = { workspace = true, optional = true }
 reth-prune-types = { workspace = true, optional = true }

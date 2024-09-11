@@ -54,23 +54,12 @@ impl CachedStateProvider {
     /// Create a new `CachedStateProvider`
     pub fn new(
         underlying: Box<dyn StateProvider>,
-        state_cache: &'static dyn StateCache<
-            Address,
-            Account,
-            (Address, StorageKey),
-            StorageValue,
-            B256,
-            Bytecode,
-        >,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> Self {
-        Self { underlying, state_cache, hashed_cache, trie_cache }
+        Self { underlying,  
+            state_cache: &crate::cache::CACHED_PLAIN_STATES,
+            hashed_cache: &crate::cache::CACHED_HASH_STATES,
+            trie_cache: &crate::cache::CACHED_TRIE_NODES, 
+        }
     }
 
     /// Turn this state provider into a [`StateProviderBox`]

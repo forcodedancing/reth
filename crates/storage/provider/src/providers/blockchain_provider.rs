@@ -10,7 +10,7 @@ use crate::{
 use alloy_rpc_types_engine::ForkchoiceState;
 use reth_chain_state::{
     BlockState, CanonicalInMemoryState, ForkChoiceNotifications, ForkChoiceSubscriptions,
-    MemoryOverlayStateProvider,
+    MemoryOverlayStateProvider, CachedStateProvider
 };
 use reth_chainspec::{ChainInfo, ChainSpec};
 use reth_db_api::{
@@ -1173,7 +1173,8 @@ where
         trace!(target: "providers::blockchain", ?block_hash, "Getting history by block hash");
         if let Ok(state) = self.database.history_by_block_hash(block_hash) {
             // This could be tracked by a block in the database block
-            Ok(state)
+
+            Ok(CachedStateProvider::new(state).boxed())
         } else if let Some(state) = self.canonical_in_memory_state.state_by_hash(block_hash) {
             // ... or this could be tracked by the in memory state
             let state_provider = self.block_state_provider(state)?;

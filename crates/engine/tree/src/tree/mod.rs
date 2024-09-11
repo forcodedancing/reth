@@ -13,7 +13,7 @@ use reth_blockchain_tree::{
     BlockBuffer, BlockStatus2, InsertPayloadOk2,
 };
 use reth_chain_state::{
-    CachedStateProvider, CanonicalInMemoryState, ExecutedBlock, MemoryOverlayStateProvider,
+    CanonicalInMemoryState, ExecutedBlock, MemoryOverlayStateProvider,
     NewCanonicalChain,
 };
 use reth_consensus::{Consensus, PostExecutionInput};
@@ -1026,7 +1026,7 @@ where
         self.canonical_in_memory_state.clear_state();
 
         // clear finalized state/hashed/trie caches
-        crate::cache::clear_all_cache();
+        reth_chain_state::cache::clear_all_cache();
 
         if let Ok(Some(new_head)) = self.provider.sealed_header(backfill_height) {
             // update the tracked chain height, after backfill sync both the canonical height and
@@ -1248,19 +1248,7 @@ where
         if let Some((historical, blocks)) = self.state.tree_state.blocks_by_hash(hash) {
             trace!(target: "engine", %hash, "found canonical state for block in memory");
             // the block leads back to the canonical chain
-            let mut historical = self.provider.state_by_block_hash(historical)?;
-
-            if let Ok(_) = self.provider.history_by_block_hash(hash) {
-                historical = CachedStateProvider::new(
-                    historical,
-                    &crate::cache::CACHED_PLAIN_STATES,
-                    &crate::cache::CACHED_HASH_STATES,
-                    &crate::cache::CACHED_TRIE_NODES,
-                ).boxed();
-                debug!(target: "engine", %hash, "use cached state provider");
-            } else {
-                debug!(target: "engine", %hash, "use non cached state provider");
-            }
+            let historical = self.provider.state_by_block_hash(historical)?;
 
             return Ok(Some(Box::new(MemoryOverlayStateProvider::new(historical, blocks))))
         }

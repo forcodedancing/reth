@@ -1,8 +1,8 @@
 //! Types for tracking the canonical chain state in memory.
 
 use crate::{
-    CanonStateNotification, CanonStateNotificationSender, CanonStateNotifications,
-    ChainInfoTracker, MemoryOverlayStateProvider,
+    CanonStateNotification, CanonStateNotificationSender,
+    CanonStateNotifications, ChainInfoTracker, MemoryOverlayStateProvider,
 };
 use parking_lot::RwLock;
 use reth_chainspec::ChainInfo;
@@ -492,7 +492,6 @@ impl CanonicalInMemoryState {
         } else {
             Vec::new()
         };
-
         MemoryOverlayStateProvider::new(historical, in_memory)
     }
 

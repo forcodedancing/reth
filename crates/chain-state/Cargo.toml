@@ -20,6 +20,7 @@ reth-metrics.workspace = true
 reth-primitives.workspace = true
 reth-storage-api.workspace = true
 reth-trie.workspace = true
+reth-revm.workspace = true
 
 # async
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread"] }
@@ -27,6 +28,11 @@ tokio-stream = { workspace = true, features = ["sync"] }
 
 # tracing
 tracing.workspace = true
+
+# cache
+lazy_static = "1.5.0"
+quick_cache = "0.6.6"
+itertools = "0.10.5"
 
 # misc
 auto_impl.workspace = true
