@@ -5,6 +5,7 @@ use reth_db_api::{
 };
 use reth_primitives::{Account, B256, U256};
 use reth_trie::hashed_cursor::{HashedCursor, HashedCursorFactory, HashedStorageCursor};
+use tracing::debug;
 
 /// A struct wrapping database transaction that implements [`HashedCursorFactory`].
 #[derive(Debug)]
@@ -62,11 +63,19 @@ where
     type Value = Account;
 
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
-        self.0.seek(key)
+        let entry = self.0.seek(key)?;
+
+        debug!("DB_CURSOR seek account: {:?} {:?}", key, entry);
+
+        Ok(entry)
     }
 
     fn next(&mut self) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
-        self.0.next()
+        let entry = self.0.next()?;
+
+        debug!("DB_CURSOR next account: {:?}", entry);
+
+        Ok(entry)
     }
 }
 
@@ -98,11 +107,20 @@ where
         &mut self,
         subkey: B256,
     ) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
-        Ok(self.cursor.seek_by_key_subkey(self.hashed_address, subkey)?.map(|e| (e.key, e.value)))
+        let entry =
+            self.cursor.seek_by_key_subkey(self.hashed_address, subkey)?.map(|e| (e.key, e.value));
+
+        debug!("DB_CURSOR seek storage: {:?} {:?}", subkey, entry);
+
+        Ok(entry)
     }
 
     fn next(&mut self) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
-        Ok(self.cursor.next_dup_val()?.map(|e| (e.key, e.value)))
+        let entry = self.cursor.next_dup_val()?.map(|e| (e.key, e.value));
+
+        debug!("DB_CURSOR next storage: {:?}", entry);
+
+        Ok(entry)
     }
 }
 
