@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
@@ -28,6 +28,10 @@ lazy_static! {
     static ref TRIE_STORAGES: Cache<TrieStorageKey, BranchNodeCompact> =
         Cache::new(STORAGE_CACHE_SIZE);
 
+    /// Mapping for deleting storage trie nodes
+    static ref TRIE_STORAGES_MAPPING: Cache<B256, HashSet<Nibbles>> =
+        Cache::new(STORAGE_CACHE_SIZE);
+
     /// Combine cache for trie nodes
     pub static ref CACHED_TRIE_NODES: (&'static Cache<Nibbles, BranchNodeCompact>, &'static Cache<TrieStorageKey, BranchNodeCompact>) =
         (&TRIE_ACCOUNTS, &TRIE_STORAGES);
@@ -37,24 +41,30 @@ lazy_static! {
 impl CACHED_TRIE_NODES {
     // Insert an account node into the cache
     fn insert_account(&self, k: Nibbles, v: BranchNodeCompact) {
-        debug!("INSERT_TRIE_ACCOUNT: {:?} {:?}", k.clone(), v.clone());
-        self.0.insert(k, v)
+        TRIE_ACCOUNTS.insert(k, v)
     }
 
     // Remove an account node from the cache
     fn remove_account(&self, k: &Nibbles) {
-        self.0.remove(k);
+        TRIE_ACCOUNTS.remove(k);
     }
 
     // Insert a storage node into the cache
     fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
-        debug!("INSERT_TRIE_STORAGE: {:?} {:?}", k.clone(), v.clone());
-        self.1.insert(k, v)
+        let mut set = TRIE_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
+        set.insert(k.clone().1);
+        TRIE_STORAGES_MAPPING.insert(k.0, set);
+
+        TRIE_STORAGES.insert(k, v)
     }
 
     // Remove a storage node from the cache
     fn remove_storage(&self, k: &TrieStorageKey) {
-        self.1.remove(k);
+        TRIE_STORAGES.remove(k);
+
+        let mut set = TRIE_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
+        set.remove(&k.clone().1);
+        TRIE_STORAGES_MAPPING.insert(k.0, set);
     }
 }
 
@@ -65,7 +75,7 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
     // Get an account node from the cache
     fn get_account(&self, k: &Nibbles) -> Option<BranchNodeCompact> {
         counter!("trie-cache.account.total").increment(1);
-        match self.0.get(k) {
+        match TRIE_ACCOUNTS.get(k) {
             Some(r) => {
                 counter!("trie-cache.account.hit").increment(1);
                 Some(r)
@@ -77,7 +87,7 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
     // Get a storage node from the cache
     fn get_storage(&self, k: &TrieStorageKey) -> Option<BranchNodeCompact> {
         counter!("trie-cache.storage.total").increment(1);
-        match self.1.get(k) {
+        match TRIE_STORAGES.get(k) {
             Some(r) => {
                 counter!("trie-cache.storage.hit").increment(1);
                 Some(r)
@@ -134,8 +144,12 @@ fn write_storage_trie_updates(storage_tries: &HashMap<B256, StorageTrieUpdates>)
 fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTrieUpdates) {
     // The storage trie for this account has to be deleted.
     if updates.is_deleted() {
-        CACHED_TRIE_NODES.1.clear();
-        return;
+        let set = TRIE_STORAGES_MAPPING.get(hashed_address).unwrap_or_default();
+        for s in &set {
+            let storage_key = (*hashed_address, s.clone());
+            CACHED_TRIE_NODES.remove_storage(&storage_key);
+        }
+        TRIE_STORAGES_MAPPING.remove(hashed_address);
     }
 
     // Merge updated and removed nodes. Updated nodes must take precedence.

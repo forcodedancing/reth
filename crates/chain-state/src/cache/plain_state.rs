@@ -16,18 +16,18 @@ type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
     /// Account cache
-    static ref ACCOUNT_CACHE: Cache<Address, Account> = Cache::new(ACCOUNT_CACHE_SIZE);
+    static ref PLAIN_ACCOUNTS: Cache<Address, Account> = Cache::new(ACCOUNT_CACHE_SIZE);
 
     /// Storage cache
-    static ref STORAGE_CACHE: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
+    static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
 
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
-    static ref CONTRACT_CACHE: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
+    static ref CONTRACT_CODES: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
 
     /// Cached plain states
     #[allow(clippy::type_complexity)]
-    pub static ref CACHED_PLAIN_STATES: (&'static Cache<Address, Account>, &'static Cache<AddressStorageKey, StorageValue>,  &'static Cache<B256, Bytecode>) = (&ACCOUNT_CACHE, &STORAGE_CACHE, &CONTRACT_CACHE);
+    pub static ref CACHED_PLAIN_STATES: (&'static Cache<Address, Account>, &'static Cache<AddressStorageKey, StorageValue>,  &'static Cache<B256, Bytecode>) = (&PLAIN_ACCOUNTS, &PLAIN_STORAGES, &CONTRACT_CODES);
 }
 
 // Implementing StateCache trait for CACHED_PLAIN_STATES
@@ -37,7 +37,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
     // Get account from cache
     fn get_account(&self, k: &Address) -> Option<Account> {
         counter!("plain-cache.account.total").increment(1);
-        match self.0.get(k) {
+        match PLAIN_ACCOUNTS.get(k) {
             Some(r) => {
                 counter!("plain-cache.account.hit").increment(1);
                 Some(r)
@@ -49,7 +49,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
     // Get storage from cache
     fn get_storage(&self, k: &AddressStorageKey) -> Option<StorageValue> {
         counter!("plain-cache.storage.total").increment(1);
-        match self.1.get(k) {
+        match PLAIN_STORAGES.get(k) {
             Some(r) => {
                 counter!("plain-cache.storage.hit").increment(1);
                 Some(r)
@@ -61,7 +61,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
     // Get code from cache
     fn get_code(&self, k: &B256) -> Option<Bytecode> {
         counter!("plain-cache.code.total").increment(1);
-        match self.2.get(k) {
+        match CONTRACT_CODES.get(k) {
             Some(r) => {
                 counter!("plain-cache.code.hit").increment(1);
                 Some(r)
@@ -72,7 +72,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
 
     // Insert code into cache
     fn insert_code(&self, k: B256, v: Bytecode) {
-        self.2.insert(k, v);
+        CONTRACT_CODES.insert(k, v);
     }
 }
 
@@ -84,10 +84,10 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
     for (address, account_info) in &change_set.accounts {
         match account_info {
             None => {
-                ACCOUNT_CACHE.remove(address);
+                PLAIN_ACCOUNTS.remove(address);
             }
             Some(acc) => {
-                ACCOUNT_CACHE.insert(
+                PLAIN_ACCOUNTS.insert(
                     *address,
                     Account {
                         nonce: acc.nonce,
@@ -107,11 +107,11 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
             break;
         }
         for (k, v) in storage.storage.clone() {
-            STORAGE_CACHE.insert((storage.address, StorageKey::from(k)), v);
+            PLAIN_STORAGES.insert((storage.address, StorageKey::from(k)), v);
         }
     }
     if to_wipe {
-        STORAGE_CACHE.clear();
+        PLAIN_STORAGES.clear();
     }
 }
 

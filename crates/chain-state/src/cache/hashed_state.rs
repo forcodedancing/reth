@@ -1,7 +1,9 @@
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
+use std::collections::HashSet;
 
+use crate::cache::CACHED_TRIE_NODES;
 use metrics::counter;
 use reth_primitives::{Account, B256, U256};
 use reth_trie::{cache::TrieCache, HashedPostStateSorted};
@@ -21,6 +23,10 @@ lazy_static! {
     /// Cache for hashed storages
     static ref HASHED_STORAGES: Cache<HashedStorageKey, U256> = Cache::new(STORAGE_CACHE_SIZE);
 
+    /// Mapping for deleting storages
+    static ref HASHED_STORAGES_MAPPING: Cache<B256, HashSet<B256>> =
+        Cache::new(STORAGE_CACHE_SIZE);
+
     /// Combined cache for hashed states
     pub static ref CACHED_HASH_STATES: (&'static Cache<B256, Account>, &'static Cache<HashedStorageKey, U256>) =
         (&HASHED_ACCOUNTS, &HASHED_STORAGES);
@@ -30,27 +36,30 @@ lazy_static! {
 impl CACHED_HASH_STATES {
     /// Insert an account into the cache
     fn insert_account(&self, k: B256, v: Account) {
-        let tmp =
-            B256::from_str("0xfcbd49b3a106f7e49c6e147b76ca4682aefd4fe6d07f4368f542751aaf85d596")
-                .unwrap();
-        if !k.eq(&tmp) {
-            self.0.insert(k, v)
-        }
+        HASHED_ACCOUNTS.insert(k, v)
     }
 
     /// Remove an account from the cache
     fn remove_account(&self, k: &B256) {
-        self.0.remove(k);
+        HASHED_ACCOUNTS.remove(k);
     }
 
     /// Insert storage into the cache
     fn insert_storage(&self, k: HashedStorageKey, v: U256) {
-        self.1.insert(k, v);
+        let mut set = HASHED_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
+        set.insert(k.1);
+        HASHED_STORAGES_MAPPING.insert(k.0, set);
+
+        HASHED_STORAGES.insert(k, v);
     }
 
     /// Remove storage from the cache
     fn remove_storage(&self, k: &HashedStorageKey) {
-        self.1.remove(k);
+        let mut set = HASHED_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
+        set.remove(&k.1);
+        HASHED_STORAGES_MAPPING.insert(k.0, set);
+
+        HASHED_STORAGES.remove(k);
     }
 }
 
@@ -59,7 +68,7 @@ impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
     /// Get an account from the cache
     fn get_account(&self, k: &B256) -> Option<Account> {
         counter!("hashed-cache.account.total").increment(1);
-        match self.0.get(k) {
+        match HASHED_ACCOUNTS.get(k) {
             Some(r) => {
                 counter!("hashed-cache.account.hit").increment(1);
                 Some(r)
@@ -71,7 +80,7 @@ impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
     /// Get storage from the cache
     fn get_storage(&self, k: &HashedStorageKey) -> Option<U256> {
         counter!("hashed-cache.storage.total").increment(1);
-        match self.1.get(k) {
+        match HASHED_STORAGES.get(k) {
             Some(r) => {
                 counter!("hashed-cache.storage.hit").increment(1);
                 Some(r)
@@ -94,12 +103,16 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
 
     // Write hashed storage changes
     let sorted_storages = hashed_state.account_storages().iter().sorted_by_key(|(key, _)| *key);
-    let mut to_wipe = false;
     for (hashed_address, storage) in sorted_storages {
         if storage.is_wiped() {
-            to_wipe = true;
-            break;
+            let set = HASHED_STORAGES_MAPPING.get(hashed_address).unwrap_or_default();
+            for s in &set {
+                let storage_key = (*hashed_address, s.clone());
+                CACHED_HASH_STATES.remove_storage(&storage_key);
+            }
+            HASHED_STORAGES_MAPPING.remove(hashed_address);
         }
+
         for (hashed_slot, value) in storage.storage_slots_sorted() {
             let key = (*hashed_address, hashed_slot);
             CACHED_HASH_STATES.remove_storage(&key);
@@ -107,9 +120,6 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
                 CACHED_HASH_STATES.insert_storage(key, value);
             }
         }
-    }
-    if to_wipe {
-        CACHED_HASH_STATES.1.clear();
     }
 }
 
