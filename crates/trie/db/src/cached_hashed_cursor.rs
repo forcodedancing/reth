@@ -1,6 +1,5 @@
 use reth_db::tables;
 use reth_db_api::{
-    common::KeyValue,
     cursor::{DbCursorRO, DbDupCursorRO},
     transaction::DbTx,
 };
@@ -10,7 +9,6 @@ use reth_trie::{
     cache::TrieCache,
     hashed_cursor::{HashedCursor, HashedCursorFactory, HashedStorageCursor},
 };
-use tracing::{debug, error};
 
 /// Factory for creating cached hashed cursors.
 pub(crate) struct CachedHashedCursorFactory<'a, TX> {
@@ -91,7 +89,6 @@ where
         match self.cursor.seek(key)? {
             Some((key, value)) => {
                 self.last_key = Some(key);
-                //self.hashed_cache.insert_account(key, value);
                 Ok(Some((key, value)))
             }
             None => {
@@ -112,7 +109,6 @@ where
                 if entry.0 > last_key {
                     // next is done already
                     self.last_key = Some(entry.0);
-                    //self.hashed_cache.insert_account(entry.0, entry.1);
                     return Ok(Some((entry.0, entry.1)));
                 }
             }
@@ -121,37 +117,12 @@ where
         match self.cursor.next()? {
             Some(entry) => {
                 self.last_key = Some(entry.0);
-                //self.hashed_cache.insert_account(entry.0, entry.1);
                 Ok(Some((entry.0, entry.1)))
             }
             None => {
                 self.last_key = None;
                 Ok(None)
             }
-        }
-    }
-
-    fn compare_entries(
-        &mut self,
-        entry: Option<(B256, Account)>,
-        db_entry: Option<(B256, Account)>,
-    ) {
-        let mut matched = true;
-        if entry.is_none() && db_entry.is_none() {
-        } else if entry.is_none() && db_entry.is_some() {
-            matched = false
-        } else if entry.is_some() && db_entry.is_none() {
-            matched = false
-        } else if entry.unwrap().0 != db_entry.unwrap().0 || entry.unwrap().1 != db_entry.unwrap().1
-        {
-            matched = false;
-        }
-        if !matched {
-            error!(
-                "### Hashed account does not match: \n{:?} \n{:?}",
-                entry.unwrap(),
-                db_entry.unwrap()
-            );
         }
     }
 }
@@ -165,11 +136,6 @@ where
     /// Seeks the cursor to the specified key.
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
         let entry = self.seek_inner(key)?;
-
-        // let db_entry = self.cursor.seek(key)?;
-        // self.compare_entries(entry, db_entry);
-
-        debug!("HASHED_CURSOR seek account: {:?} {:?} {:?}", key, self.last_key, entry);
         Ok(entry)
     }
 
@@ -183,8 +149,6 @@ where
             // no previous entry was found
             None => None,
         };
-
-        debug!("HASHED_CURSOR next account: {:?} {:?}", self.last_key, next);
         Ok(next)
     }
 }
@@ -225,8 +189,6 @@ where
         match self.cursor.seek_by_key_subkey(self.hashed_address, subkey)? {
             Some(entry) => {
                 self.last_key = Some(entry.key);
-                //let storage_key = (self.hashed_address, entry.key);
-                //self.hashed_cache.insert_storage(storage_key, entry.value);
                 Ok(Some((entry.key, entry.value)))
             }
             None => {
@@ -255,34 +217,12 @@ where
         match self.cursor.next_dup_val()? {
             Some(entry) => {
                 self.last_key = Some(entry.key);
-                //let storage_key = (self.hashed_address, entry.key);
-                //self.hashed_cache.insert_storage(storage_key, entry.value);
                 Ok(Some((entry.key, entry.value)))
             }
             None => {
                 self.last_key = None;
                 Ok(None)
             }
-        }
-    }
-
-    fn compare_entries(&mut self, entry: Option<(B256, U256)>, db_entry: Option<(B256, U256)>) {
-        let mut matched = true;
-        if entry.is_none() && db_entry.is_none() {
-        } else if entry.is_none() && db_entry.is_some() {
-            matched = false
-        } else if entry.is_some() && db_entry.is_none() {
-            matched = false
-        } else if entry.unwrap().0 != db_entry.unwrap().0 || entry.unwrap().1 != db_entry.unwrap().1
-        {
-            matched = false;
-        }
-        if !matched {
-            error!(
-                "### Hashed storage does not match: \n{:?} \n{:?}",
-                entry.unwrap(),
-                db_entry.unwrap()
-            );
         }
     }
 }
@@ -296,12 +236,6 @@ where
     /// Seeks the cursor to the specified subkey.
     fn seek(&mut self, subkey: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
         let entry = self.seek_inner(subkey)?;
-
-        // let db_entry =
-        //     self.cursor.seek_by_key_subkey(self.hashed_address, subkey)?.map(|e| (e.key,
-        // e.value)); self.compare_entries(entry, db_entry);
-
-        debug!("HASHED_CURSOR seek storage: {:?} {:?} {:?}", subkey, self.last_key, entry);
         Ok(entry)
     }
 
@@ -315,8 +249,6 @@ where
             // no previous entry was found
             None => None,
         };
-
-        debug!("HASHED_CURSOR next storage: {:?} {:?}", self.last_key, next);
         Ok(next)
     }
 }

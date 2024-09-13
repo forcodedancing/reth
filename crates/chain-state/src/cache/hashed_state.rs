@@ -5,8 +5,7 @@ use quick_cache::sync::Cache;
 use metrics::counter;
 use reth_primitives::{Account, B256, U256};
 use reth_trie::{cache::TrieCache, HashedPostStateSorted};
-use std::{collections::HashMap, str::FromStr};
-use tracing::debug;
+use std::str::FromStr;
 
 // Cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
@@ -35,7 +34,6 @@ impl CACHED_HASH_STATES {
             B256::from_str("0xfcbd49b3a106f7e49c6e147b76ca4682aefd4fe6d07f4368f542751aaf85d596")
                 .unwrap();
         if !k.eq(&tmp) {
-            debug!("INSERT_HASHED_ACCOUNT: {:?} {:?}", k.clone(), v.clone());
             self.0.insert(k, v)
         }
     }
@@ -47,7 +45,6 @@ impl CACHED_HASH_STATES {
 
     /// Insert storage into the cache
     fn insert_storage(&self, k: HashedStorageKey, v: U256) {
-        debug!("INSERT_HASHED_STORAGE: {:?} {:?}", k.clone(), v.clone());
         self.1.insert(k, v);
     }
 
@@ -92,7 +89,6 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
             CACHED_HASH_STATES.insert_account(hashed_address, account);
         } else {
             CACHED_HASH_STATES.remove_account(&hashed_address);
-            debug!("DDD to remove account cache {}", hashed_address);
         }
     }
 
@@ -101,7 +97,6 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
     let mut to_wipe = false;
     for (hashed_address, storage) in sorted_storages {
         if storage.is_wiped() {
-            debug!("DDD to clear storage cache {}", hashed_address);
             to_wipe = true;
             break;
         }
@@ -110,8 +105,6 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
             CACHED_HASH_STATES.remove_storage(&key);
             if !value.is_zero() {
                 CACHED_HASH_STATES.insert_storage(key, value);
-            } else {
-                debug!("DDD zero value storage cache {} {}", hashed_address, hashed_slot);
             }
         }
     }

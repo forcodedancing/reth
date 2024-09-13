@@ -83,10 +83,7 @@ impl AccountReader for CachedStateProvider {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
-        if let Some(value) = self.underlying.basic_account(address)? {
-            return Ok(Some(value))
-        }
-        Ok(None)
+        self.underlying.basic_account(address)
     }
 }
 
@@ -188,10 +185,7 @@ impl StateProvider for CachedStateProvider {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
-        if let Some(value) = self.underlying.storage(address, storage_key)? {
-            return Ok(Some(value))
-        }
-        Ok(None)
+        self.underlying.storage(address, storage_key)
     }
 
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {

@@ -6,7 +6,6 @@ use crate::{
 use reth_primitives::{Account, B256, U256};
 use reth_storage_errors::db::DatabaseError;
 use std::collections::HashSet;
-use tracing::debug;
 
 /// The hashed cursor factory for the post state.
 #[derive(Clone, Debug)]
@@ -150,9 +149,6 @@ where
         // Find the closes account.
         let entry = self.seek_inner(key)?;
         self.last_account = entry.as_ref().map(|entry| entry.0);
-
-        debug!("POST_HASH: seek account {:?} {:?}", key, entry.clone());
-
         Ok(entry)
     }
 
@@ -173,9 +169,6 @@ where
             // no previous entry was found
             None => None,
         };
-
-        debug!("POST_HASH: next account {:?}", next.clone());
-
         Ok(next)
     }
 }
@@ -292,9 +285,6 @@ where
     fn seek(&mut self, subkey: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
         let entry = self.seek_inner(subkey)?;
         self.last_slot = entry.as_ref().map(|entry| entry.0);
-
-        debug!("POST_HASH: seek storage {:?} {:?}", subkey, entry.clone());
-
         Ok(entry)
     }
 
@@ -309,9 +299,6 @@ where
             // no previous entry was found
             None => None,
         };
-
-        debug!("POST_HASH: next storage {:?}", next.clone());
-
         Ok(next)
     }
 }

@@ -3,14 +3,13 @@ use reth_db_api::{
     cursor::{DbCursorRO, DbDupCursorRO},
     transaction::DbTx,
 };
-use reth_primitives::{B256, U256};
+use reth_primitives::B256;
 use reth_storage_errors::db::DatabaseError;
 use reth_trie::{
     cache::TrieCache,
     trie_cursor::{TrieCursor, TrieCursorFactory},
     BranchNodeCompact, Nibbles, StoredNibbles, StoredNibblesSubKey,
 };
-use tracing::error;
 
 /// Wrapper struct for database transaction implementing trie cursor factory trait.
 pub(crate) struct CachedTrieCursorFactory<'a, TX> {
@@ -107,7 +106,6 @@ where
         match self.cursor.seek_exact(StoredNibbles(key))? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
-                //self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -130,7 +128,6 @@ where
         match self.cursor.seek(StoredNibbles(key))? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
-                //self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -154,7 +151,6 @@ where
                 if entry.0 .0.clone() > last_key.clone() {
                     // next is done already
                     self.last_key = Some(entry.0 .0.clone());
-                    //self.hashed_cache.insert_account(entry.0, entry.1);
                     return Ok(Some((entry.0 .0, entry.1)));
                 }
             }
@@ -163,38 +159,12 @@ where
         match self.cursor.next()? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
-                //self.trie_cache.insert_account(value.0 .0.clone(), value.1.clone());
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
                 self.last_key = None;
                 Ok(None)
             }
-        }
-    }
-
-    fn compare_entries(
-        &mut self,
-        entry: Option<(Nibbles, BranchNodeCompact)>,
-        db_entry: Option<(Nibbles, BranchNodeCompact)>,
-    ) {
-        let mut matched = true;
-        if entry.clone().is_none() && db_entry.clone().is_none() {
-        } else if entry.clone().is_none() && db_entry.clone().is_some() {
-            matched = false
-        } else if entry.clone().is_some() && db_entry.clone().is_none() {
-            matched = false
-        } else if entry.clone().unwrap().0 != db_entry.clone().unwrap().0 ||
-            entry.clone().unwrap().1 != db_entry.clone().unwrap().1
-        {
-            matched = false;
-        }
-        if !matched {
-            error!(
-                "### Trie account does not match: \n{:?} \n{:?}",
-                entry.clone().unwrap(),
-                db_entry.clone().unwrap()
-            );
         }
     }
 }
@@ -209,11 +179,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_exact_inner(key.clone())?;
-
-        // let db_entry =
-        //     self.cursor.seek_exact(StoredNibbles(key))?.map(|value| (value.0 .0, value.1));
-        // self.compare_entries(entry.clone(), db_entry);
-
         Ok(entry)
     }
 
@@ -223,20 +188,13 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_inner(key.clone())?;
-
-        // let db_entry = self.cursor.seek(StoredNibbles(key))?.map(|value| (value.0 .0, value.1));
-        // self.compare_entries(entry.clone(), db_entry);
-
         Ok(entry)
     }
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let next = match &self.last_key {
-            Some(last) => {
-                let entry = self.next_inner(last.clone())?;
-                entry
-            }
+            Some(last) => self.next_inner(last.clone())?,
             // no previous entry was found
             None => None,
         };
@@ -300,9 +258,6 @@ where
         {
             Some(entry) => {
                 self.last_key = Some(entry.nibbles.0.clone());
-                //let storage_key = (self.hashed_address, entry.nibbles.0.clone());
-                //self.trie_cache.insert_storage(storage_key, entry.node.clone());
-
                 if entry.nibbles == StoredNibblesSubKey(key) {
                     Ok(Some((entry.nibbles.0, entry.node)))
                 } else {
@@ -330,8 +285,6 @@ where
         match self.cursor.seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))? {
             Some(value) => {
                 self.last_key = Some(value.nibbles.0.clone());
-                //let key = (self.hashed_address, value.nibbles.0.clone());
-                //self.trie_cache.insert_storage(key, value.node.clone());
                 Ok(Some((value.nibbles.0, value.node)))
             }
             None => {
@@ -366,40 +319,12 @@ where
         match self.cursor.next_dup()? {
             Some((_, value)) => {
                 self.last_key = Some(value.nibbles.0.clone());
-                //let storage_key = (self.hashed_address, value.nibbles.0.clone());
-                //self.trie_cache.insert_storage(storage_key, value.node.clone());
-
                 Ok(Some((value.nibbles.0, value.node)))
             }
             None => {
                 self.last_key = None;
                 Ok(None)
             }
-        }
-    }
-
-    fn compare_entries(
-        &mut self,
-        entry: Option<(Nibbles, BranchNodeCompact)>,
-        db_entry: Option<(Nibbles, BranchNodeCompact)>,
-    ) {
-        let mut matched = true;
-        if entry.clone().is_none() && db_entry.clone().is_none() {
-        } else if entry.clone().is_none() && db_entry.clone().is_some() {
-            matched = false
-        } else if entry.clone().is_some() && db_entry.clone().is_none() {
-            matched = false
-        } else if entry.clone().unwrap().0 != db_entry.clone().unwrap().0 ||
-            entry.clone().unwrap().1 != db_entry.clone().unwrap().1
-        {
-            matched = false;
-        }
-        if !matched {
-            error!(
-                "### Trie storage does not match: \n{:?} \n{:?}",
-                entry.clone().unwrap(),
-                db_entry.clone().unwrap()
-            );
         }
     }
 }
@@ -414,14 +339,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_exact_inner(key.clone())?;
-
-        // let db_entry = self
-        //     .cursor
-        //     .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
-        //     .filter(|e| e.nibbles == StoredNibblesSubKey(key))
-        //     .map(|value| (value.nibbles.0, value.node));
-        // self.compare_entries(entry.clone(), db_entry.clone());
-
         Ok(entry)
     }
 
@@ -431,13 +348,6 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let entry = self.seek_inner(key.clone())?;
-
-        // let db_entry = self
-        //     .cursor
-        //     .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
-        //     .map(|value| (value.nibbles.0, value.node));
-        // self.compare_entries(entry.clone(), db_entry.clone());
-
         Ok(entry)
     }
 
