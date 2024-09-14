@@ -79,9 +79,9 @@ impl BlockHashReader for CachedStateProvider {
 impl AccountReader for CachedStateProvider {
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
         // Check cache first
-        if let Some(v) = self.state_cache.get_account(&address) {
-            return Ok(Some(v))
-        }
+        // if let Some(v) = self.state_cache.get_account(&address) {
+        //     return Ok(Some(v))
+        // }
         // Fallback to underlying provider
         self.underlying.basic_account(address)
     }
@@ -181,18 +181,18 @@ impl StateProvider for CachedStateProvider {
     ) -> ProviderResult<Option<StorageValue>> {
         let key = (address, storage_key);
         // Check cache first
-        if let Some(v) = self.state_cache.get_storage(&key) {
-            return Ok(Some(v))
-        }
+        // if let Some(v) = self.state_cache.get_storage(&key) {
+        //     return Ok(Some(v))
+        // }
         // Fallback to underlying provider
         self.underlying.storage(address, storage_key)
     }
 
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
         // Check cache first
-        if let Some(v) = self.state_cache.get_code(&code_hash) {
-            return Ok(Some(v))
-        }
+        // if let Some(v) = self.state_cache.get_code(&code_hash) {
+        //     return Ok(Some(v))
+        // }
         // Fallback to underlying provider
         if let Some(value) = self.underlying.bytecode_by_hash(code_hash)? {
             self.state_cache.insert_code(code_hash, value.clone());
