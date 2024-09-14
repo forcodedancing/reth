@@ -1,9 +1,13 @@
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use crate::StateCache;
 use metrics::counter;
-use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256};
+use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256, U256};
 use reth_revm::db::{BundleState, OriginalValuesKnown};
 
 // Cache sizes
@@ -21,6 +25,9 @@ lazy_static! {
     /// Storage cache
     static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
 
+    /// Mapping for deleting storages
+    static ref PLAIN_STORAGES_MAPPING: Mutex<HashMap<Address, HashSet<B256>>> = Mutex::new(HashMap::new());
+
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
     static ref CONTRACT_CODES: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
@@ -28,6 +35,22 @@ lazy_static! {
     /// Cached plain states
     #[allow(clippy::type_complexity)]
     pub static ref CACHED_PLAIN_STATES: (&'static Cache<Address, Account>, &'static Cache<AddressStorageKey, StorageValue>,  &'static Cache<B256, Bytecode>) = (&PLAIN_ACCOUNTS, &PLAIN_STORAGES, &CONTRACT_CODES);
+}
+
+impl CACHED_PLAIN_STATES {
+    /// Insert storage into the cache
+    fn insert_storage(&self, k: AddressStorageKey, v: U256) {
+        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.insert(k.1);
+        } else {
+            let mut s = HashSet::new();
+            s.insert(k.1);
+            map.insert(k.0, s);
+        }
+
+        PLAIN_STORAGES.insert(k, v);
+    }
 }
 
 // Implementing StateCache trait for CACHED_PLAIN_STATES
@@ -100,18 +123,21 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
     }
 
     // Update storage cache
-    let mut to_wipe = false;
     for storage in &change_set.storage {
         if storage.wipe_storage {
-            to_wipe = true;
-            break;
+            let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+            if let Some(set) = map.get(&storage.address) {
+                for s in set {
+                    let storage_key = (storage.address, *s);
+                    PLAIN_STORAGES.remove(&storage_key);
+                }
+            }
+            map.remove(&storage.address);
         }
+
         for (k, v) in storage.storage.clone() {
-            PLAIN_STORAGES.insert((storage.address, StorageKey::from(k)), v);
+            CACHED_PLAIN_STATES.insert_storage((storage.address, StorageKey::from(k)), v);
         }
-    }
-    if to_wipe {
-        PLAIN_STORAGES.clear();
     }
 }
 

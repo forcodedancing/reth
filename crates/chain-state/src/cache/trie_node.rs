@@ -1,15 +1,19 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
 
-use reth_primitives::B256;
+use reth_primitives::{Account, B256};
 use reth_trie::{
     cache::TrieCache,
     updates::{StorageTrieUpdates, TrieUpdates},
     BranchNodeCompact, Nibbles, StoredNibbles, StoredNibblesSubKey,
 };
 
+use crate::cache::CACHED_HASH_STATES;
 use metrics::counter;
 use tracing::debug;
 
@@ -29,8 +33,7 @@ lazy_static! {
         Cache::new(STORAGE_CACHE_SIZE);
 
     /// Mapping for deleting storage trie nodes
-    static ref TRIE_STORAGES_MAPPING: Cache<B256, HashSet<Nibbles>> =
-        Cache::new(STORAGE_CACHE_SIZE);
+    static ref TRIE_STORAGES_MAPPING: Mutex<HashMap<B256, HashSet<Nibbles>>> = Mutex::new(HashMap::new());
 
     /// Combine cache for trie nodes
     pub static ref CACHED_TRIE_NODES: (&'static Cache<Nibbles, BranchNodeCompact>, &'static Cache<TrieStorageKey, BranchNodeCompact>) =
@@ -51,9 +54,14 @@ impl CACHED_TRIE_NODES {
 
     // Insert a storage node into the cache
     fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
-        let mut set = TRIE_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
-        set.insert(k.clone().1);
-        TRIE_STORAGES_MAPPING.insert(k.0, set);
+        let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.insert(k.clone().1);
+        } else {
+            let mut s = HashSet::new();
+            s.insert(k.clone().1);
+            map.insert(k.0, s);
+        }
 
         TRIE_STORAGES.insert(k, v)
     }
@@ -62,9 +70,13 @@ impl CACHED_TRIE_NODES {
     fn remove_storage(&self, k: &TrieStorageKey) {
         TRIE_STORAGES.remove(k);
 
-        let mut set = TRIE_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
-        set.remove(&k.clone().1);
-        TRIE_STORAGES_MAPPING.insert(k.0, set);
+        let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.remove(&k.clone().1);
+            if set.len() == 0 {
+                map.remove(&k.0);
+            }
+        }
     }
 }
 
@@ -144,12 +156,14 @@ fn write_storage_trie_updates(storage_tries: &HashMap<B256, StorageTrieUpdates>)
 fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTrieUpdates) {
     // The storage trie for this account has to be deleted.
     if updates.is_deleted() {
-        let set = TRIE_STORAGES_MAPPING.get(hashed_address).unwrap_or_default();
-        for s in &set {
-            let storage_key = (*hashed_address, s.clone());
-            CACHED_TRIE_NODES.remove_storage(&storage_key);
+        let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get(hashed_address) {
+            for s in set {
+                let storage_key = (*hashed_address, s.clone());
+                TRIE_STORAGES.remove(&storage_key);
+            }
         }
-        TRIE_STORAGES_MAPPING.remove(hashed_address);
+        map.remove(hashed_address);
     }
 
     // Merge updated and removed nodes. Updated nodes must take precedence.
@@ -180,4 +194,35 @@ fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTri
 pub(crate) fn clear_trie_node() {
     CACHED_TRIE_NODES.0.clear();
     CACHED_TRIE_NODES.1.clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache() {
+        let address = B256::random();
+        let key1 = StoredNibblesSubKey::from(vec![0x1, 0x2]);
+        let value1 = BranchNodeCompact::new(1, 1, 1, vec![B256::random()], None);
+        let key2 = StoredNibblesSubKey::from(vec![0x2, 0x4]);
+        let value2 = BranchNodeCompact::new(1, 1, 1, vec![B256::random()], None);
+
+        CACHED_TRIE_NODES.insert_storage((address, key1.clone().into()), value1);
+        CACHED_TRIE_NODES.insert_storage((address, key2.clone().into()), value2);
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().len(), 1);
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().get(&address).unwrap().len(), 2);
+
+        CACHED_TRIE_NODES.remove_storage(&(address, key1.clone().into()));
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().len(), 1);
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().get(&address).unwrap().len(), 1);
+
+        CACHED_TRIE_NODES.remove_storage(&(address, key1.clone().into()));
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().len(), 1);
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().get(&address).unwrap().len(), 1);
+
+        CACHED_TRIE_NODES.remove_storage(&(address, key2.clone().into()));
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().len(), 0);
+        assert_eq!(TRIE_STORAGES_MAPPING.lock().unwrap().get(&address), None);
+    }
 }

@@ -1,13 +1,13 @@
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::cache::CACHED_TRIE_NODES;
 use metrics::counter;
 use reth_primitives::{Account, B256, U256};
 use reth_trie::{cache::TrieCache, HashedPostStateSorted};
-use std::str::FromStr;
+use std::{str::FromStr, sync::Mutex};
 
 // Cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
@@ -24,8 +24,7 @@ lazy_static! {
     static ref HASHED_STORAGES: Cache<HashedStorageKey, U256> = Cache::new(STORAGE_CACHE_SIZE);
 
     /// Mapping for deleting storages
-    static ref HASHED_STORAGES_MAPPING: Cache<B256, HashSet<B256>> =
-        Cache::new(STORAGE_CACHE_SIZE);
+    static ref HASHED_STORAGES_MAPPING: Mutex<HashMap<B256, HashSet<B256>>> = Mutex::new(HashMap::new());
 
     /// Combined cache for hashed states
     pub static ref CACHED_HASH_STATES: (&'static Cache<B256, Account>, &'static Cache<HashedStorageKey, U256>) =
@@ -46,20 +45,29 @@ impl CACHED_HASH_STATES {
 
     /// Insert storage into the cache
     fn insert_storage(&self, k: HashedStorageKey, v: U256) {
-        let mut set = HASHED_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
-        set.insert(k.1);
-        HASHED_STORAGES_MAPPING.insert(k.0, set);
+        let mut map = HASHED_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.insert(k.1);
+        } else {
+            let mut s = HashSet::new();
+            s.insert(k.1);
+            map.insert(k.0, s);
+        }
 
         HASHED_STORAGES.insert(k, v);
     }
 
     /// Remove storage from the cache
     fn remove_storage(&self, k: &HashedStorageKey) {
-        let mut set = HASHED_STORAGES_MAPPING.get(&k.0).unwrap_or_default();
-        set.remove(&k.1);
-        HASHED_STORAGES_MAPPING.insert(k.0, set);
-
         HASHED_STORAGES.remove(k);
+
+        let mut map = HASHED_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.remove(&k.1);
+            if set.len() == 0 {
+                map.remove(&k.0);
+            }
+        }
     }
 }
 
@@ -105,12 +113,14 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
     let sorted_storages = hashed_state.account_storages().iter().sorted_by_key(|(key, _)| *key);
     for (hashed_address, storage) in sorted_storages {
         if storage.is_wiped() {
-            let set = HASHED_STORAGES_MAPPING.get(hashed_address).unwrap_or_default();
-            for s in &set {
-                let storage_key = (*hashed_address, s.clone());
-                CACHED_HASH_STATES.remove_storage(&storage_key);
+            let mut map = HASHED_STORAGES_MAPPING.lock().unwrap();
+            if let Some(set) = map.get(hashed_address) {
+                for s in set {
+                    let storage_key = (*hashed_address, *s);
+                    HASHED_STORAGES.remove(&storage_key);
+                }
             }
-            HASHED_STORAGES_MAPPING.remove(hashed_address);
+            map.remove(hashed_address);
         }
 
         for (hashed_slot, value) in storage.storage_slots_sorted() {
