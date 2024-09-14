@@ -15,28 +15,18 @@ use reth_trie::{
 /// Wrapper struct for database transaction implementing trie cursor factory trait.
 pub(crate) struct CachedTrieCursorFactory<'a, TX> {
     tx: &'a TX,
-    trie_cache:
-        &'static dyn TrieCache<Nibbles, BranchNodeCompact, (B256, Nibbles), BranchNodeCompact>,
 }
 
 impl<'a, TX> Clone for CachedTrieCursorFactory<'a, TX> {
     fn clone(&self) -> Self {
-        Self { tx: self.tx, trie_cache: self.trie_cache }
+        Self { tx: self.tx }
     }
 }
 
 impl<'a, TX> CachedTrieCursorFactory<'a, TX> {
     /// Create new [`CachedTrieCursorFactory`].
-    pub(crate) const fn new(
-        tx: &'a TX,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
-    ) -> Self {
-        Self { tx, trie_cache }
+    pub(crate) const fn new(tx: &'a TX) -> Self {
+        Self { tx }
     }
 }
 
@@ -47,10 +37,7 @@ impl<'a, TX: DbTx> TrieCursorFactory for CachedTrieCursorFactory<'a, TX> {
 
     /// Create a new account trie cursor.
     fn account_trie_cursor(&self) -> Result<Self::AccountTrieCursor, DatabaseError> {
-        Ok(CachedAccountTrieCursor::new(
-            self.tx.cursor_read::<tables::AccountsTrie>()?,
-            self.trie_cache,
-        ))
+        Ok(CachedAccountTrieCursor::new(self.tx.cursor_read::<tables::AccountsTrie>()?))
     }
 
     /// Create a new storage trie cursor.
@@ -61,7 +48,6 @@ impl<'a, TX: DbTx> TrieCursorFactory for CachedTrieCursorFactory<'a, TX> {
         Ok(CachedStorageTrieCursor::new(
             self.tx.cursor_dup_read::<tables::StoragesTrie>()?,
             hashed_address,
-            self.trie_cache,
         ))
     }
 }
@@ -70,9 +56,6 @@ impl<'a, TX: DbTx> TrieCursorFactory for CachedTrieCursorFactory<'a, TX> {
 pub(crate) struct CachedAccountTrieCursor<C> {
     /// Database trie account cursor.
     cursor: C,
-    /// Cache layer.
-    trie_cache:
-        &'static dyn TrieCache<Nibbles, BranchNodeCompact, (B256, Nibbles), BranchNodeCompact>,
     /// Last key with value.
     last_key: Option<Nibbles>,
 }
@@ -82,16 +65,8 @@ where
     C: DbCursorRO<tables::AccountsTrie> + Send + Sync,
 {
     /// Create a new account trie cursor.
-    pub(crate) const fn new(
-        cursor: C,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
-    ) -> Self {
-        Self { cursor, trie_cache, last_key: None }
+    pub(crate) const fn new(cursor: C) -> Self {
+        Self { cursor, last_key: None }
     }
 
     /// Seek an exact match for the given key in the account trie.
@@ -99,7 +74,7 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        if let Some(result) = self.trie_cache.get_account(&key) {
+        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_account(&key) {
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
@@ -121,7 +96,7 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        if let Some(result) = self.trie_cache.get_account(&key) {
+        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_account(&key) {
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
@@ -217,9 +192,6 @@ where
 pub(crate) struct CachedStorageTrieCursor<C> {
     /// Database trie storage cursor.
     pub cursor: C,
-    /// Cache layer.
-    trie_cache:
-        &'static dyn TrieCache<Nibbles, BranchNodeCompact, (B256, Nibbles), BranchNodeCompact>,
     /// Hashed address used for cursor positioning.
     hashed_address: B256,
     /// Last key with value.
@@ -231,17 +203,8 @@ where
     C: DbCursorRO<tables::StoragesTrie> + DbDupCursorRO<tables::StoragesTrie> + Send + Sync,
 {
     /// Create a new storage trie cursor.
-    pub(crate) const fn new(
-        cursor: C,
-        hashed_address: B256,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
-    ) -> Self {
-        Self { cursor, trie_cache, hashed_address, last_key: None }
+    pub(crate) const fn new(cursor: C, hashed_address: B256) -> Self {
+        Self { cursor, hashed_address, last_key: None }
     }
 
     /// Seek an exact match for the given key in the storage trie.
@@ -250,7 +213,7 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
-        if let Some(result) = self.trie_cache.get_storage(&storage_key) {
+        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_storage(&storage_key) {
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
@@ -280,7 +243,7 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
-        if let Some(result) = self.trie_cache.get_storage(&storage_key) {
+        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_storage(&storage_key) {
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
@@ -467,7 +430,7 @@ mod tests {
 
             // cached cursor
             let cursor = provider.tx_ref().cursor_write::<tables::AccountsTrie>().unwrap();
-            let mut cache_cursor = CachedAccountTrieCursor::new(cursor, &cached_trie);
+            let mut cache_cursor = CachedAccountTrieCursor::new(cursor);
             assert_eq!(cache_cursor.seek(key1.clone()).unwrap().unwrap().1, value1);
             assert_eq!(cache_cursor.current().unwrap().unwrap(), key1.clone());
 
@@ -481,7 +444,7 @@ mod tests {
             assert_eq!(cache_cursor.current().unwrap().unwrap(), key3.clone());
 
             let cursor = provider.tx_ref().cursor_write::<tables::AccountsTrie>().unwrap();
-            let mut cache_cursor = CachedAccountTrieCursor::new(cursor, &cached_trie);
+            let mut cache_cursor = CachedAccountTrieCursor::new(cursor);
             assert_eq!(cache_cursor.seek(key1.clone()).unwrap().unwrap().1, value1);
             assert_eq!(cache_cursor.current().unwrap().unwrap(), key1.clone());
 
@@ -584,8 +547,7 @@ mod tests {
 
             // cached cursor
             let cursor = provider.tx_ref().cursor_dup_write::<tables::StoragesTrie>().unwrap();
-            let mut cache_cursor =
-                CachedStorageTrieCursor::new(cursor, hashed_address1, &cached_trie);
+            let mut cache_cursor = CachedStorageTrieCursor::new(cursor, hashed_address1);
             assert_eq!(cache_cursor.seek(key1.clone().into()).unwrap().unwrap().1, value1);
             assert_eq!(cache_cursor.current().unwrap().unwrap(), key1.0);
 
@@ -596,8 +558,7 @@ mod tests {
             assert_eq!(cache_cursor.current().unwrap().unwrap(), key2.0);
 
             let cursor = provider.tx_ref().cursor_dup_write::<tables::StoragesTrie>().unwrap();
-            let mut cache_cursor =
-                CachedStorageTrieCursor::new(cursor, hashed_address2, &cached_trie);
+            let mut cache_cursor = CachedStorageTrieCursor::new(cursor, hashed_address2);
             assert_eq!(cache_cursor.seek(key3.clone().into()).unwrap().unwrap().1, value3);
             assert_eq!(cache_cursor.current().unwrap().unwrap(), key3.0);
 
@@ -642,7 +603,7 @@ mod tests {
         storages.insert((hashed_address1.clone(), key3.clone().into()), value3.clone());
 
         let cursor = provider.tx_ref().cursor_dup_write::<tables::StoragesTrie>().unwrap();
-        let mut cache_cursor = CachedStorageTrieCursor::new(cursor, hashed_address1, &cached_trie);
+        let mut cache_cursor = CachedStorageTrieCursor::new(cursor, hashed_address1);
         assert_eq!(cache_cursor.seek(key2.clone().0).unwrap().unwrap().1, value2.clone());
         assert_eq!(cache_cursor.seek(key3.clone().0).unwrap().unwrap().1, value3.clone());
         assert_eq!(cache_cursor.next().unwrap().unwrap().1, value1.clone());

@@ -113,13 +113,6 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateRootProvider
         _nodes: TrieUpdates,
         _state: HashedPostState,
         _prefix_sets: TriePrefixSetsMut,
-        _hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        _trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)> {
         unimplemented!("not implemented")
     }

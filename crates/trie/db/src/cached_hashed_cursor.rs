@@ -14,22 +14,18 @@ use reth_trie::{
 /// Factory for creating cached hashed cursors.
 pub(crate) struct CachedHashedCursorFactory<'a, TX> {
     tx: &'a TX,
-    hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
 }
 
 impl<'a, TX> Clone for CachedHashedCursorFactory<'a, TX> {
     fn clone(&self) -> Self {
-        Self { tx: self.tx, hashed_cache: self.hashed_cache }
+        Self { tx: self.tx }
     }
 }
 
 impl<'a, TX> CachedHashedCursorFactory<'a, TX> {
     /// Creates a new `CachedHashedCursorFactory`.
-    pub(crate) const fn new(
-        tx: &'a TX,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-    ) -> Self {
-        Self { tx, hashed_cache }
+    pub(crate) const fn new(tx: &'a TX) -> Self {
+        Self { tx }
     }
 }
 
@@ -39,10 +35,7 @@ impl<'a, TX: DbTx> HashedCursorFactory for CachedHashedCursorFactory<'a, TX> {
 
     /// Creates a new hashed account cursor.
     fn hashed_account_cursor(&self) -> Result<Self::AccountCursor, reth_db::DatabaseError> {
-        Ok(CachedHashedAccountCursor::new(
-            self.tx.cursor_read::<tables::HashedAccounts>()?,
-            self.hashed_cache,
-        ))
+        Ok(CachedHashedAccountCursor::new(self.tx.cursor_read::<tables::HashedAccounts>()?))
     }
 
     /// Creates a new hashed storage cursor.
@@ -53,7 +46,6 @@ impl<'a, TX: DbTx> HashedCursorFactory for CachedHashedCursorFactory<'a, TX> {
         Ok(CachedHashedStorageCursor::new(
             self.tx.cursor_dup_read::<tables::HashedStorages>()?,
             hashed_address,
-            self.hashed_cache,
         ))
     }
 }
@@ -62,8 +54,6 @@ impl<'a, TX: DbTx> HashedCursorFactory for CachedHashedCursorFactory<'a, TX> {
 pub(crate) struct CachedHashedAccountCursor<C> {
     /// Database hashed account cursor.
     cursor: C,
-    /// Cache layer.
-    hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
     /// Last key with value.
     last_key: Option<B256>,
 }
@@ -73,16 +63,13 @@ where
     C: DbCursorRO<tables::HashedAccounts>,
 {
     /// Creates a new `CachedHashedAccountCursor`.
-    pub(crate) const fn new(
-        cursor: C,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-    ) -> Self {
-        Self { cursor, hashed_cache, last_key: None }
+    pub(crate) const fn new(cursor: C) -> Self {
+        Self { cursor, last_key: None }
     }
 
     /// Seeks the cursor to the specified key.
     fn seek_inner(&mut self, key: B256) -> Result<Option<(B256, Account)>, DatabaseError> {
-        if let Some(result) = self.hashed_cache.get_account(&key) {
+        if let Some(result) = crate::cache::CACHED_HASH_STATES.get_account(&key) {
             self.last_key = Some(key);
 
             return Ok(Some((key, result)))
@@ -160,8 +147,6 @@ where
 pub(crate) struct CachedHashedStorageCursor<C> {
     /// Database hashed storage cursor.
     cursor: C,
-    /// Cache layer.
-    hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
     /// Target hashed address of the account that the storage belongs to.
     hashed_address: B256,
     /// Last key with value.
@@ -173,18 +158,14 @@ where
     C: DbCursorRO<tables::HashedStorages> + DbDupCursorRO<tables::HashedStorages>,
 {
     /// Creates a new `CachedHashedStorageCursor`.
-    pub(crate) const fn new(
-        cursor: C,
-        hashed_address: B256,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-    ) -> Self {
-        Self { cursor, hashed_cache, hashed_address, last_key: None }
+    pub(crate) const fn new(cursor: C, hashed_address: B256) -> Self {
+        Self { cursor, hashed_address, last_key: None }
     }
 
     /// Seeks the cursor to the specified subkey.
     fn seek_inner(&mut self, subkey: B256) -> Result<Option<(B256, U256)>, DatabaseError> {
         let storage_key = (self.hashed_address, subkey);
-        if let Some(result) = self.hashed_cache.get_storage(&storage_key) {
+        if let Some(result) = crate::cache::CACHED_HASH_STATES.get_storage(&storage_key) {
             self.last_key = Some(subkey);
             return Ok(Some((subkey, result)))
         };

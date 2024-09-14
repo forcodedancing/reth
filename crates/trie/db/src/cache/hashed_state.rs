@@ -99,7 +99,7 @@ impl TrieCache<B256, Account, HashedStorageKey, U256> for CACHED_HASH_STATES {
 }
 
 /// Write hashed state to the cache
-pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
+pub fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
     // Write hashed account changes
     for (hashed_address, account) in hashed_state.accounts().accounts_sorted() {
         if let Some(account) = account {
@@ -134,7 +134,7 @@ pub(crate) fn write_hashed_state(hashed_state: &HashedPostStateSorted) {
 }
 
 /// Clear cached accounts and storages
-pub(crate) fn clear_hashed_state() {
+pub fn clear_hashed_state() {
     CACHED_HASH_STATES.0.clear();
     CACHED_HASH_STATES.1.clear();
 }

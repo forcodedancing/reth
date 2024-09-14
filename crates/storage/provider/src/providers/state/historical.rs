@@ -341,13 +341,6 @@ impl<'b, TX: DbTx> StateRootProvider for HistoricalStateProviderRef<'b, TX> {
         nodes: TrieUpdates,
         hashed_state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)> {
         let mut revert_state = self.revert_state()?;
         let mut revert_prefix_sets = revert_state.construct_prefix_sets();
@@ -358,8 +351,6 @@ impl<'b, TX: DbTx> StateRootProvider for HistoricalStateProviderRef<'b, TX> {
             nodes,
             revert_state,
             revert_prefix_sets,
-            hashed_cache,
-            trie_cache,
         )
         .map_err(|err| ProviderError::Database(err.into()))
     }

@@ -59,21 +59,8 @@ impl<'a> reth_storage_api::StateRootProvider for StateProviderTraitObjWrapper<'a
         nodes: reth_trie::updates::TrieUpdates,
         hashed_state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)> {
-        self.0.state_root_from_nodes_caches_with_updates(
-            nodes,
-            hashed_state,
-            prefix_sets,
-            hashed_cache,
-            trie_cache,
-        )
+        self.0.state_root_from_nodes_caches_with_updates(nodes, hashed_state, prefix_sets)
     }
 }
 

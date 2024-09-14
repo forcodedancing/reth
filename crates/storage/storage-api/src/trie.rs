@@ -51,13 +51,6 @@ pub trait StateRootProvider: Send + Sync {
         nodes: TrieUpdates,
         hashed_state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)>;
 }
 

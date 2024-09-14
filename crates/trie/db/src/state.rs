@@ -137,13 +137,6 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
         intermediate_nodes: TrieUpdates,
         post_state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> Result<(B256, TrieUpdates), StateRootError>;
 }
 
@@ -255,25 +248,18 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
         intermediate_nodes: TrieUpdates,
         post_state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> Result<(B256, TrieUpdates), StateRootError> {
         let state_sorted = post_state.into_sorted();
         let nodes_sorted = intermediate_nodes.into_sorted();
         StateRoot::new(
             InMemoryTrieCursorFactory::new(
                 //CachedTrieCursorFactory::new(tx, trie_cache),
-                DatabaseTrieCursorFactory::new(tx),
+                CachedTrieCursorFactory::new(tx),
                 &nodes_sorted,
             ),
             HashedPostStateCursorFactory::new(
-                CachedHashedCursorFactory::new(tx, hashed_cache),
-                //DatabaseHashedCursorFactory::new(tx),
+                //CachedHashedCursorFactory::new(tx, hashed_cache),
+                DatabaseHashedCursorFactory::new(tx),
                 &state_sorted,
             ),
         )

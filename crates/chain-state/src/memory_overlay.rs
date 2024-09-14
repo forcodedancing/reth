@@ -144,13 +144,6 @@ impl StateRootProvider for MemoryOverlayStateProvider {
         nodes: TrieUpdates,
         state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)> {
         let MemoryOverlayTrieState { mut trie_nodes, mut hashed_state } = self.trie_state().clone();
         trie_nodes.extend(nodes);
@@ -159,8 +152,6 @@ impl StateRootProvider for MemoryOverlayStateProvider {
             trie_nodes,
             hashed_state,
             prefix_sets,
-            hashed_cache,
-            trie_cache,
         )
     }
 }

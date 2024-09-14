@@ -920,18 +920,6 @@ mod tests {
             _nodes: TrieUpdates,
             _post_state: HashedPostState,
             _prefix_sets: TriePrefixSetsMut,
-            _: &'static (dyn reth_trie::cache::TrieCache<
-                B256,
-                Account,
-                (B256, B256),
-                reth_primitives::alloy_primitives::Uint<256, 4>,
-            > + 'static),
-            _: &'static (dyn reth_trie::cache::TrieCache<
-                Nibbles,
-                BranchNodeCompact,
-                (B256, Nibbles),
-                BranchNodeCompact,
-            > + 'static),
         ) -> ProviderResult<(B256, TrieUpdates)> {
             Ok((B256::random(), TrieUpdates::default()))
         }

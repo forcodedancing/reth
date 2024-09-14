@@ -110,7 +110,7 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
 }
 
 // Write trie updates
-pub(crate) fn write_trie_updates(trie_updates: &TrieUpdates) {
+pub fn write_trie_updates(trie_updates: &TrieUpdates) {
     if trie_updates.is_empty() {
         return;
     }
@@ -191,7 +191,7 @@ fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTri
 }
 
 // Clear all trie nodes from the cache
-pub(crate) fn clear_trie_node() {
+pub fn clear_trie_node() {
     CACHED_TRIE_NODES.0.clear();
     CACHED_TRIE_NODES.1.clear();
 }

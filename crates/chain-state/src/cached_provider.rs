@@ -31,28 +31,12 @@ pub trait StateCache<AK, AV, SK, SV, CK, CV>: Send + Sync {
 #[allow(missing_debug_implementations)]
 pub struct CachedStateProvider {
     pub(crate) underlying: Box<dyn StateProvider>,
-    state_cache: &'static dyn StateCache<
-        Address,
-        Account,
-        (Address, StorageKey),
-        StorageValue,
-        B256,
-        Bytecode,
-    >,
-    hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-    trie_cache:
-        &'static dyn TrieCache<Nibbles, BranchNodeCompact, (B256, Nibbles), BranchNodeCompact>,
 }
 
 impl CachedStateProvider {
     /// Create a new `CachedStateProvider`
     pub fn new(underlying: Box<dyn StateProvider>) -> Self {
-        Self {
-            underlying,
-            state_cache: &crate::cache::CACHED_PLAIN_STATES,
-            hashed_cache: &crate::cache::CACHED_HASH_STATES,
-            trie_cache: &crate::cache::CACHED_TRIE_NODES,
-        }
+        Self { underlying }
     }
 
     /// Turn this state provider into a [`StateProviderBox`]
@@ -116,13 +100,7 @@ impl StateRootProvider for CachedStateProvider {
         state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
     ) -> ProviderResult<(B256, TrieUpdates)> {
-        self.state_root_from_nodes_caches_with_updates(
-            nodes,
-            state,
-            prefix_sets,
-            self.hashed_cache,
-            self.trie_cache,
-        )
+        self.state_root_from_nodes_caches_with_updates(nodes, state, prefix_sets)
     }
 
     fn state_root_from_nodes_caches_with_updates(
@@ -130,21 +108,8 @@ impl StateRootProvider for CachedStateProvider {
         nodes: TrieUpdates,
         state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)> {
-        self.underlying.state_root_from_nodes_caches_with_updates(
-            nodes,
-            state,
-            prefix_sets,
-            hashed_cache,
-            trie_cache,
-        )
+        self.underlying.state_root_from_nodes_caches_with_updates(nodes, state, prefix_sets)
     }
 }
 
@@ -195,7 +160,7 @@ impl StateProvider for CachedStateProvider {
         // }
         // Fallback to underlying provider
         if let Some(value) = self.underlying.bytecode_by_hash(code_hash)? {
-            self.state_cache.insert_code(code_hash, value.clone());
+            crate::cache::CACHED_PLAIN_STATES.insert_code(code_hash, value.clone());
             return Ok(Some(value))
         }
         Ok(None)

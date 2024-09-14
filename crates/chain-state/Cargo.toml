@@ -20,6 +20,7 @@ reth-metrics.workspace = true
 reth-primitives.workspace = true
 reth-storage-api.workspace = true
 reth-trie.workspace = true
+reth-trie-db.workspace = true
 reth-revm.workspace = true
 
 # async

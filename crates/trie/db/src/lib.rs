@@ -1,5 +1,6 @@
 //! An integration of [`reth-trie`] with [`reth-db`].
 
+pub mod cache;
 mod cached_hashed_cursor;
 mod cached_trie_cursor;
 mod hashed_cursor;

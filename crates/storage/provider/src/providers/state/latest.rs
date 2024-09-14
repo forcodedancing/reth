@@ -120,21 +120,12 @@ impl<'b, TX: DbTx> StateRootProvider for LatestStateProviderRef<'b, TX> {
         nodes: TrieUpdates,
         hashed_state: HashedPostState,
         prefix_sets: TriePrefixSetsMut,
-        hashed_cache: &'static dyn TrieCache<B256, Account, (B256, B256), U256>,
-        trie_cache: &'static dyn TrieCache<
-            Nibbles,
-            BranchNodeCompact,
-            (B256, Nibbles),
-            BranchNodeCompact,
-        >,
     ) -> ProviderResult<(B256, TrieUpdates)> {
         StateRoot::overlay_root_from_nodes_caches_with_updates(
             self.tx,
             nodes,
             hashed_state,
             prefix_sets,
-            hashed_cache,
-            trie_cache,
         )
         .map_err(|err| ProviderError::Database(err.into()))
     }
