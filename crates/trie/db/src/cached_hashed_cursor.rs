@@ -327,14 +327,14 @@ mod tests {
             }
             // cached cursor
             let cursor = provider.tx_ref().cursor_read::<tables::HashedAccounts>().unwrap();
-            let mut cache_cursor = CachedHashedAccountCursor::new(cursor, &cached_states);
+            let mut cache_cursor = CachedHashedAccountCursor::new(cursor);
             assert_eq!(cache_cursor.seek(hashed_acc1.clone()).unwrap().unwrap().1, value1);
             assert_eq!(cache_cursor.seek(hashed_acc2.clone()).unwrap().unwrap().1, value2.clone());
             assert_eq!(cache_cursor.seek(hashed_acc3.clone()).unwrap().unwrap().1, value3.clone());
             assert_eq!(cache_cursor.next(), Ok(None));
 
             let cursor = provider.tx_ref().cursor_read::<tables::HashedAccounts>().unwrap();
-            let mut cache_cursor = CachedHashedAccountCursor::new(cursor, &cached_states);
+            let mut cache_cursor = CachedHashedAccountCursor::new(cursor);
             assert_eq!(cache_cursor.seek(hashed_acc1.clone()).unwrap().unwrap().1, value1);
             assert_eq!(cache_cursor.next().unwrap().unwrap().1, value2.clone());
             assert_eq!(cache_cursor.next().unwrap().unwrap().1, value3.clone());
@@ -409,16 +409,14 @@ mod tests {
 
             // cached cursor
             let cursor = provider.tx_ref().cursor_dup_read::<tables::HashedStorages>().unwrap();
-            let mut cache_cursor =
-                CachedHashedStorageCursor::new(cursor, hashed_address1, &cached_states);
+            let mut cache_cursor = CachedHashedStorageCursor::new(cursor, hashed_address1);
             assert_eq!(cache_cursor.seek(key1.clone().into()).unwrap().unwrap().1, value1);
             assert_eq!(cache_cursor.seek(key2.clone().into()).unwrap().unwrap().1, value2);
             assert_eq!(cache_cursor.seek(key3.clone().into()), Ok(None)); //not found
             assert_eq!(cache_cursor.next(), Ok(None));
 
             let cursor = provider.tx_ref().cursor_dup_read::<tables::HashedStorages>().unwrap();
-            let mut cache_cursor =
-                CachedHashedStorageCursor::new(cursor, hashed_address2, &cached_states);
+            let mut cache_cursor = CachedHashedStorageCursor::new(cursor, hashed_address2);
             assert_eq!(cache_cursor.seek(key1.clone().into()).unwrap().unwrap().1, value3); //to the first one
             assert_eq!(cache_cursor.next(), Ok(Some((key4.clone().into(), value4.clone()))));
 
@@ -457,8 +455,7 @@ mod tests {
         storages.insert((hashed_address1.clone(), key3.clone().into()), value3.clone());
 
         let cursor = provider.tx_ref().cursor_dup_read::<tables::HashedStorages>().unwrap();
-        let mut cache_cursor =
-            CachedHashedStorageCursor::new(cursor, hashed_address1, &cached_states);
+        let mut cache_cursor = CachedHashedStorageCursor::new(cursor, hashed_address1);
 
         assert_eq!(cache_cursor.seek(key2.clone()).unwrap().unwrap().1, value2);
         assert_eq!(cache_cursor.seek(key3.clone()).unwrap().unwrap().1, value3);

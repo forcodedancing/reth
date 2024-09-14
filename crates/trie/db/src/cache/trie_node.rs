@@ -22,7 +22,7 @@ const ACCOUNT_CACHE_SIZE: usize = 1000000;
 const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 10;
 
 // Type alias for Trie storage key
-type TrieStorageKey = (B256, Nibbles);
+pub type TrieStorageKey = (B256, Nibbles);
 
 lazy_static! {
     /// Cache for account trie nodes
@@ -43,7 +43,7 @@ lazy_static! {
 // Implementation of methods for CACHED_TRIE_NODES
 impl CACHED_TRIE_NODES {
     // Insert an account node into the cache
-    fn insert_account(&self, k: Nibbles, v: BranchNodeCompact) {
+    pub fn insert_account(&self, k: Nibbles, v: BranchNodeCompact) {
         TRIE_ACCOUNTS.insert(k, v)
     }
 
@@ -53,7 +53,7 @@ impl CACHED_TRIE_NODES {
     }
 
     // Insert a storage node into the cache
-    fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
+    pub(crate) fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
         let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
         if let Some(set) = map.get_mut(&k.0) {
             set.insert(k.clone().1);
