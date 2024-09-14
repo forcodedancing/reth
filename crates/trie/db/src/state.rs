@@ -267,11 +267,13 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
         let nodes_sorted = intermediate_nodes.into_sorted();
         StateRoot::new(
             InMemoryTrieCursorFactory::new(
-                CachedTrieCursorFactory::new(tx, trie_cache),
+                //CachedTrieCursorFactory::new(tx, trie_cache),
+                DatabaseTrieCursorFactory::new(tx),
                 &nodes_sorted,
             ),
             HashedPostStateCursorFactory::new(
-                CachedHashedCursorFactory::new(tx, hashed_cache),
+                //CachedHashedCursorFactory::new(tx, hashed_cache),
+                DatabaseHashedCursorFactory::new(tx),
                 &state_sorted,
             ),
         )
