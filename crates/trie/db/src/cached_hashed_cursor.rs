@@ -1,3 +1,4 @@
+use metrics::counter;
 use reth_db::tables;
 use reth_db_api::{
     cursor::{DbCursorRO, DbDupCursorRO},
@@ -141,6 +142,8 @@ where
 
     /// Moves the cursor to the next entry.
     fn next(&mut self) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
+        counter!("hashed_next.account.total").increment(1);
+
         let next = match self.last_key {
             Some(last_account) => {
                 let entry = self.next_inner(last_account)?;
@@ -241,6 +244,8 @@ where
 
     /// Moves the cursor to the next entry.
     fn next(&mut self) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
+        counter!("hashed_next.storage.total").increment(1);
+
         let next = match self.last_key {
             Some(last_slot) => {
                 let entry = self.next_inner(last_slot)?;

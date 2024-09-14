@@ -1,3 +1,4 @@
+use metrics::counter;
 use reth_db::tables;
 use reth_db_api::{
     cursor::{DbCursorRO, DbDupCursorRO},
@@ -193,6 +194,8 @@ where
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
+        counter!("trie_next.account.total").increment(1);
+
         let next = match &self.last_key {
             Some(last) => self.next_inner(last.clone())?,
             // no previous entry was found
@@ -353,6 +356,8 @@ where
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
+        counter!("trie_next.storage.total").increment(1);
+
         let next = match &self.last_key {
             Some(last) => {
                 let entry = self.next_inner(last.clone())?;
