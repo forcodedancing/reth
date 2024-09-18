@@ -53,7 +53,7 @@ impl CACHED_TRIE_NODES {
     }
 
     // Insert a storage node into the cache
-    pub(crate) fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
+    pub fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
         let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
         if let Some(set) = map.get_mut(&k.0) {
             set.insert(k.clone().1);

@@ -77,6 +77,9 @@ where
         match self.cursor.seek(key)? {
             Some((key, value)) => {
                 self.last_key = Some(key);
+
+                crate::cache::CACHED_HASH_STATES.insert_account(key, value);
+
                 Ok(Some((key, value)))
             }
             None => {
@@ -97,6 +100,9 @@ where
                 if entry.0 > last_key {
                     // next is done already
                     self.last_key = Some(entry.0);
+
+                    crate::cache::CACHED_HASH_STATES.insert_account(entry.0, entry.1);
+
                     return Ok(Some((entry.0, entry.1)));
                 }
             }
@@ -105,6 +111,9 @@ where
         match self.cursor.next()? {
             Some(entry) => {
                 self.last_key = Some(entry.0);
+
+                crate::cache::CACHED_HASH_STATES.insert_account(entry.0, entry.1);
+
                 Ok(Some((entry.0, entry.1)))
             }
             None => {
@@ -173,6 +182,10 @@ where
         match self.cursor.seek_by_key_subkey(self.hashed_address, subkey)? {
             Some(entry) => {
                 self.last_key = Some(entry.key);
+
+                crate::cache::CACHED_HASH_STATES
+                    .insert_storage((self.hashed_address, entry.key), entry.value);
+
                 Ok(Some((entry.key, entry.value)))
             }
             None => {
@@ -201,6 +214,10 @@ where
         match self.cursor.next_dup_val()? {
             Some(entry) => {
                 self.last_key = Some(entry.key);
+
+                crate::cache::CACHED_HASH_STATES
+                    .insert_storage((self.hashed_address, entry.key), entry.value);
+
                 Ok(Some((entry.key, entry.value)))
             }
             None => {

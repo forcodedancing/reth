@@ -2,6 +2,7 @@ use reth_errors::ProviderResult;
 use reth_primitives::{
     Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, B256, U256,
 };
+use reth_revm::database::EvmStateProvider;
 use reth_storage_api::{
     AccountReader, BlockHashReader, StateProofProvider, StateProvider, StateProviderBox,
     StateRootProvider, StorageRootProvider,
@@ -47,7 +48,7 @@ impl CachedStateProvider {
 
 impl BlockHashReader for CachedStateProvider {
     fn block_hash(&self, number: BlockNumber) -> ProviderResult<Option<B256>> {
-        self.underlying.block_hash(number)
+        BlockHashReader::block_hash(&self.underlying, number)
     }
 
     fn canonical_hashes_range(
@@ -67,7 +68,11 @@ impl AccountReader for CachedStateProvider {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
-        self.underlying.basic_account(address)
+        if let Some(value) = AccountReader::basic_account(&self.underlying, address)? {
+            crate::cache::CACHED_PLAIN_STATES.insert_account(address, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }
 
@@ -150,7 +155,11 @@ impl StateProvider for CachedStateProvider {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
-        self.underlying.storage(address, storage_key)
+        if let Some(value) = StateProvider::storage(&self.underlying, address, storage_key)? {
+            crate::cache::CACHED_PLAIN_STATES.insert_storage(key, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
@@ -159,7 +168,7 @@ impl StateProvider for CachedStateProvider {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
-        if let Some(value) = self.underlying.bytecode_by_hash(code_hash)? {
+        if let Some(value) = StateProvider::bytecode_by_hash(&self.underlying, code_hash)? {
             crate::cache::CACHED_PLAIN_STATES.insert_code(code_hash, value.clone());
             return Ok(Some(value))
         }

@@ -34,7 +34,7 @@ lazy_static! {
 // Implement methods for CACHED_HASH_STATES
 impl CACHED_HASH_STATES {
     /// Insert an account into the cache
-    fn insert_account(&self, k: B256, v: Account) {
+    pub fn insert_account(&self, k: B256, v: Account) {
         HASHED_ACCOUNTS.insert(k, v)
     }
 
@@ -44,7 +44,7 @@ impl CACHED_HASH_STATES {
     }
 
     /// Insert storage into the cache
-    fn insert_storage(&self, k: HashedStorageKey, v: U256) {
+    pub fn insert_storage(&self, k: HashedStorageKey, v: U256) {
         let mut map = HASHED_STORAGES_MAPPING.lock().unwrap();
         if let Some(set) = map.get_mut(&k.0) {
             set.insert(k.1);

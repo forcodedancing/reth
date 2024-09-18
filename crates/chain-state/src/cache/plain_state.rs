@@ -38,8 +38,12 @@ lazy_static! {
 }
 
 impl CACHED_PLAIN_STATES {
+    pub fn insert_account(&self, k: Address, v: Account) {
+        PLAIN_ACCOUNTS.insert(k, v);
+    }
+
     /// Insert storage into the cache
-    fn insert_storage(&self, k: AddressStorageKey, v: U256) {
+    pub fn insert_storage(&self, k: AddressStorageKey, v: U256) {
         let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
         if let Some(set) = map.get_mut(&k.0) {
             set.insert(k.1);

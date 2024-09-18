@@ -82,9 +82,12 @@ where
         };
 
         self.hit_cache = false;
-        match self.cursor.seek_exact(StoredNibbles(key))? {
+        match self.cursor.seek_exact(StoredNibbles(key.clone()))? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
+
+                crate::cache::CACHED_TRIE_NODES.insert_account(key, value.1.clone());
+
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -109,6 +112,9 @@ where
         match self.cursor.seek(StoredNibbles(key))? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
+
+                crate::cache::CACHED_TRIE_NODES.insert_account(value.0 .0.clone(), value.1.clone());
+
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -144,6 +150,9 @@ where
         match self.cursor.next()? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
+
+                crate::cache::CACHED_TRIE_NODES.insert_account(value.0 .0.clone(), value.1.clone());
+
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -233,6 +242,11 @@ where
             .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
         {
             Some(entry) => {
+                crate::cache::CACHED_TRIE_NODES.insert_storage(
+                    (self.hashed_address, entry.nibbles.0.clone()),
+                    entry.node.clone(),
+                );
+
                 self.last_key = Some(entry.nibbles.0.clone());
                 if entry.nibbles == StoredNibblesSubKey(key) {
                     Ok(Some((entry.nibbles.0, entry.node)))
@@ -263,6 +277,12 @@ where
         match self.cursor.seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))? {
             Some(value) => {
                 self.last_key = Some(value.nibbles.0.clone());
+
+                crate::cache::CACHED_TRIE_NODES.insert_storage(
+                    (self.hashed_address, value.nibbles.0.clone()),
+                    value.node.clone(),
+                );
+
                 Ok(Some((value.nibbles.0, value.node)))
             }
             None => {
