@@ -258,8 +258,8 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
                 &nodes_sorted,
             ),
             HashedPostStateCursorFactory::new(
-                CachedHashedCursorFactory::new(tx),
-                //DatabaseHashedCursorFactory::new(tx),
+                //CachedHashedCursorFactory::new(tx),
+                DatabaseHashedCursorFactory::new(tx),
                 &state_sorted,
             ),
         )
