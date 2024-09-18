@@ -3,6 +3,7 @@ use crate::{
     forward_cursor::ForwardInMemoryCursor, HashedAccountsSorted, HashedPostStateSorted,
     HashedStorageSorted,
 };
+use metrics::counter;
 use reth_primitives::{Account, B256, U256};
 use reth_storage_errors::db::DatabaseError;
 use std::collections::HashSet;
@@ -146,6 +147,8 @@ where
     /// The returned account key is memoized and the cursor remains positioned at that key until
     /// [`HashedCursor::seek`] or [`HashedCursor::next`] are called.
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
+        counter!("post_state.account.total").increment(1);
+
         // Find the closes account.
         let entry = self.seek_inner(key)?;
         self.last_account = entry.as_ref().map(|entry| entry.0);
@@ -283,6 +286,8 @@ where
 
     /// Seek the next account storage entry for a given hashed key pair.
     fn seek(&mut self, subkey: B256) -> Result<Option<(B256, Self::Value)>, DatabaseError> {
+        counter!("post_state.storage.total").increment(1);
+
         let entry = self.seek_inner(subkey)?;
         self.last_slot = entry.as_ref().map(|entry| entry.0);
         Ok(entry)
