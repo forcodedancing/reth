@@ -124,6 +124,7 @@ where
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if self.hit_cache {
+            counter!("trie_next.account.extra-seek").increment(1);
             self.hit_cache = false;
             match self.cursor.seek(StoredNibbles(last_key.clone()))? {
                 None => {
@@ -277,6 +278,7 @@ where
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if self.hit_cache {
+            counter!("trie_next.storage.extra-seek").increment(1);
             self.hit_cache = false;
             match self
                 .cursor
