@@ -1,4 +1,4 @@
-use super::ExecutedBlock;
+use super::{ExecutedBlock, StateCache};
 use reth_errors::ProviderResult;
 use reth_primitives::{
     keccak256, Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, B256, U256,
@@ -97,7 +97,15 @@ impl AccountReader for MemoryOverlayStateProvider {
             }
         }
 
-        self.historical.basic_account(address)
+        if let Some(v) = crate::cache::CACHED_PLAIN_STATES.get_account(&address) {
+            return Ok(Some(v))
+        }
+
+        if let Some(value) = AccountReader::basic_account(&self.historical, address)? {
+            crate::cache::CACHED_PLAIN_STATES.insert_account(address, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }
 
@@ -136,7 +144,11 @@ impl StateRootProvider for MemoryOverlayStateProvider {
         let MemoryOverlayTrieState { mut trie_nodes, mut hashed_state } = self.trie_state().clone();
         trie_nodes.extend(nodes);
         hashed_state.extend(state);
-        self.historical.state_root_from_nodes_with_updates(trie_nodes, hashed_state, prefix_sets)
+        self.historical.state_root_from_nodes_caches_with_updates(
+            trie_nodes,
+            hashed_state,
+            prefix_sets,
+        )
     }
 
     fn state_root_from_nodes_caches_with_updates(
@@ -208,7 +220,16 @@ impl StateProvider for MemoryOverlayStateProvider {
             }
         }
 
-        self.historical.storage(address, storage_key)
+        let key = (address, storage_key);
+        if let Some(v) = crate::cache::CACHED_PLAIN_STATES.get_storage(&key) {
+            return Ok(Some(v))
+        }
+
+        if let Some(value) = StateProvider::storage(&self.historical, address, storage_key)? {
+            crate::cache::CACHED_PLAIN_STATES.insert_storage(key, value);
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
@@ -218,7 +239,15 @@ impl StateProvider for MemoryOverlayStateProvider {
             }
         }
 
-        self.historical.bytecode_by_hash(code_hash)
+        if let Some(v) = crate::cache::CACHED_PLAIN_STATES.get_code(&code_hash) {
+            return Ok(Some(v))
+        }
+
+        if let Some(value) = StateProvider::bytecode_by_hash(&self.historical, code_hash)? {
+            crate::cache::CACHED_PLAIN_STATES.insert_code(code_hash, value.clone());
+            return Ok(Some(value))
+        }
+        Ok(None)
     }
 }
 
