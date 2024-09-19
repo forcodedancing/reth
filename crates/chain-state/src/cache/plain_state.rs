@@ -127,22 +127,22 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
     }
 
     // Update storage cache
-    for storage in &change_set.storage {
-        if storage.wipe_storage {
-            let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-            if let Some(set) = map.get(&storage.address) {
-                for s in set {
-                    let storage_key = (storage.address, *s);
-                    PLAIN_STORAGES.remove(&storage_key);
-                }
-            }
-            map.remove(&storage.address);
-        }
-
-        for (k, v) in storage.storage.clone() {
-            CACHED_PLAIN_STATES.insert_storage((storage.address, StorageKey::from(k)), v);
-        }
-    }
+    // for storage in &change_set.storage {
+    //     if storage.wipe_storage {
+    //         let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+    //         if let Some(set) = map.get(&storage.address) {
+    //             for s in set {
+    //                 let storage_key = (storage.address, *s);
+    //                 PLAIN_STORAGES.remove(&storage_key);
+    //             }
+    //         }
+    //         map.remove(&storage.address);
+    //     }
+    //
+    //     for (k, v) in storage.storage.clone() {
+    //         CACHED_PLAIN_STATES.insert_storage((storage.address, StorageKey::from(k)), v);
+    //     }
+    // }
 }
 
 /// Clear cached accounts and storages.

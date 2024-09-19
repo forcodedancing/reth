@@ -254,7 +254,8 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
         StateRoot::new(
             InMemoryTrieCursorFactory::new(
                 //CachedTrieCursorFactory::new(tx, trie_cache),
-                CachedTrieCursorFactory::new(tx),
+                //CachedTrieCursorFactory::new(tx),
+                DatabaseTrieCursorFactory::new(tx),
                 &nodes_sorted,
             ),
             HashedPostStateCursorFactory::new(
