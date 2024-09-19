@@ -4,6 +4,8 @@ use crate::{
     engine::{DownloadRequest, EngineApiEvent, FromEngine},
     persistence::PersistenceHandle,
 };
+use lazy_static::lazy_static;
+use parking_lot::RwLock;
 use reth_beacon_consensus::{
     BeaconConsensusEngineEvent, BeaconEngineMessage, ForkchoiceStateTracker, InvalidHeaderCache,
     OnForkChoiceUpdated, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -44,6 +46,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     ops::Bound,
     sync::{
+        atomic::AtomicU64,
         mpsc::{Receiver, RecvError, RecvTimeoutError, Sender},
         Arc,
     },
@@ -60,6 +63,33 @@ mod config;
 mod metrics;
 use crate::{engine::EngineApiRequest, tree::metrics::EngineApiMetrics};
 pub use config::TreeConfig;
+
+lazy_static! {
+    static ref EXECUTION_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+    static ref ROOT_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_execution_total(block: u64, inc: u128) {
+    let mut binding = crate::tree::EXECUTION_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_execution", execution = ?new, block = ?block, "Total execution time");
+    }
+}
+
+pub(crate) fn update_root_total(block: u64, inc: u128) {
+    let mut binding = crate::tree::ROOT_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_root", root = ?new, block = ?block, "Total state root time");
+    }
+}
 
 /// Keeps track of the state of the tree.
 ///
@@ -1771,7 +1801,8 @@ where
         let elapsed = exec_time.elapsed();
         debug!(target: "engine", elapsed=?elapsed, ?block_number, "Executed block");
         metrics::histogram!("execution.total").record(elapsed.as_nanos() as f64);
-        
+        update_execution_total(block_number, elapsed.as_millis());
+
         self.consensus.validate_block_post_execution(
             &block,
             PostExecutionInput::new(&output.receipts, &output.requests),
@@ -1788,9 +1819,10 @@ where
             )
             .into())
         }
-        let elapsed=root_time.elapsed();
+        let elapsed = root_time.elapsed();
         debug!(target: "engine", elapsed=?elapsed, ?block_number, "Calculated state root");
         metrics::histogram!("state-root.total").record(elapsed.as_nanos() as f64);
+        update_root_total(block_number, elapsed.as_millis());
 
         let executed = ExecutedBlock {
             block: sealed_block.clone(),
