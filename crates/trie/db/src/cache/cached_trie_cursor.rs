@@ -58,6 +58,7 @@ pub(crate) struct CachedAccountTrieCursor<C> {
     cursor: C,
     /// Last key with value.
     last_key: Option<Nibbles>,
+    hit_cache: bool,
 }
 
 impl<C> CachedAccountTrieCursor<C>
@@ -66,7 +67,7 @@ where
 {
     /// Create a new account trie cursor.
     pub(crate) const fn new(cursor: C) -> Self {
-        Self { cursor, last_key: None }
+        Self { cursor, last_key: None, hit_cache: false }
     }
 
     /// Seek an exact match for the given key in the account trie.
@@ -75,14 +76,22 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_account(&key) {
+            self.hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.last_key = None;
+        self.hit_cache = false;
         match self.cursor.seek_exact(StoredNibbles(key.clone()))? {
-            Some(value) => Ok(Some((value.0 .0, value.1))),
-            None => Ok(None),
+            Some(value) => {
+                self.last_key = Some(value.0 .0.clone());
+
+                Ok(Some((value.0 .0, value.1)))
+            }
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -92,14 +101,22 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_account(&key) {
+            self.hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.last_key = None;
+        self.hit_cache = false;
         match self.cursor.seek(StoredNibbles(key))? {
-            Some(value) => Ok(Some((value.0 .0, value.1))),
-            None => Ok(None),
+            Some(value) => {
+                self.last_key = Some(value.0 .0.clone());
+
+                Ok(Some((value.0 .0, value.1)))
+            }
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -108,25 +125,34 @@ where
         &mut self,
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        match self.cursor.seek(StoredNibbles(last_key.clone()))? {
-            None => {
-                //counter!("trie_next.account.extra-seek").increment(1);
-                self.last_key = None;
-                return Ok(None);
-            }
-            Some(entry) => {
-                //counter!("trie_next.account.extra-seek").increment(1);
-                self.last_key = None;
-                if entry.0 .0.clone() > last_key {
-                    // next is done already
-                    return Ok(Some((entry.0 .0, entry.1)));
+        if self.hit_cache {
+            //counter!("trie_next.account.extra-seek").increment(1);
+            self.hit_cache = false;
+            match self.cursor.seek(StoredNibbles(last_key.clone()))? {
+                None => {
+                    self.last_key = None;
+                    return Ok(None);
                 }
-            }
-        };
+                Some(entry) => {
+                    if entry.0 .0.clone() > last_key.clone() {
+                        // next is done already
+                        self.last_key = Some(entry.0 .0.clone());
+                        return Ok(Some((entry.0 .0, entry.1)));
+                    }
+                }
+            };
+        }
 
         match self.cursor.next()? {
-            Some(value) => Ok(Some((value.0 .0, value.1))),
-            None => Ok(None),
+            Some(value) => {
+                self.last_key = Some(value.0 .0.clone());
+
+                Ok(Some((value.0 .0, value.1)))
+            }
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 }
@@ -180,6 +206,7 @@ pub(crate) struct CachedStorageTrieCursor<C> {
     hashed_address: B256,
     /// Last key with value.
     last_key: Option<Nibbles>,
+    hit_cache: bool,
 }
 
 impl<C> CachedStorageTrieCursor<C>
@@ -188,7 +215,7 @@ where
 {
     /// Create a new storage trie cursor.
     pub(crate) const fn new(cursor: C, hashed_address: B256) -> Self {
-        Self { cursor, hashed_address, last_key: None }
+        Self { cursor, hashed_address, last_key: None, hit_cache: false }
     }
 
     /// Seek an exact match for the given key in the storage trie.
@@ -198,23 +225,28 @@ where
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
         if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_storage(&storage_key) {
+            self.hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.last_key = None;
+        self.hit_cache = false;
         match self
             .cursor
             .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
         {
             Some(entry) => {
+                self.last_key = Some(entry.nibbles.0.clone());
                 if entry.nibbles == StoredNibblesSubKey(key) {
                     Ok(Some((entry.nibbles.0, entry.node)))
                 } else {
                     Ok(None)
                 }
             }
-            None => Ok(None),
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -225,14 +257,22 @@ where
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
         if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_storage(&storage_key) {
+            self.hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.last_key = None;
+        self.hit_cache = false;
         match self.cursor.seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))? {
-            Some(value) => Ok(Some((value.nibbles.0, value.node))),
-            None => Ok(None),
+            Some(value) => {
+                self.last_key = Some(value.nibbles.0.clone());
+
+                Ok(Some((value.nibbles.0, value.node)))
+            }
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 
@@ -241,28 +281,36 @@ where
         &mut self,
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        match self
-            .cursor
-            .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(last_key.clone()))?
-        {
-            None => {
-                //counter!("trie_next.storage.extra-seek").increment(1);
-                self.last_key = None;
-                return Ok(None);
-            }
-            Some(entry) => {
-                //counter!("trie_next.storage.extra-seek").increment(1);
-                self.last_key = None;
-                if entry.nibbles.0.clone() > last_key {
-                    // next is done already
-                    return Ok(Some((entry.nibbles.0, entry.node)));
+        if self.hit_cache {
+            //counter!("trie_next.storage.extra-seek").increment(1);
+            self.hit_cache = false;
+            match self
+                .cursor
+                .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(last_key.clone()))?
+            {
+                None => {
+                    self.last_key = None;
+                    return Ok(None);
+                }
+                Some(entry) => {
+                    if entry.nibbles.0.clone() > last_key {
+                        // next is done already
+                        self.last_key = Some(entry.nibbles.0.clone());
+                        return Ok(Some((entry.nibbles.0.clone(), entry.node)));
+                    }
                 }
             }
         }
 
         match self.cursor.next_dup()? {
-            Some((_, value)) => Ok(Some((value.nibbles.0, value.node))),
-            None => Ok(None),
+            Some((_, value)) => {
+                self.last_key = Some(value.nibbles.0.clone());
+                Ok(Some((value.nibbles.0, value.node)))
+            }
+            None => {
+                self.last_key = None;
+                Ok(None)
+            }
         }
     }
 }
