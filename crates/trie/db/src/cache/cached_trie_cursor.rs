@@ -110,12 +110,12 @@ where
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         match self.cursor.seek(StoredNibbles(last_key.clone()))? {
             None => {
-                counter!("trie_next.account.extra-seek").increment(1);
+                //counter!("trie_next.account.extra-seek").increment(1);
                 self.last_key = None;
                 return Ok(None);
             }
             Some(entry) => {
-                counter!("trie_next.account.extra-seek").increment(1);
+                //counter!("trie_next.account.extra-seek").increment(1);
                 self.last_key = None;
                 if entry.0 .0.clone() > last_key {
                     // next is done already
@@ -153,7 +153,7 @@ where
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        counter!("trie_next.account.total").increment(1);
+        //counter!("trie_next.account.total").increment(1);
 
         let next = match &self.last_key {
             Some(last) => self.next_inner(last.clone())?,
@@ -246,12 +246,12 @@ where
             .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(last_key.clone()))?
         {
             None => {
-                counter!("trie_next.storage.extra-seek").increment(1);
+                //counter!("trie_next.storage.extra-seek").increment(1);
                 self.last_key = None;
                 return Ok(None);
             }
             Some(entry) => {
-                counter!("trie_next.storage.extra-seek").increment(1);
+                //counter!("trie_next.storage.extra-seek").increment(1);
                 self.last_key = None;
                 if entry.nibbles.0.clone() > last_key {
                     // next is done already
@@ -289,7 +289,7 @@ where
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        counter!("trie_next.storage.total").increment(1);
+        //counter!("trie_next.storage.total").increment(1);
 
         let next = match &self.last_key {
             Some(last) => {

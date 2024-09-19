@@ -4,6 +4,7 @@ use crate::{
     engine::{DownloadRequest, EngineApiEvent, FromEngine},
     persistence::PersistenceHandle,
 };
+use parking_lot::RwLock;
 use reth_beacon_consensus::{
     BeaconConsensusEngineEvent, BeaconEngineMessage, ForkchoiceStateTracker, InvalidHeaderCache,
     OnForkChoiceUpdated, MIN_BLOCKS_FOR_PIPELINE_RUN,
@@ -60,6 +61,35 @@ mod config;
 mod metrics;
 use crate::{engine::EngineApiRequest, tree::metrics::EngineApiMetrics};
 pub use config::TreeConfig;
+use lazy_static::lazy_static;
+use std::sync::atomic::AtomicU64;
+
+lazy_static! {
+    static ref EXECUTION_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+    static ref ROOT_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_execution_total(block: u64, inc: u128) {
+    let mut binding = EXECUTION_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_execution", execution = ?new, block = ?block, "Total execution time");
+    }
+}
+
+pub(crate) fn update_root_total(block: u64, inc: u128) {
+    let mut binding = ROOT_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_root", root = ?new, block = ?block, "Total state root time");
+    }
+}
 
 /// Keeps track of the state of the tree.
 ///
@@ -1249,9 +1279,9 @@ where
             // the block leads back to the canonical chain
             let historical = self.provider.state_by_block_hash(historical)?;
 
-            if !blocks.is_empty() {
-                debug!(target: "engine", %hash, "Use historical block with tip {}", blocks[blocks.len()-1].block.header.number-1);
-            }
+            // if !blocks.is_empty() {
+            //     debug!(target: "engine", %hash, "Use historical block with tip {}",
+            // blocks[blocks.len()-1].block.header.number-1); }
 
             return Ok(Some(Box::new(MemoryOverlayStateProvider::new(historical, blocks))))
         }
@@ -1780,6 +1810,7 @@ where
         let elapsed = exec_time.elapsed();
         debug!(target: "engine", elapsed=?elapsed, ?block_number, "Executed block");
         metrics::histogram!("execution.total").record(elapsed.as_nanos() as f64);
+        update_execution_total(block_number, elapsed.as_millis());
 
         self.consensus.validate_block_post_execution(
             &block,
@@ -1801,6 +1832,7 @@ where
         let elapsed = root_time.elapsed();
         debug!(target: "engine", elapsed=?elapsed, ?block_number, "Calculated state root");
         metrics::histogram!("state-root.total").record(elapsed.as_nanos() as f64);
+        update_root_total(block_number, elapsed.as_millis());
 
         let executed = ExecutedBlock {
             block: sealed_block.clone(),

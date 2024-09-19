@@ -64,38 +64,44 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
 {
     // Get account from cache
     fn get_account(&self, k: &Address) -> Option<Account> {
-        counter!("plain-cache.account.total").increment(1);
-        match PLAIN_ACCOUNTS.get(k) {
-            Some(r) => {
-                counter!("plain-cache.account.hit").increment(1);
-                Some(r)
-            }
-            None => None,
-        }
+        // counter!("plain-cache.account.total").increment(1);
+        // match PLAIN_ACCOUNTS.get(k) {
+        //     Some(r) => {
+        //         counter!("plain-cache.account.hit").increment(1);
+        //         Some(r)
+        //     }
+        //     None => None,
+        // }
+
+        PLAIN_ACCOUNTS.get(k)
     }
 
     // Get storage from cache
     fn get_storage(&self, k: &AddressStorageKey) -> Option<StorageValue> {
-        counter!("plain-cache.storage.total").increment(1);
-        match PLAIN_STORAGES.get(k) {
-            Some(r) => {
-                counter!("plain-cache.storage.hit").increment(1);
-                Some(r)
-            }
-            None => None,
-        }
+        // counter!("plain-cache.storage.total").increment(1);
+        // match PLAIN_STORAGES.get(k) {
+        //     Some(r) => {
+        //         counter!("plain-cache.storage.hit").increment(1);
+        //         Some(r)
+        //     }
+        //     None => None,
+        // }
+
+        PLAIN_STORAGES.get(k)
     }
 
     // Get code from cache
     fn get_code(&self, k: &B256) -> Option<Bytecode> {
-        counter!("plain-cache.code.total").increment(1);
-        match CONTRACT_CODES.get(k) {
-            Some(r) => {
-                counter!("plain-cache.code.hit").increment(1);
-                Some(r)
-            }
-            None => None,
-        }
+        // counter!("plain-cache.code.total").increment(1);
+        // match CONTRACT_CODES.get(k) {
+        //     Some(r) => {
+        //         counter!("plain-cache.code.hit").increment(1);
+        //         Some(r)
+        //     }
+        //     None => None,
+        // }
+
+        CONTRACT_CODES.get(k)
     }
 
     // Insert code into cache
