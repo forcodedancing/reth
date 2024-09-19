@@ -5,7 +5,6 @@ use std::{
     sync::Mutex,
 };
 
-use crate::StateCache;
 use metrics::counter;
 use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256, U256};
 use reth_revm::db::{BundleState, OriginalValuesKnown};
@@ -55,14 +54,9 @@ impl CACHED_PLAIN_STATES {
 
         PLAIN_STORAGES.insert(k, v);
     }
-}
 
-// Implementing StateCache trait for CACHED_PLAIN_STATES
-impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecode>
-    for CACHED_PLAIN_STATES
-{
     // Get account from cache
-    fn get_account(&self, k: &Address) -> Option<Account> {
+    pub fn get_account(&self, k: &Address) -> Option<Account> {
         counter!("plain-cache.account.total").increment(1);
         match PLAIN_ACCOUNTS.get(k) {
             Some(r) => {
@@ -74,7 +68,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
     }
 
     // Get storage from cache
-    fn get_storage(&self, k: &AddressStorageKey) -> Option<StorageValue> {
+    pub fn get_storage(&self, k: &AddressStorageKey) -> Option<StorageValue> {
         counter!("plain-cache.storage.total").increment(1);
         match PLAIN_STORAGES.get(k) {
             Some(r) => {
@@ -86,7 +80,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
     }
 
     // Get code from cache
-    fn get_code(&self, k: &B256) -> Option<Bytecode> {
+    pub fn get_code(&self, k: &B256) -> Option<Bytecode> {
         counter!("plain-cache.code.total").increment(1);
         match CONTRACT_CODES.get(k) {
             Some(r) => {
@@ -98,7 +92,7 @@ impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecod
     }
 
     // Insert code into cache
-    fn insert_code(&self, k: B256, v: Bytecode) {
+    pub fn insert_code(&self, k: B256, v: Bytecode) {
         CONTRACT_CODES.insert(k, v);
     }
 }

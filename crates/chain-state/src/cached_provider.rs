@@ -14,19 +14,19 @@ use reth_trie::{
 use std::collections::HashMap;
 
 /// Trait for caching state data
-pub trait StateCache<AK, AV, SK, SV, CK, CV>: Send + Sync {
-    /// Get account from cache
-    fn get_account(&self, k: &AK) -> Option<AV>;
-
-    /// Get storage from cache
-    fn get_storage(&self, k: &SK) -> Option<SV>;
-
-    /// Get code from cache
-    fn get_code(&self, k: &CK) -> Option<CV>;
-
-    /// Insert code into cache
-    fn insert_code(&self, k: CK, v: CV);
-}
+// pub trait StateCache<AK, AV, SK, SV, CK, CV>: Send + Sync {
+//     /// Get account from cache
+//     fn get_account(&self, k: &AK) -> Option<AV>;
+//
+//     /// Get storage from cache
+//     fn get_storage(&self, k: &SK) -> Option<SV>;
+//
+//     /// Get code from cache
+//     fn get_code(&self, k: &CK) -> Option<CV>;
+//
+//     /// Insert code into cache
+//     fn insert_code(&self, k: CK, v: CV);
+// }
 
 /// Cached state provider struct
 #[allow(missing_debug_implementations)]

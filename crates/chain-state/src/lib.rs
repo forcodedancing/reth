@@ -25,7 +25,7 @@ mod memory_overlay;
 pub use memory_overlay::MemoryOverlayStateProvider;
 
 mod cached_provider;
-pub use cached_provider::{CachedStateProvider, StateCache};
+pub use cached_provider::CachedStateProvider;
 
 /// Cache layer for plain states, hashed states and trie nodes.
 pub mod cache;
