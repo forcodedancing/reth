@@ -44,15 +44,16 @@ impl CACHED_PLAIN_STATES {
 
     /// Insert storage into the cache
     pub fn insert_storage(&self, k: AddressStorageKey, v: U256) {
-        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get_mut(&k.0) {
-            set.insert(k.1);
-        } else {
-            let mut s = HashSet::new();
-            s.insert(k.1);
-            map.insert(k.0, s);
+        {
+            let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+            if let Some(set) = map.get_mut(&k.0) {
+                set.insert(k.1);
+            } else {
+                let mut s = HashSet::new();
+                s.insert(k.1);
+                map.insert(k.0, s);
+            }
         }
-
         PLAIN_STORAGES.insert(k, v);
     }
 }

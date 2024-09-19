@@ -1,6 +1,6 @@
 use crate::{
-    cached_hashed_cursor::CachedHashedCursorFactory, cached_trie_cursor::CachedTrieCursorFactory,
-    DatabaseHashedCursorFactory, DatabaseTrieCursorFactory, PrefixSetLoader,
+    cache::cached_trie_cursor::CachedTrieCursorFactory, DatabaseHashedCursorFactory,
+    DatabaseTrieCursorFactory, PrefixSetLoader,
 };
 use reth_db::tables;
 use reth_db_api::{
@@ -252,16 +252,8 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
         let state_sorted = post_state.into_sorted();
         let nodes_sorted = intermediate_nodes.into_sorted();
         StateRoot::new(
-            InMemoryTrieCursorFactory::new(
-                //CachedTrieCursorFactory::new(tx, trie_cache),
-                CachedTrieCursorFactory::new(tx),
-                &nodes_sorted,
-            ),
-            HashedPostStateCursorFactory::new(
-                //CachedHashedCursorFactory::new(tx),
-                DatabaseHashedCursorFactory::new(tx),
-                &state_sorted,
-            ),
+            InMemoryTrieCursorFactory::new(CachedTrieCursorFactory::new(tx), &nodes_sorted),
+            HashedPostStateCursorFactory::new(DatabaseHashedCursorFactory::new(tx), &state_sorted),
         )
         .with_prefix_sets(prefix_sets.freeze())
         .root_with_updates()

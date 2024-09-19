@@ -1,4 +1,6 @@
+pub mod cached_provider;
 mod plain_state;
+
 pub use plain_state::CACHED_PLAIN_STATES;
 
 use crate::ExecutedBlock;
@@ -14,7 +16,6 @@ pub fn write_to_cache(blocks: Vec<ExecutedBlock>) {
         let trie_updates = block.trie_updates().clone();
         let hashed_state = block.hashed_state();
         write_plain_state(bundle_state);
-        reth_trie_db::cache::write_hashed_state(&hashed_state.clone().into_sorted());
         reth_trie_db::cache::write_trie_updates(&trie_updates);
         debug!("Finish to write block {} to cache", block.block.header.number);
     }
@@ -23,6 +24,5 @@ pub fn write_to_cache(blocks: Vec<ExecutedBlock>) {
 /// Clears all cached states and trie nodes.
 pub fn clear_all_cache() {
     clear_plain_state();
-    reth_trie_db::cache::clear_hashed_state();
     reth_trie_db::cache::clear_trie_node();
 }

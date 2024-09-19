@@ -13,7 +13,6 @@ use reth_trie::{
     BranchNodeCompact, Nibbles, StoredNibbles, StoredNibblesSubKey,
 };
 
-use crate::cache::CACHED_HASH_STATES;
 use metrics::counter;
 use tracing::debug;
 
