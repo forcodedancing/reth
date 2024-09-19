@@ -111,6 +111,7 @@ impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
 
 // Write trie updates
 pub fn write_trie_updates(trie_updates: &TrieUpdates) {
+    return;
     if trie_updates.is_empty() {
         return;
     }

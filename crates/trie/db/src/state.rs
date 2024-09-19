@@ -1,6 +1,6 @@
 use crate::{
-    cached_hashed_cursor::CachedHashedCursorFactory, cached_trie_cursor::CachedTrieCursorFactory,
-    DatabaseHashedCursorFactory, DatabaseTrieCursorFactory, PrefixSetLoader,
+    cached_trie_cursor::CachedTrieCursorFactory, DatabaseHashedCursorFactory,
+    DatabaseTrieCursorFactory, PrefixSetLoader,
 };
 use reth_db::tables;
 use reth_db_api::{
