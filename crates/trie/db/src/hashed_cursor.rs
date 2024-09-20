@@ -65,15 +65,11 @@ where
     fn seek(&mut self, key: B256) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
         let entry = self.0.seek(key)?;
 
-        debug!("DB_CURSOR seek account: {:?} {:?}", key, entry);
-
         Ok(entry)
     }
 
     fn next(&mut self) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
         let entry = self.0.next()?;
-
-        debug!("DB_CURSOR next account: {:?}", entry);
 
         Ok(entry)
     }
@@ -110,15 +106,11 @@ where
         let entry =
             self.cursor.seek_by_key_subkey(self.hashed_address, subkey)?.map(|e| (e.key, e.value));
 
-        debug!("DB_CURSOR seek storage: {:?} {:?}", subkey, entry);
-
         Ok(entry)
     }
 
     fn next(&mut self) -> Result<Option<(B256, Self::Value)>, reth_db::DatabaseError> {
         let entry = self.cursor.next_dup_val()?.map(|e| (e.key, e.value));
-
-        debug!("DB_CURSOR next storage: {:?}", entry);
 
         Ok(entry)
     }
