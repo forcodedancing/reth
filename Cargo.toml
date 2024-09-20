@@ -580,10 +580,10 @@ tempfile = "3.8"
 test-fuzz = "5"
 
 [patch.crates-io]
-revm = { git = "https://github.com/forcodedancing/revm", rev = "0beaeef5" }
-revm-interpreter = { git = "https://github.com/forcodedancing/revm", rev = "0beaeef5" }
-revm-precompile = { git = "https://github.com/forcodedancing/revm", rev = "0beaeef5" }
-revm-primitives = { git = "https://github.com/forcodedancing/revm", rev = "0beaeef5" }
+revm = { git = "https://github.com/forcodedancing/revm", rev = "d7b7e713ec398735d5e4a568c9e4ffed949bad5a" }
+revm-interpreter = { git = "https://github.com/forcodedancing/revm", rev = "d7b7e713ec398735d5e4a568c9e4ffed949bad5a" }
+revm-precompile = { git = "https://github.com/forcodedancing/revm", rev = "d7b7e713ec398735d5e4a568c9e4ffed949bad5a" }
+revm-primitives = { git = "https://github.com/forcodedancing/revm", rev = "d7b7e713ec398735d5e4a568c9e4ffed949bad5a" }
 alloy-chains = { git = "https://github.com/bnb-chain/alloy-chains-rs.git", tag = "v1.0.0" }
 alloy-rpc-types-eth = { git = "https://github.com/bnb-chain/alloy", rev = "133e5b3dd8af4bc1ceb9018be42c156727eef619" }
 alloy-consensus = { git = "https://github.com/bnb-chain/alloy", rev = "133e5b3dd8af4bc1ceb9018be42c156727eef619" }

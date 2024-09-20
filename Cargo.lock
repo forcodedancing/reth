@@ -9782,12 +9782,11 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "14.0.0"
-source = "git+https://github.com/forcodedancing/revm?rev=0beaeef5#0beaeef5986ad280e240e4459a5658fce9caec9d"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "auto_impl",
  "cfg-if",
  "dyn-clone",
- "metrics",
  "revm-interpreter",
  "revm-precompile",
  "serde",
@@ -9815,7 +9814,7 @@ dependencies = [
 [[package]]
 name = "revm-interpreter"
 version = "10.0.0"
-source = "git+https://github.com/forcodedancing/revm?rev=0beaeef5#0beaeef5986ad280e240e4459a5658fce9caec9d"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "revm-primitives",
  "serde",
@@ -9824,7 +9823,7 @@ dependencies = [
 [[package]]
 name = "revm-precompile"
 version = "11.0.0"
-source = "git+https://github.com/forcodedancing/revm?rev=0beaeef5#0beaeef5986ad280e240e4459a5658fce9caec9d"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "alloy-rlp",
  "aurora-engine-modexp",
@@ -9852,7 +9851,7 @@ dependencies = [
 [[package]]
 name = "revm-primitives"
 version = "9.0.0"
-source = "git+https://github.com/forcodedancing/revm?rev=0beaeef5#0beaeef5986ad280e240e4459a5658fce9caec9d"
+source = "git+https://github.com/forcodedancing/revm?rev=d7b7e713ec398735d5e4a568c9e4ffed949bad5a#d7b7e713ec398735d5e4a568c9e4ffed949bad5a"
 dependencies = [
  "alloy-eips",
  "alloy-primitives 0.8.0",
