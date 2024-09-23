@@ -41,7 +41,7 @@ use reth_network_peers::{opbnb_mainnet_nodes, opbnb_testnet_nodes};
 #[cfg(feature = "bsc")]
 pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     ChainSpec {
-        chain: Chain::from_named(NamedChain::BNBSmartChain),
+        chain: Chain::from_named(NamedChain::BinanceSmartChain),
         genesis: serde_json::from_str(include_str!("../res/genesis/bsc_mainnet.json"))
             .expect("Can't deserialize BSC Mainnet genesis json"),
         genesis_hash: Some(b256!(
@@ -61,7 +61,7 @@ pub static BSC_MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
 #[cfg(feature = "bsc")]
 pub static BSC_TESTNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
     ChainSpec {
-        chain: Chain::from_named(NamedChain::BNBSmartChainTestnet),
+        chain: Chain::from_named(NamedChain::BinanceSmartChainTestnet),
         genesis: serde_json::from_str(include_str!("../res/genesis/bsc_testnet.json"))
             .expect("Can't deserialize BSC Testnet genesis json"),
         genesis_hash: Some(b256!(
@@ -842,9 +842,9 @@ impl ChainSpec {
             C::BaseGoerli | C::BaseSepolia => Some(base_testnet_nodes()),
             C::OptimismSepolia | C::OptimismGoerli | C::OptimismKovan => Some(op_testnet_nodes()),
             #[cfg(feature = "bsc")]
-            C::BNBSmartChain => Some(bsc_mainnet_nodes()),
+            C::BinanceSmartChain => Some(bsc_mainnet_nodes()),
             #[cfg(feature = "bsc")]
-            C::BNBSmartChainTestnet => Some(bsc_testnet_nodes()),
+            C::BinanceSmartChainTestnet => Some(bsc_testnet_nodes()),
             #[cfg(all(feature = "optimism", feature = "opbnb"))]
             C::OpBNBTestnet => Some(opbnb_testnet_nodes()),
             #[cfg(all(feature = "optimism", feature = "opbnb"))]

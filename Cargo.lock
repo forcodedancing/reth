@@ -109,8 +109,9 @@ checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 
 [[package]]
 name = "alloy-chains"
-version = "0.1.18"
-source = "git+https://github.com/bnb-chain/alloy-chains-rs.git?tag=v1.0.0#b7c5379cf47345181f8dce350acafb958f47152a"
+version = "0.1.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "805f7a974de5804f5c053edc6ca43b20883bdd3a733b3691200ae3a4b454a2db"
 dependencies = [
  "alloy-rlp",
  "arbitrary",
@@ -4202,7 +4203,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.7",
  "tokio",
  "tower-service",
  "tracing",

@@ -144,7 +144,7 @@ members = [
     "examples/txpool-tracing/",
     "examples/custom-rlpx-subprotocol",
     "testing/ef-tests/",
-    "testing/testing-utils", 
+    "testing/testing-utils",
 ]
 default-members = ["bin/reth"]
 
@@ -338,7 +338,7 @@ reth-network-p2p = { path = "crates/net/p2p" }
 reth-nippy-jar = { path = "crates/storage/nippy-jar" }
 reth-node-api = { path = "crates/node/api" }
 reth-node-builder = { path = "crates/node/builder" }
-reth-node-bsc= { path = "crates/bsc/node" }
+reth-node-bsc = { path = "crates/bsc/node" }
 reth-node-core = { path = "crates/node/core" }
 reth-node-ethereum = { path = "crates/ethereum/node" }
 reth-node-events = { path = "crates/node/events" }
@@ -399,7 +399,7 @@ revm-primitives = { version = "7.1.0", features = [
 revm-inspectors = "0.5"
 
 # eth
-alloy-chains = "0.1.18"
+alloy-chains = "0.1.33"
 alloy-primitives = "0.7.2"
 alloy-dyn-abi = "0.7.2"
 alloy-json-abi = "0.7.2"
@@ -464,9 +464,9 @@ serde_with = "3.3.0"
 humantime = "2.1"
 humantime-serde = "1.1"
 rand = "0.8.5"
-rustc-hash = {  version = "2.0", default-features = false }
+rustc-hash = { version = "2.0", default-features = false }
 schnellru = "0.2"
-strum = {  version = "0.26", default-features = false }
+strum = { version = "0.26", default-features = false }
 strum_macros = "=0.26.4"
 rayon = "1.7"
 itertools = "0.13"
@@ -560,7 +560,6 @@ revm = { git = "https://github.com/bnb-chain/revm", tag = "v1.0.2" }
 revm-interpreter = { git = "https://github.com/bnb-chain/revm", tag = "v1.0.2" }
 revm-precompile = { git = "https://github.com/bnb-chain/revm", tag = "v1.0.2" }
 revm-primitives = { git = "https://github.com/bnb-chain/revm", tag = "v1.0.2" }
-alloy-chains = { git = "https://github.com/bnb-chain/alloy-chains-rs.git", tag = "v1.0.0" }
 alloy-rpc-types-eth = { git = "https://github.com/bnb-chain/alloy", tag = "v1.0.0" }
 alloy-consensus = { git = "https://github.com/bnb-chain/alloy", tag = "v1.0.0" }
 alloy-eips = { git = "https://github.com/bnb-chain/alloy", tag = "v1.0.0" }
