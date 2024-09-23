@@ -5,7 +5,7 @@ use std::{
     sync::Mutex,
 };
 
-use crate::StateCache;
+//use crate::StateCache;
 use metrics::counter;
 use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256, U256};
 use reth_revm::db::{BundleState, OriginalValuesKnown};
