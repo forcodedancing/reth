@@ -7,7 +7,6 @@ use reth_db_api::{
 use reth_primitives::B256;
 use reth_storage_errors::db::DatabaseError;
 use reth_trie::{
-    cache::TrieCache,
     trie_cursor::{TrieCursor, TrieCursorFactory},
     BranchNodeCompact, Nibbles, StoredNibbles, StoredNibblesSubKey,
 };
@@ -58,7 +57,7 @@ pub(crate) struct CachedAccountTrieCursor<C> {
     cursor: C,
     /// Last key with value.
     last_key: Option<Nibbles>,
-    hit_cache: bool,
+    last_hit_cache: bool,
 }
 
 impl<C> CachedAccountTrieCursor<C>
@@ -67,7 +66,7 @@ where
 {
     /// Create a new account trie cursor.
     pub(crate) const fn new(cursor: C) -> Self {
-        Self { cursor, last_key: None, hit_cache: false }
+        Self { cursor, last_key: None, last_hit_cache: false }
     }
 
     /// Seek an exact match for the given key in the account trie.
@@ -75,17 +74,16 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_account(&key) {
-            self.hit_cache = true;
+        if let Some(result) = crate::cache::get_account(&key) {
+            self.last_hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.hit_cache = false;
-        match self.cursor.seek_exact(StoredNibbles(key.clone()))? {
+        self.last_hit_cache = false;
+        match self.cursor.seek_exact(StoredNibbles(key))? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
-
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -100,17 +98,16 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_account(&key) {
-            self.hit_cache = true;
+        if let Some(result) = crate::cache::get_account(&key) {
+            self.last_hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.hit_cache = false;
+        self.last_hit_cache = false;
         match self.cursor.seek(StoredNibbles(key))? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
-
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -125,16 +122,16 @@ where
         &mut self,
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        if self.hit_cache {
+        if self.last_hit_cache {
             //counter!("trie_next.account.extra-seek").increment(1);
-            self.hit_cache = false;
+            self.last_hit_cache = false;
             match self.cursor.seek(StoredNibbles(last_key.clone()))? {
                 None => {
                     self.last_key = None;
                     return Ok(None);
                 }
                 Some(entry) => {
-                    if entry.0 .0.clone() > last_key.clone() {
+                    if entry.0 .0.clone() > last_key {
                         // next is done already
                         self.last_key = Some(entry.0 .0.clone());
                         return Ok(Some((entry.0 .0, entry.1)));
@@ -146,7 +143,6 @@ where
         match self.cursor.next()? {
             Some(value) => {
                 self.last_key = Some(value.0 .0.clone());
-
                 Ok(Some((value.0 .0, value.1)))
             }
             None => {
@@ -166,7 +162,7 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        Ok(self.seek_exact_inner(key.clone())?)
+        Ok(self.seek_exact_inner(key)?)
     }
 
     /// Seeks a key in the account trie that matches or is greater than the provided key.
@@ -174,7 +170,7 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        Ok(self.seek_inner(key.clone())?)
+        Ok(self.seek_inner(key)?)
     }
 
     /// Move the cursor to the next entry and return it.
@@ -206,7 +202,7 @@ pub(crate) struct CachedStorageTrieCursor<C> {
     hashed_address: B256,
     /// Last key with value.
     last_key: Option<Nibbles>,
-    hit_cache: bool,
+    last_hit_cache: bool,
 }
 
 impl<C> CachedStorageTrieCursor<C>
@@ -215,7 +211,7 @@ where
 {
     /// Create a new storage trie cursor.
     pub(crate) const fn new(cursor: C, hashed_address: B256) -> Self {
-        Self { cursor, hashed_address, last_key: None, hit_cache: false }
+        Self { cursor, hashed_address, last_key: None, last_hit_cache: false }
     }
 
     /// Seek an exact match for the given key in the storage trie.
@@ -224,13 +220,13 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
-        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_storage(&storage_key) {
-            self.hit_cache = true;
+        if let Some(result) = crate::cache::get_storage(&storage_key) {
+            self.last_hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.hit_cache = false;
+        self.last_hit_cache = false;
         match self
             .cursor
             .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key.clone()))?
@@ -256,17 +252,16 @@ where
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         let storage_key = (self.hashed_address, key.clone());
-        if let Some(result) = crate::cache::CACHED_TRIE_NODES.get_storage(&storage_key) {
-            self.hit_cache = true;
+        if let Some(result) = crate::cache::get_storage(&storage_key) {
+            self.last_hit_cache = true;
             self.last_key = Some(key.clone());
             return Ok(Some((key, result)))
         };
 
-        self.hit_cache = false;
+        self.last_hit_cache = false;
         match self.cursor.seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(key))? {
             Some(value) => {
                 self.last_key = Some(value.nibbles.0.clone());
-
                 Ok(Some((value.nibbles.0, value.node)))
             }
             None => {
@@ -281,9 +276,9 @@ where
         &mut self,
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        if self.hit_cache {
+        if self.last_hit_cache {
             //counter!("trie_next.storage.extra-seek").increment(1);
-            self.hit_cache = false;
+            self.last_hit_cache = false;
             match self
                 .cursor
                 .seek_by_key_subkey(self.hashed_address, StoredNibblesSubKey(last_key.clone()))?
@@ -324,7 +319,7 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        Ok(self.seek_exact_inner(key.clone())?)
+        Ok(self.seek_exact_inner(key)?)
     }
 
     /// Seeks the given key in the storage trie.
@@ -332,18 +327,14 @@ where
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        Ok(self.seek_inner(key.clone())?)
+        Ok(self.seek_inner(key)?)
     }
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         //counter!("trie_next.storage.total").increment(1);
-
         let next = match &self.last_key {
-            Some(last) => {
-                let entry = self.next_inner(last.clone())?;
-                entry
-            }
+            Some(last) => self.next_inner(last.clone())?,
             // no previous entry was found
             None => None,
         };
@@ -363,7 +354,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        cache::{clear_trie_node, CACHED_TRIE_NODES},
+        cache::{clear_trie_node, get_account, get_storage},
         DatabaseAccountTrieCursor, DatabaseStorageTrieCursor,
     };
     use lazy_static::lazy_static;
@@ -423,11 +414,11 @@ mod tests {
 
         for i in 1..4 {
             if i == 1 {
-                CACHED_TRIE_NODES.insert_account(key1.clone(), value1.clone());
+                insert_account(key1.clone(), value1.clone());
             }
             if i == 2 {
-                CACHED_TRIE_NODES.insert_account(key1.clone(), value1.clone());
-                CACHED_TRIE_NODES.insert_account(key2.clone(), value2.clone());
+                insert_account(key1.clone(), value1.clone());
+                insert_account(key2.clone(), value2.clone());
             }
 
             // cached cursor

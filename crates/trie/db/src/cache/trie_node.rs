@@ -8,7 +8,6 @@ use quick_cache::sync::Cache;
 
 use reth_primitives::{Account, B256};
 use reth_trie::{
-    cache::TrieCache,
     updates::{StorageTrieUpdates, TrieUpdates},
     BranchNodeCompact, Nibbles, StoredNibbles, StoredNibblesSubKey,
 };
@@ -34,83 +33,83 @@ lazy_static! {
     /// Mapping for deleting storage trie nodes
     static ref TRIE_STORAGES_MAPPING: Mutex<HashMap<B256, HashSet<Nibbles>>> = Mutex::new(HashMap::new());
 
-    /// Combine cache for trie nodes
-    pub static ref CACHED_TRIE_NODES: (&'static Cache<Nibbles, BranchNodeCompact>, &'static Cache<TrieStorageKey, BranchNodeCompact>) =
-        (&TRIE_ACCOUNTS, &TRIE_STORAGES);
+    //// Combine cache for trie nodes
+    // pub static ref CACHED_TRIE_NODES: (&'static Cache<Nibbles, BranchNodeCompact>, &'static Cache<TrieStorageKey, BranchNodeCompact>) =
+    //     (&TRIE_ACCOUNTS, &TRIE_STORAGES);
 }
 
-// Implementation of methods for CACHED_TRIE_NODES
-impl CACHED_TRIE_NODES {
-    // Insert an account node into the cache
-    pub fn insert_account(&self, k: Nibbles, v: BranchNodeCompact) {
-        TRIE_ACCOUNTS.insert(k, v)
+// // Implementation of methods for CACHED_TRIE_NODES
+// impl CACHED_TRIE_NODES {
+// Insert an account node into the cache
+pub fn insert_account(k: Nibbles, v: BranchNodeCompact) {
+    TRIE_ACCOUNTS.insert(k, v)
+}
+
+// Remove an account node from the cache
+fn remove_account(k: &Nibbles) {
+    TRIE_ACCOUNTS.remove(k);
+}
+
+// Insert a storage node into the cache
+pub fn insert_storage(k: TrieStorageKey, v: BranchNodeCompact) {
+    let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+    if let Some(set) = map.get_mut(&k.0) {
+        set.insert(k.clone().1);
+    } else {
+        let mut s = HashSet::new();
+        s.insert(k.clone().1);
+        map.insert(k.0, s);
     }
 
-    // Remove an account node from the cache
-    fn remove_account(&self, k: &Nibbles) {
-        TRIE_ACCOUNTS.remove(k);
-    }
+    TRIE_STORAGES.insert(k, v)
+}
 
-    // Insert a storage node into the cache
-    pub fn insert_storage(&self, k: TrieStorageKey, v: BranchNodeCompact) {
-        let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get_mut(&k.0) {
-            set.insert(k.clone().1);
-        } else {
-            let mut s = HashSet::new();
-            s.insert(k.clone().1);
-            map.insert(k.0, s);
-        }
+// Remove a storage node from the cache
+fn remove_storage(k: &TrieStorageKey) {
+    TRIE_STORAGES.remove(k);
 
-        TRIE_STORAGES.insert(k, v)
-    }
-
-    // Remove a storage node from the cache
-    fn remove_storage(&self, k: &TrieStorageKey) {
-        TRIE_STORAGES.remove(k);
-
-        let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get_mut(&k.0) {
-            set.remove(&k.clone().1);
-            if set.len() == 0 {
-                map.remove(&k.0);
-            }
+    let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+    if let Some(set) = map.get_mut(&k.0) {
+        set.remove(&k.clone().1);
+        if set.len() == 0 {
+            map.remove(&k.0);
         }
     }
 }
+//}
 
 // Implementation of TrieCache trait for CACHED_TRIE_NODES
-impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
-    for CACHED_TRIE_NODES
-{
-    // Get an account node from the cache
-    fn get_account(&self, k: &Nibbles) -> Option<BranchNodeCompact> {
-        // counter!("trie-cache.account.total").increment(1);
-        // match TRIE_ACCOUNTS.get(k) {
-        //     Some(r) => {
-        //         counter!("trie-cache.account.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
+// impl TrieCache<Nibbles, BranchNodeCompact, TrieStorageKey, BranchNodeCompact>
+//     for CACHED_TRIE_NODES
+// {
+// Get an account node from the cache
+pub fn get_account(k: &Nibbles) -> Option<BranchNodeCompact> {
+    // counter!("trie-cache.account.total").increment(1);
+    // match TRIE_ACCOUNTS.get(k) {
+    //     Some(r) => {
+    //         counter!("trie-cache.account.hit").increment(1);
+    //         Some(r)
+    //     }
+    //     None => None,
+    // }
 
-        TRIE_ACCOUNTS.get(k)
-    }
-
-    // Get a storage node from the cache
-    fn get_storage(&self, k: &TrieStorageKey) -> Option<BranchNodeCompact> {
-        // counter!("trie-cache.storage.total").increment(1);
-        // match TRIE_STORAGES.get(k) {
-        //     Some(r) => {
-        //         counter!("trie-cache.storage.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-
-        TRIE_STORAGES.get(k)
-    }
+    TRIE_ACCOUNTS.get(k)
 }
+
+// Get a storage node from the cache
+pub fn get_storage(k: &TrieStorageKey) -> Option<BranchNodeCompact> {
+    // counter!("trie-cache.storage.total").increment(1);
+    // match TRIE_STORAGES.get(k) {
+    //     Some(r) => {
+    //         counter!("trie-cache.storage.hit").increment(1);
+    //         Some(r)
+    //     }
+    //     None => None,
+    // }
+
+    TRIE_STORAGES.get(k)
+}
+//}
 
 // Write trie updates
 pub fn write_trie_updates(trie_updates: &TrieUpdates) {
@@ -132,10 +131,10 @@ pub fn write_trie_updates(trie_updates: &TrieUpdates) {
     // Process each account update
     for (key, updated_node) in account_updates {
         let nibbles = StoredNibbles(key.clone());
-        CACHED_TRIE_NODES.remove_account(&nibbles.0.clone());
+        remove_account(&nibbles.0.clone());
         if let Some(node) = updated_node {
             if !nibbles.0.is_empty() {
-                CACHED_TRIE_NODES.insert_account(nibbles.0, node.clone());
+                insert_account(nibbles.0, node.clone());
             }
         }
     }
@@ -184,19 +183,21 @@ fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTri
     for (nibbles, maybe_updated) in storage_updates.into_iter().filter(|(n, _)| !n.is_empty()) {
         let nibbles = StoredNibblesSubKey(nibbles.clone());
         let storage_key = (*hashed_address, nibbles.0.clone());
-        CACHED_TRIE_NODES.remove_storage(&storage_key);
+        remove_storage(&storage_key);
 
         // There is an updated version of this node, insert new entry.
         if let Some(node) = maybe_updated {
-            CACHED_TRIE_NODES.insert_storage(storage_key, node.clone());
+            insert_storage(storage_key, node.clone());
         }
     }
 }
 
 // Clear all trie nodes from the cache
 pub fn clear_trie_node() {
-    CACHED_TRIE_NODES.0.clear();
-    CACHED_TRIE_NODES.1.clear();
+    TRIE_ACCOUNTS.clear();
+    TRIE_STORAGES.clear();
+    let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+    map.clear();
 }
 
 #[cfg(test)]

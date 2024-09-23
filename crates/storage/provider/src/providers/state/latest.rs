@@ -16,9 +16,9 @@ use reth_primitives::{
 use reth_storage_api::{StateProofProvider, StorageRootProvider};
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use reth_trie::{
-    cache::TrieCache, prefix_set::TriePrefixSetsMut, proof::Proof, updates::TrieUpdates,
-    witness::TrieWitness, AccountProof, BranchNodeCompact, HashedPostState, HashedStorage, Nibbles,
-    StateRoot, StorageRoot,
+    prefix_set::TriePrefixSetsMut, proof::Proof, updates::TrieUpdates, witness::TrieWitness,
+    AccountProof, BranchNodeCompact, HashedPostState, HashedStorage, Nibbles, StateRoot,
+    StorageRoot,
 };
 use reth_trie_db::{DatabaseProof, DatabaseStateRoot, DatabaseStorageRoot, DatabaseTrieWitness};
 

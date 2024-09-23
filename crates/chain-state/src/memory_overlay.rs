@@ -8,8 +8,8 @@ use reth_storage_api::{
     StateRootProvider, StorageRootProvider,
 };
 use reth_trie::{
-    cache::TrieCache, prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof,
-    BranchNodeCompact, HashedPostState, HashedStorage, Nibbles,
+    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, BranchNodeCompact,
+    HashedPostState, HashedStorage, Nibbles,
 };
 use std::{collections::HashMap, sync::OnceLock};
 

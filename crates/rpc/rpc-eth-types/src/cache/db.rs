@@ -7,8 +7,8 @@ use reth_primitives::{Account, Address, B256, U256};
 use reth_revm::{database::StateProviderDatabase, db::CacheDB, DatabaseRef};
 use reth_storage_api::StateProvider;
 use reth_trie::{
-    cache::TrieCache, prefix_set::TriePrefixSetsMut, updates::TrieUpdates, BranchNodeCompact,
-    HashedPostState, HashedStorage, Nibbles,
+    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, BranchNodeCompact, HashedPostState,
+    HashedStorage, Nibbles,
 };
 
 use revm::Database;

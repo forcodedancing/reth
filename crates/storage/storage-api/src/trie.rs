@@ -1,8 +1,8 @@
 use reth_primitives::{Account, Address, Bytes, B256, U256};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{
-    cache::TrieCache, prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof,
-    BranchNodeCompact, HashedPostState, HashedStorage, Nibbles,
+    prefix_set::TriePrefixSetsMut, updates::TrieUpdates, AccountProof, HashedPostState,
+    HashedStorage,
 };
 use std::collections::HashMap;
 

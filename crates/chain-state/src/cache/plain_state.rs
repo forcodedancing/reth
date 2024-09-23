@@ -32,83 +32,83 @@ lazy_static! {
     /// The size of contract is large and the hot contracts should be limited.
     static ref CONTRACT_CODES: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
 
-    /// Cached plain states
-    #[allow(clippy::type_complexity)]
-    pub static ref CACHED_PLAIN_STATES: (&'static Cache<Address, Account>, &'static Cache<AddressStorageKey, StorageValue>,  &'static Cache<B256, Bytecode>) = (&PLAIN_ACCOUNTS, &PLAIN_STORAGES, &CONTRACT_CODES);
+    //// Cached plain states
+    ////#[allow(clippy::type_complexity)]
+    ////pub static ref CACHED_PLAIN_STATES: (&'static Cache<Address, Account>, &'static Cache<AddressStorageKey, StorageValue>,  &'static Cache<B256, Bytecode>) = (&PLAIN_ACCOUNTS, &PLAIN_STORAGES, &CONTRACT_CODES);
 }
 
-impl CACHED_PLAIN_STATES {
-    pub fn insert_account(&self, k: Address, v: Account) {
-        PLAIN_ACCOUNTS.insert(k, v);
-    }
+// impl CACHED_PLAIN_STATES {
+pub fn insert_account(k: Address, v: Account) {
+    PLAIN_ACCOUNTS.insert(k, v);
+}
 
-    /// Insert storage into the cache
-    pub fn insert_storage(&self, k: AddressStorageKey, v: U256) {
-        {
-            let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-            if let Some(set) = map.get_mut(&k.0) {
-                set.insert(k.1);
-            } else {
-                let mut s = HashSet::new();
-                s.insert(k.1);
-                map.insert(k.0, s);
-            }
+/// Insert storage into the cache
+pub fn insert_storage(k: AddressStorageKey, v: U256) {
+    {
+        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.insert(k.1);
+        } else {
+            let mut s = HashSet::new();
+            s.insert(k.1);
+            map.insert(k.0, s);
         }
-        PLAIN_STORAGES.insert(k, v);
     }
+    PLAIN_STORAGES.insert(k, v);
 }
+// }
 
 // Implementing StateCache trait for CACHED_PLAIN_STATES
-impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecode>
-    for CACHED_PLAIN_STATES
-{
-    // Get account from cache
-    fn get_account(&self, k: &Address) -> Option<Account> {
-        // counter!("plain-cache.account.total").increment(1);
-        // match PLAIN_ACCOUNTS.get(k) {
-        //     Some(r) => {
-        //         counter!("plain-cache.account.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
+// impl StateCache<Address, Account, AddressStorageKey, StorageValue, B256, Bytecode>
+//     for CACHED_PLAIN_STATES
+// {
+// Get account from cache
+pub fn get_account(k: &Address) -> Option<Account> {
+    // counter!("plain-cache.account.total").increment(1);
+    // match PLAIN_ACCOUNTS.get(k) {
+    //     Some(r) => {
+    //         counter!("plain-cache.account.hit").increment(1);
+    //         Some(r)
+    //     }
+    //     None => None,
+    // }
 
-        PLAIN_ACCOUNTS.get(k)
-    }
-
-    // Get storage from cache
-    fn get_storage(&self, k: &AddressStorageKey) -> Option<StorageValue> {
-        // counter!("plain-cache.storage.total").increment(1);
-        // match PLAIN_STORAGES.get(k) {
-        //     Some(r) => {
-        //         counter!("plain-cache.storage.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-
-        PLAIN_STORAGES.get(k)
-    }
-
-    // Get code from cache
-    fn get_code(&self, k: &B256) -> Option<Bytecode> {
-        // counter!("plain-cache.code.total").increment(1);
-        // match CONTRACT_CODES.get(k) {
-        //     Some(r) => {
-        //         counter!("plain-cache.code.hit").increment(1);
-        //         Some(r)
-        //     }
-        //     None => None,
-        // }
-
-        CONTRACT_CODES.get(k)
-    }
-
-    // Insert code into cache
-    fn insert_code(&self, k: B256, v: Bytecode) {
-        CONTRACT_CODES.insert(k, v);
-    }
+    PLAIN_ACCOUNTS.get(k)
 }
+
+// Get storage from cache
+pub fn get_storage(k: &AddressStorageKey) -> Option<StorageValue> {
+    // counter!("plain-cache.storage.total").increment(1);
+    // match PLAIN_STORAGES.get(k) {
+    //     Some(r) => {
+    //         counter!("plain-cache.storage.hit").increment(1);
+    //         Some(r)
+    //     }
+    //     None => None,
+    // }
+
+    PLAIN_STORAGES.get(k)
+}
+
+// Get code from cache
+pub fn get_code(k: &B256) -> Option<Bytecode> {
+    // counter!("plain-cache.code.total").increment(1);
+    // match CONTRACT_CODES.get(k) {
+    //     Some(r) => {
+    //         counter!("plain-cache.code.hit").increment(1);
+    //         Some(r)
+    //     }
+    //     None => None,
+    // }
+
+    CONTRACT_CODES.get(k)
+}
+
+// Insert code into cache
+pub fn insert_code(k: B256, v: Bytecode) {
+    CONTRACT_CODES.insert(k, v);
+}
+// }
 
 /// Write committed state to cache.
 pub(crate) fn write_plain_state(bundle: BundleState) {
@@ -147,13 +147,15 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
         }
 
         for (k, v) in storage.storage.clone() {
-            CACHED_PLAIN_STATES.insert_storage((storage.address, StorageKey::from(k)), v);
+            insert_storage((storage.address, StorageKey::from(k)), v);
         }
     }
 }
 
 /// Clear cached accounts and storages.
 pub(crate) fn clear_plain_state() {
-    CACHED_PLAIN_STATES.0.clear();
-    CACHED_PLAIN_STATES.1.clear();
+    PLAIN_ACCOUNTS.clear();
+    PLAIN_STORAGES.clear();
+    let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+    map.clear();
 }

@@ -3,7 +3,6 @@ use crate::{
     forward_cursor::ForwardInMemoryCursor,
     updates::{StorageTrieUpdatesSorted, TrieUpdatesSorted},
 };
-use metrics::counter;
 use reth_primitives::B256;
 use reth_storage_errors::db::DatabaseError;
 use reth_trie_common::{BranchNodeCompact, Nibbles};
@@ -120,8 +119,6 @@ impl<'a, C: TrieCursor> TrieCursor for InMemoryAccountTrieCursor<'a, C> {
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        counter!("in_memory.account.total").increment(1);
-
         let entry = self.seek_inner(key, true)?;
         self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
@@ -131,8 +128,6 @@ impl<'a, C: TrieCursor> TrieCursor for InMemoryAccountTrieCursor<'a, C> {
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        counter!("in_memory.account.total").increment(1);
-
         let entry = self.seek_inner(key, false)?;
         self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
@@ -248,8 +243,6 @@ impl<'a, C: TrieCursor> TrieCursor for InMemoryStorageTrieCursor<'a, C> {
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        counter!("in_memory.storage.total").increment(1);
-
         let entry = self.seek_inner(key, true)?;
         self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)
@@ -259,8 +252,6 @@ impl<'a, C: TrieCursor> TrieCursor for InMemoryStorageTrieCursor<'a, C> {
         &mut self,
         key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        counter!("in_memory.storage.total").increment(1);
-
         let entry = self.seek_inner(key, false)?;
         self.last_key = entry.as_ref().map(|(nibbles, _)| nibbles.clone());
         Ok(entry)

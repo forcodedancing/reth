@@ -12,7 +12,7 @@ use reth_execution_errors::StateRootError;
 use reth_primitives::{keccak256, Account, Address, BlockNumber, B256, U256};
 use reth_storage_errors::db::DatabaseError;
 use reth_trie::{
-    cache::TrieCache, hashed_cursor::HashedPostStateCursorFactory, prefix_set::TriePrefixSetsMut,
+    hashed_cursor::HashedPostStateCursorFactory, prefix_set::TriePrefixSetsMut,
     trie_cursor::InMemoryTrieCursorFactory, updates::TrieUpdates, BranchNodeCompact,
     HashedPostState, HashedStorage, Nibbles, StateRoot, StateRootProgress,
 };
