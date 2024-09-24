@@ -30,8 +30,8 @@ lazy_static! {
     static ref TRIE_STORAGES: Cache<TrieStorageKey, BranchNodeCompact> =
         Cache::new(STORAGE_CACHE_SIZE);
 
-    /// Mapping for deleting storage trie nodes
-    static ref TRIE_STORAGES_MAPPING: Mutex<HashMap<B256, HashSet<Nibbles>>> = Mutex::new(HashMap::new());
+    //// Mapping for deleting storage trie nodes
+    // static ref TRIE_STORAGES_MAPPING: Mutex<HashMap<B256, HashSet<Nibbles>>> = Mutex::new(HashMap::new());
 
     //// Combine cache for trie nodes
     // pub static ref CACHED_TRIE_NODES: (&'static Cache<Nibbles, BranchNodeCompact>, &'static Cache<TrieStorageKey, BranchNodeCompact>) =
@@ -52,14 +52,14 @@ fn remove_account(k: &Nibbles) {
 
 // Insert a storage node into the cache
 pub fn insert_storage(k: TrieStorageKey, v: BranchNodeCompact) {
-    let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-    if let Some(set) = map.get_mut(&k.0) {
-        set.insert(k.clone().1);
-    } else {
-        let mut s = HashSet::new();
-        s.insert(k.clone().1);
-        map.insert(k.0, s);
-    }
+    // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+    // if let Some(set) = map.get_mut(&k.0) {
+    //     set.insert(k.clone().1);
+    // } else {
+    //     let mut s = HashSet::new();
+    //     s.insert(k.clone().1);
+    //     map.insert(k.0, s);
+    // }
 
     TRIE_STORAGES.insert(k, v)
 }
@@ -68,13 +68,13 @@ pub fn insert_storage(k: TrieStorageKey, v: BranchNodeCompact) {
 fn remove_storage(k: &TrieStorageKey) {
     TRIE_STORAGES.remove(k);
 
-    let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-    if let Some(set) = map.get_mut(&k.0) {
-        set.remove(&k.clone().1);
-        if set.len() == 0 {
-            map.remove(&k.0);
-        }
-    }
+    // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+    // if let Some(set) = map.get_mut(&k.0) {
+    //     set.remove(&k.clone().1);
+    //     if set.len() == 0 {
+    //         map.remove(&k.0);
+    //     }
+    // }
 }
 //}
 
@@ -150,22 +150,27 @@ fn write_storage_trie_updates(storage_tries: &HashMap<B256, StorageTrieUpdates>)
 
     // Process each storage trie update
     for (hashed_address, storage_trie_updates) in storage_tries {
-        write_single_storage_trie_updates(hashed_address, storage_trie_updates)
+        let should_wipe = write_single_storage_trie_updates(hashed_address, storage_trie_updates);
+        if should_wipe {
+            TRIE_STORAGES.clear();
+            break;
+        }
     }
 }
 
 // Write a single storage trie update
-fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTrieUpdates) {
+fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTrieUpdates) -> bool {
     // The storage trie for this account has to be deleted.
     if updates.is_deleted() {
-        let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get(hashed_address) {
-            for s in set {
-                let storage_key = (*hashed_address, s.clone());
-                TRIE_STORAGES.remove(&storage_key);
-            }
-        }
-        map.remove(hashed_address);
+        // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+        // if let Some(set) = map.get(hashed_address) {
+        //     for s in set {
+        //         let storage_key = (*hashed_address, s.clone());
+        //         TRIE_STORAGES.remove(&storage_key);
+        //     }
+        // }
+        // map.remove(hashed_address);
+        return true;
     }
 
     // Merge updated and removed nodes. Updated nodes must take precedence.
@@ -190,14 +195,15 @@ fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTri
             insert_storage(storage_key, node.clone());
         }
     }
+    return false;
 }
 
 // Clear all trie nodes from the cache
 pub fn clear_trie_node() {
     TRIE_ACCOUNTS.clear();
     TRIE_STORAGES.clear();
-    let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-    map.clear();
+    // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+    // map.clear();
 }
 
 #[cfg(test)]
