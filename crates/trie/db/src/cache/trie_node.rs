@@ -84,30 +84,30 @@ fn remove_storage(k: &TrieStorageKey) {
 // {
 // Get an account node from the cache
 pub fn get_account(k: &Nibbles) -> Option<BranchNodeCompact> {
-    // counter!("trie-cache.account.total").increment(1);
-    // match TRIE_ACCOUNTS.get(k) {
-    //     Some(r) => {
-    //         counter!("trie-cache.account.hit").increment(1);
-    //         Some(r)
-    //     }
-    //     None => None,
-    // }
+    counter!("trie-cache.account.total").increment(1);
+    match TRIE_ACCOUNTS.get(k) {
+        Some(r) => {
+            counter!("trie-cache.account.hit").increment(1);
+            Some(r)
+        }
+        None => None,
+    }
 
-    TRIE_ACCOUNTS.get(k)
+    //TRIE_ACCOUNTS.get(k)
 }
 
 // Get a storage node from the cache
 pub fn get_storage(k: &TrieStorageKey) -> Option<BranchNodeCompact> {
-    // counter!("trie-cache.storage.total").increment(1);
-    // match TRIE_STORAGES.get(k) {
-    //     Some(r) => {
-    //         counter!("trie-cache.storage.hit").increment(1);
-    //         Some(r)
-    //     }
-    //     None => None,
-    // }
+    counter!("trie-cache.storage.total").increment(1);
+    match TRIE_STORAGES.get(k) {
+        Some(r) => {
+            counter!("trie-cache.storage.hit").increment(1);
+            Some(r)
+        }
+        None => None,
+    }
 
-    TRIE_STORAGES.get(k)
+    // TRIE_STORAGES.get(k)
 }
 //}
 

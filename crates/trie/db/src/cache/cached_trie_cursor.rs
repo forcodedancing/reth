@@ -123,7 +123,7 @@ where
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if self.last_hit_cache {
-            //counter!("trie_next.account.extra-seek").increment(1);
+            counter!("trie_next.account.extra-seek").increment(1);
             self.last_hit_cache = false;
             match self.cursor.seek(StoredNibbles(last_key.clone()))? {
                 None => {
@@ -175,7 +175,7 @@ where
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        //counter!("trie_next.account.total").increment(1);
+        counter!("trie_next.account.total").increment(1);
 
         let next = match &self.last_key {
             Some(last) => self.next_inner(last.clone())?,
@@ -277,7 +277,7 @@ where
         last_key: Nibbles,
     ) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
         if self.last_hit_cache {
-            //counter!("trie_next.storage.extra-seek").increment(1);
+            counter!("trie_next.storage.extra-seek").increment(1);
             self.last_hit_cache = false;
             match self
                 .cursor
@@ -332,7 +332,7 @@ where
 
     /// Move the cursor to the next entry and return it.
     fn next(&mut self) -> Result<Option<(Nibbles, BranchNodeCompact)>, DatabaseError> {
-        //counter!("trie_next.storage.total").increment(1);
+        counter!("trie_next.storage.total").increment(1);
         let next = match &self.last_key {
             Some(last) => self.next_inner(last.clone())?,
             // no previous entry was found
