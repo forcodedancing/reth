@@ -26,9 +26,9 @@ lazy_static! {
     /// Cache for account trie nodes
     static ref TRIE_ACCOUNTS: Cache<Nibbles, BranchNodeCompact> = Cache::new(ACCOUNT_CACHE_SIZE);
 
-    /// Cache for storage trie nodes
-    static ref TRIE_STORAGES: Cache<TrieStorageKey, BranchNodeCompact> =
-        Cache::new(STORAGE_CACHE_SIZE);
+    //// Cache for storage trie nodes
+    // static ref TRIE_STORAGES: Cache<TrieStorageKey, BranchNodeCompact> =
+    //     Cache::new(STORAGE_CACHE_SIZE);
 
     //// Mapping for deleting storage trie nodes
     // static ref TRIE_STORAGES_MAPPING: Mutex<HashMap<B256, HashSet<Nibbles>>> = Mutex::new(HashMap::new());
@@ -51,31 +51,31 @@ fn remove_account(k: &Nibbles) {
 }
 
 // Insert a storage node into the cache
-pub fn insert_storage(k: TrieStorageKey, v: BranchNodeCompact) {
-    // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-    // if let Some(set) = map.get_mut(&k.0) {
-    //     set.insert(k.clone().1);
-    // } else {
-    //     let mut s = HashSet::new();
-    //     s.insert(k.clone().1);
-    //     map.insert(k.0, s);
-    // }
-
-    TRIE_STORAGES.insert(k, v)
-}
+// pub fn insert_storage(k: TrieStorageKey, v: BranchNodeCompact) {
+//     // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+//     // if let Some(set) = map.get_mut(&k.0) {
+//     //     set.insert(k.clone().1);
+//     // } else {
+//     //     let mut s = HashSet::new();
+//     //     s.insert(k.clone().1);
+//     //     map.insert(k.0, s);
+//     // }
+//
+//     TRIE_STORAGES.insert(k, v)
+// }
 
 // Remove a storage node from the cache
-fn remove_storage(k: &TrieStorageKey) {
-    TRIE_STORAGES.remove(k);
-
-    // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-    // if let Some(set) = map.get_mut(&k.0) {
-    //     set.remove(&k.clone().1);
-    //     if set.len() == 0 {
-    //         map.remove(&k.0);
-    //     }
-    // }
-}
+// fn remove_storage(k: &TrieStorageKey) {
+//     TRIE_STORAGES.remove(k);
+//
+//     // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+//     // if let Some(set) = map.get_mut(&k.0) {
+//     //     set.remove(&k.clone().1);
+//     //     if set.len() == 0 {
+//     //         map.remove(&k.0);
+//     //     }
+//     // }
+// }
 //}
 
 // Implementation of TrieCache trait for CACHED_TRIE_NODES
@@ -97,18 +97,18 @@ pub fn get_account(k: &Nibbles) -> Option<BranchNodeCompact> {
 }
 
 // Get a storage node from the cache
-pub fn get_storage(k: &TrieStorageKey) -> Option<BranchNodeCompact> {
-    counter!("trie-cache.storage.total").increment(1);
-    match TRIE_STORAGES.get(k) {
-        Some(r) => {
-            counter!("trie-cache.storage.hit").increment(1);
-            Some(r)
-        }
-        None => None,
-    }
-
-    // TRIE_STORAGES.get(k)
-}
+// pub fn get_storage(k: &TrieStorageKey) -> Option<BranchNodeCompact> {
+//     counter!("trie-cache.storage.total").increment(1);
+//     match TRIE_STORAGES.get(k) {
+//         Some(r) => {
+//             counter!("trie-cache.storage.hit").increment(1);
+//             Some(r)
+//         }
+//         None => None,
+//     }
+//
+//     // TRIE_STORAGES.get(k)
+// }
 //}
 
 // Write trie updates
@@ -140,68 +140,68 @@ pub fn write_trie_updates(trie_updates: &TrieUpdates) {
     }
 
     // Write storage trie updates
-    write_storage_trie_updates(trie_updates.storage_tries_ref());
+    //write_storage_trie_updates(trie_updates.storage_tries_ref());
 }
 
 // Write storage trie updates
-fn write_storage_trie_updates(storage_tries: &HashMap<B256, StorageTrieUpdates>) {
-    let mut storage_tries = Vec::from_iter(storage_tries);
-    storage_tries.sort_unstable_by(|a, b| a.0.cmp(b.0));
-
-    // Process each storage trie update
-    for (hashed_address, storage_trie_updates) in storage_tries {
-        let should_wipe = write_single_storage_trie_updates(hashed_address, storage_trie_updates);
-        if should_wipe {
-            TRIE_STORAGES.clear();
-            break;
-        }
-    }
-}
+// fn write_storage_trie_updates(storage_tries: &HashMap<B256, StorageTrieUpdates>) {
+//     let mut storage_tries = Vec::from_iter(storage_tries);
+//     storage_tries.sort_unstable_by(|a, b| a.0.cmp(b.0));
+//
+//     // Process each storage trie update
+//     for (hashed_address, storage_trie_updates) in storage_tries {
+//         let should_wipe = write_single_storage_trie_updates(hashed_address,
+// storage_trie_updates);         if should_wipe {
+//             TRIE_STORAGES.clear();
+//             break;
+//         }
+//     }
+// }
 
 // Write a single storage trie update
-fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTrieUpdates) -> bool {
-    // The storage trie for this account has to be deleted.
-    if updates.is_deleted() {
-        // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
-        // if let Some(set) = map.get(hashed_address) {
-        //     for s in set {
-        //         let storage_key = (*hashed_address, s.clone());
-        //         TRIE_STORAGES.remove(&storage_key);
-        //     }
-        // }
-        // map.remove(hashed_address);
-        return true;
-    }
-
-    // Merge updated and removed nodes. Updated nodes must take precedence.
-    let mut storage_updates = updates
-        .removed_nodes_ref()
-        .iter()
-        .filter_map(|n| (!updates.storage_nodes_ref().contains_key(n)).then_some((n, None)))
-        .collect::<Vec<_>>();
-    storage_updates
-        .extend(updates.storage_nodes_ref().iter().map(|(nibbles, node)| (nibbles, Some(node))));
-
-    // Sort trie node updates.
-    storage_updates.sort_unstable_by(|a, b| a.0.cmp(b.0));
-
-    for (nibbles, maybe_updated) in storage_updates.into_iter().filter(|(n, _)| !n.is_empty()) {
-        let nibbles = StoredNibblesSubKey(nibbles.clone());
-        let storage_key = (*hashed_address, nibbles.0.clone());
-        remove_storage(&storage_key);
-
-        // There is an updated version of this node, insert new entry.
-        if let Some(node) = maybe_updated {
-            insert_storage(storage_key, node.clone());
-        }
-    }
-    return false;
-}
+// fn write_single_storage_trie_updates(hashed_address: &B256, updates: &StorageTrieUpdates) -> bool
+// {     // The storage trie for this account has to be deleted.
+//     if updates.is_deleted() {
+//         // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
+//         // if let Some(set) = map.get(hashed_address) {
+//         //     for s in set {
+//         //         let storage_key = (*hashed_address, s.clone());
+//         //         TRIE_STORAGES.remove(&storage_key);
+//         //     }
+//         // }
+//         // map.remove(hashed_address);
+//         return true;
+//     }
+//
+//     // Merge updated and removed nodes. Updated nodes must take precedence.
+//     let mut storage_updates = updates
+//         .removed_nodes_ref()
+//         .iter()
+//         .filter_map(|n| (!updates.storage_nodes_ref().contains_key(n)).then_some((n, None)))
+//         .collect::<Vec<_>>();
+//     storage_updates
+//         .extend(updates.storage_nodes_ref().iter().map(|(nibbles, node)| (nibbles, Some(node))));
+//
+//     // Sort trie node updates.
+//     storage_updates.sort_unstable_by(|a, b| a.0.cmp(b.0));
+//
+//     for (nibbles, maybe_updated) in storage_updates.into_iter().filter(|(n, _)| !n.is_empty()) {
+//         let nibbles = StoredNibblesSubKey(nibbles.clone());
+//         let storage_key = (*hashed_address, nibbles.0.clone());
+//         remove_storage(&storage_key);
+//
+//         // There is an updated version of this node, insert new entry.
+//         if let Some(node) = maybe_updated {
+//             insert_storage(storage_key, node.clone());
+//         }
+//     }
+//     return false;
+// }
 
 // Clear all trie nodes from the cache
 pub fn clear_trie_node() {
     TRIE_ACCOUNTS.clear();
-    TRIE_STORAGES.clear();
+    //TRIE_STORAGES.clear();
     // let mut map = TRIE_STORAGES_MAPPING.lock().unwrap();
     // map.clear();
 }
