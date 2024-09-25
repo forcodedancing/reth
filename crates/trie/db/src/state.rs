@@ -1,4 +1,7 @@
-use crate::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory, PrefixSetLoader};
+use crate::{
+    cache::cached_trie_cursor::CachedTrieCursorFactory, DatabaseHashedCursorFactory,
+    DatabaseTrieCursorFactory, PrefixSetLoader,
+};
 use alloy_primitives::{keccak256, Address, BlockNumber, B256, U256};
 use reth_db::tables;
 use reth_db_api::{
@@ -119,6 +122,11 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
         tx: &'a TX,
         input: TrieInput,
     ) -> Result<(B256, TrieUpdates), StateRootError>;
+
+    fn overlay_root_from_nodes_caches_with_updates(
+        tx: &'a TX,
+        input: TrieInput,
+    ) -> Result<(B256, TrieUpdates), StateRootError>;
 }
 
 /// Extends [`HashedPostState`] with operations specific for working with a database transaction.
@@ -211,6 +219,20 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
         let nodes_sorted = input.nodes.into_sorted();
         StateRoot::new(
             InMemoryTrieCursorFactory::new(DatabaseTrieCursorFactory::new(tx), &nodes_sorted),
+            HashedPostStateCursorFactory::new(DatabaseHashedCursorFactory::new(tx), &state_sorted),
+        )
+        .with_prefix_sets(input.prefix_sets.freeze())
+        .root_with_updates()
+    }
+
+    fn overlay_root_from_nodes_caches_with_updates(
+        tx: &'a TX,
+        input: TrieInput,
+    ) -> Result<(B256, TrieUpdates), StateRootError> {
+        let state_sorted = input.state.into_sorted();
+        let nodes_sorted = input.nodes.into_sorted();
+        StateRoot::new(
+            InMemoryTrieCursorFactory::new(CachedTrieCursorFactory::new(tx), &nodes_sorted),
             HashedPostStateCursorFactory::new(DatabaseHashedCursorFactory::new(tx), &state_sorted),
         )
         .with_prefix_sets(input.prefix_sets.freeze())

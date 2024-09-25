@@ -35,6 +35,13 @@ pub trait StateRootProvider: Send + Sync {
         &self,
         input: TrieInput,
     ) -> ProviderResult<(B256, TrieUpdates)>;
+
+    /// Returns state root and trie updates.
+    /// See [`crate::trie::StateRootProvider::state_root_from_nodes`] for more info.
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        input: TrieInput,
+    ) -> ProviderResult<(B256, TrieUpdates)>;
 }
 
 /// A type that can compute the storage root for a given account.

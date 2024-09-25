@@ -97,7 +97,14 @@ impl StateRootProvider for CachedStateProvider {
         &self,
         mut input: TrieInput,
     ) -> ProviderResult<(B256, TrieUpdates)> {
-        self.underlying.state_root_from_nodes_with_updates(input)
+        self.underlying.state_root_from_nodes_caches_with_updates(input)
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        input: TrieInput,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        self.underlying.state_root_from_nodes_caches_with_updates(input)
     }
 }
 

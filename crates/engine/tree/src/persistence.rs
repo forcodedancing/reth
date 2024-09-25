@@ -126,6 +126,11 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             .map(|block| BlockNumHash { hash: block.block().hash(), number: block.block().number });
 
         if last_block_hash_num.is_some() {
+            // update plain state, hashed states, trie nodes for finalized blocks' cache
+            debug!(target: "tree::persistence", "Start to update finalized state cache");
+            reth_chain_state::cache::write_to_cache(blocks.clone());
+            debug!(target: "tree::persistence", "Finish to update finalized state cache");
+
             let provider_rw = self.provider.provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
 

@@ -97,6 +97,13 @@ impl<SP: StateProvider, EDP: ExecutionDataProvider> StateRootProvider
         input.prepend(HashedPostState::from_bundle_state(&bundle_state.state));
         self.state_provider.state_root_from_nodes_with_updates(input)
     }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        input: TrieInput,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        todo!()
+    }
 }
 
 impl<SP: StateProvider, EDP: ExecutionDataProvider> StorageRootProvider

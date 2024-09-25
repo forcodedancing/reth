@@ -103,6 +103,14 @@ impl<'b, TX: DbTx> StateRootProvider for LatestStateProviderRef<'b, TX> {
         StateRoot::overlay_root_from_nodes_with_updates(self.tx, input)
             .map_err(|err| ProviderError::Database(err.into()))
     }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        input: TrieInput,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        StateRoot::overlay_root_from_nodes_caches_with_updates(self.tx, input)
+            .map_err(|err| ProviderError::Database(err.into()))
+    }
 }
 
 impl<'b, TX: DbTx> StorageRootProvider for LatestStateProviderRef<'b, TX> {

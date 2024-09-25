@@ -6,7 +6,7 @@ use alloy_primitives::{Address, B256, U256};
 use reth_errors::ProviderResult;
 use reth_revm::{database::StateProviderDatabase, db::CacheDB, DatabaseRef};
 use reth_storage_api::StateProvider;
-use reth_trie::HashedStorage;
+use reth_trie::{updates::TrieUpdates, HashedStorage, TrieInput};
 use revm::Database;
 
 /// Helper alias type for the state's [`CacheDB`]
@@ -44,6 +44,13 @@ impl<'a> reth_storage_api::StateRootProvider for StateProviderTraitObjWrapper<'a
         input: reth_trie::TrieInput,
     ) -> reth_errors::ProviderResult<(B256, reth_trie::updates::TrieUpdates)> {
         self.0.state_root_from_nodes_with_updates(input)
+    }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        input: TrieInput,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        self.0.state_root_from_nodes_caches_with_updates(input)
     }
 }
 

@@ -127,6 +127,13 @@ impl StateRootProvider for MemoryOverlayStateProvider {
         input.prepend_cached(nodes, state);
         self.historical.state_root_from_nodes_with_updates(input)
     }
+
+    fn state_root_from_nodes_caches_with_updates(
+        &self,
+        input: TrieInput,
+    ) -> ProviderResult<(B256, TrieUpdates)> {
+        todo!()
+    }
 }
 
 impl StorageRootProvider for MemoryOverlayStateProvider {
