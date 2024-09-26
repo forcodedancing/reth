@@ -1,3 +1,4 @@
+pub(crate) use metrics::{counter, histogram};
 use reth_evm::metrics::ExecutorMetrics;
 use reth_metrics::{
     metrics::{Counter, Gauge, Histogram},
