@@ -16,12 +16,18 @@ mod base_sepolia;
 mod dev;
 mod op;
 mod op_sepolia;
+mod opbnb;
+mod opbnb_qa;
+mod opbnb_testnet;
 
 pub use base::BASE_MAINNET;
 pub use base_sepolia::BASE_SEPOLIA;
 pub use dev::OP_DEV;
 pub use op::OP_MAINNET;
 pub use op_sepolia::OP_SEPOLIA;
+pub use opbnb::OPBNB_MAINNET;
+pub use opbnb_qa::OPBNB_QA;
+pub use opbnb_testnet::OPBNB_TESTNET;
 
 use derive_more::{Constructor, Deref, Into};
 use reth_chainspec::ChainSpec;

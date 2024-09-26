@@ -3,7 +3,7 @@ use alloc::{boxed::Box, string::ToString};
 
 use crate::ConfigureEvm;
 use alloy_eips::eip4788::BEACON_ROOTS_ADDRESS;
-use reth_chainspec::{ChainSpec, EthereumHardforks};
+use reth_chainspec::{BscHardforks, ChainSpec, EthereumHardforks};
 use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 use reth_primitives::Header;
 use revm::{interpreter::Host, Database, DatabaseCommit, Evm};
@@ -29,6 +29,13 @@ where
     DB::Error: core::fmt::Display,
     EvmConfig: ConfigureEvm<Header = Header>,
 {
+    // Return immediately if beaconRoot equals the zero hash when using the Parlia engine.
+    if chain_spec.is_bohr_active_at_timestamp(initialized_block_env.timestamp.to()) &&
+        parent_beacon_block_root == Some(B256::ZERO)
+    {
+        return Ok(())
+    }
+
     // apply pre-block EIP-4788 contract call
     let mut evm_pre_block = Evm::builder()
         .with_db(db)

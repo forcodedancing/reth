@@ -133,9 +133,14 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
 
         let builder = if self.offline {
             Pipeline::<N>::builder().add_stages(
-                OfflineStages::new(executor, config.stages, PruneModes::default())
-                    .builder()
-                    .disable(reth_stages::StageId::SenderRecovery),
+                OfflineStages::new(
+                    executor,
+                    config.stages,
+                    PruneModes::default(),
+                    self.env.performance_optimization.skip_state_root_validation,
+                )
+                .builder()
+                .disable(reth_stages::StageId::SenderRecovery),
             )
         } else {
             Pipeline::<N>::builder().with_tip_sender(tip_tx).add_stages(
@@ -148,6 +153,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                     executor.clone(),
                     stage_conf.clone(),
                     prune_modes.clone(),
+                    self.env.performance_optimization.skip_state_root_validation,
                 )
                 .set(ExecutionStage::new(
                     executor,

@@ -12,7 +12,7 @@ use reth_downloaders::{bodies::noop::NoopBodiesDownloader, headers::noop::NoopHe
 use reth_evm::noop::NoopBlockExecutorProvider;
 use reth_node_builder::{NodeTypesWithDBAdapter, NodeTypesWithEngine};
 use reth_node_core::{
-    args::{DatabaseArgs, DatadirArgs},
+    args::{DatabaseArgs, DatadirArgs, PerformanceOptimizationArgs},
     dirs::{ChainPath, DataDirPath},
 };
 use reth_provider::{providers::StaticFileProvider, ProviderFactory, StaticFileProviderFactory};
@@ -48,6 +48,10 @@ pub struct EnvironmentArgs<C: ChainSpecParser> {
     /// All database related arguments
     #[command(flatten)]
     pub db: DatabaseArgs,
+
+    /// All performance optimization related arguments
+    #[command(flatten)]
+    pub performance_optimization: PerformanceOptimizationArgs,
 }
 
 impl<C: ChainSpecParser<ChainSpec = ChainSpec>> EnvironmentArgs<C> {
@@ -79,7 +83,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> EnvironmentArgs<C> {
             config.stages.etl.dir = Some(EtlConfig::from_datadir(data_dir.data_dir()));
         }
 
-        info!(target: "reth::cli", ?db_path, ?sf_path, "Opening storage");
+        info!(target: "reth::cli", ?db_path, ?sf_path, ?self.chain, "Opening storage");
         let (db, sfp) = match access {
             AccessRights::RW => (
                 Arc::new(init_db(db_path, self.db.database_args())?),
@@ -150,6 +154,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> EnvironmentArgs<C> {
                     NoopBlockExecutorProvider::default(),
                     config.stages.clone(),
                     prune_modes.clone(),
+                    self.performance_optimization.skip_state_root_validation,
                 ))
                 .build(factory.clone(), StaticFileProducer::new(factory.clone(), prune_modes));
 

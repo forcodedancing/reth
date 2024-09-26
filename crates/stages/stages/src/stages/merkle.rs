@@ -34,7 +34,7 @@ Please include the following information in your report:
  * The debug logs from __the same time period__. To find the default location for these logs, run:
    `reth --help | grep -A 4 'log.file.directory'`
 
-Once you have this information, please submit a github issue at https://github.com/paradigmxyz/reth/issues/new
+Once you have this information, please submit a github issue at https://github.com/bnb-chain/reth/issues/new
 "#;
 
 /// The default threshold (in number of blocks) for switching from incremental trie building
@@ -515,11 +515,15 @@ mod tests {
                 accounts.iter().map(|(addr, acc)| (*addr, (*acc, std::iter::empty()))),
             )?;
 
-            let SealedBlock { header, body, ommers, withdrawals, requests } = random_block(
-                &mut rng,
-                stage_progress,
-                BlockParams { parent: preblocks.last().map(|b| b.hash()), ..Default::default() },
-            );
+            let SealedBlock { header, body, ommers, withdrawals, sidecars, requests } =
+                random_block(
+                    &mut rng,
+                    stage_progress,
+                    BlockParams {
+                        parent: preblocks.last().map(|b| b.hash()),
+                        ..Default::default()
+                    },
+                );
             let mut header = header.unseal();
 
             header.state_root = state_root(
@@ -528,8 +532,14 @@ mod tests {
                     .into_iter()
                     .map(|(address, account)| (address, (account, std::iter::empty()))),
             );
-            let sealed_head =
-                SealedBlock { header: header.seal_slow(), body, ommers, withdrawals, requests };
+            let sealed_head = SealedBlock {
+                header: header.seal_slow(),
+                body,
+                ommers,
+                withdrawals,
+                sidecars,
+                requests,
+            };
 
             let head_hash = sealed_head.hash();
             let mut blocks = vec![sealed_head];

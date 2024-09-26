@@ -40,3 +40,6 @@ pub use disconnect_reason::*;
 
 pub mod capability;
 pub use capability::*;
+
+pub mod upgrade_status;
+pub use upgrade_status::*;

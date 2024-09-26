@@ -3,9 +3,10 @@ use crate::{
     to_range,
     traits::{BlockSource, ReceiptProvider},
     BlockHashReader, BlockNumReader, BlockReader, ChainSpecProvider, DatabaseProviderFactory,
-    EvmEnvProvider, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider, ProviderError,
-    PruneCheckpointReader, RequestsProvider, StageCheckpointReader, StateProviderBox,
-    StaticFileProviderFactory, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
+    EvmEnvProvider, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider, ParliaSnapshotReader,
+    ProviderError, PruneCheckpointReader, RequestsProvider, StageCheckpointReader,
+    StateProviderBox, StaticFileProviderFactory, TransactionVariant, TransactionsProvider,
+    WithdrawalsProvider,
 };
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use core::fmt;
@@ -16,13 +17,13 @@ use reth_errors::{RethError, RethResult};
 use reth_evm::ConfigureEvmEnv;
 use reth_node_types::NodeTypesWithDB;
 use reth_primitives::{
-    Block, BlockHashOrNumber, BlockWithSenders, Header, Receipt, SealedBlock,
-    SealedBlockWithSenders, SealedHeader, StaticFileSegment, TransactionMeta, TransactionSigned,
-    TransactionSignedNoHash, Withdrawal, Withdrawals,
+    parlia::Snapshot, BlobSidecars, Block, BlockHashOrNumber, BlockWithSenders, Header, Receipt,
+    SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment, TransactionMeta,
+    TransactionSigned, TransactionSignedNoHash, Withdrawal, Withdrawals,
 };
 use reth_prune_types::{PruneCheckpoint, PruneModes, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
-use reth_storage_api::TryIntoHistoricalStateProvider;
+use reth_storage_api::{SidecarsProvider, TryIntoHistoricalStateProvider};
 use reth_storage_errors::provider::ProviderResult;
 use revm::primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use std::{
@@ -518,6 +519,21 @@ impl<N: ProviderNodeTypes> WithdrawalsProvider for ProviderFactory<N> {
     }
 }
 
+impl<N: ProviderNodeTypes> SidecarsProvider for ProviderFactory<N> {
+    fn sidecars(&self, block_hash: &BlockHash) -> ProviderResult<Option<BlobSidecars>> {
+        self.provider()?.sidecars(block_hash)
+    }
+
+    fn sidecars_by_number(&self, num: BlockNumber) -> ProviderResult<Option<BlobSidecars>> {
+        self.static_file_provider.get_with_static_file_or_database(
+            StaticFileSegment::Sidecars,
+            num,
+            |static_file| static_file.sidecars_by_number(num),
+            || self.provider()?.sidecars_by_number(num),
+        )
+    }
+}
+
 impl<N: ProviderNodeTypes> RequestsProvider for ProviderFactory<N> {
     fn requests_by_block(
         &self,
@@ -611,6 +627,12 @@ impl<N: ProviderNodeTypes> PruneCheckpointReader for ProviderFactory<N> {
 
     fn get_prune_checkpoints(&self) -> ProviderResult<Vec<(PruneSegment, PruneCheckpoint)>> {
         self.provider()?.get_prune_checkpoints()
+    }
+}
+
+impl<N: ProviderNodeTypes> ParliaSnapshotReader for ProviderFactory<N> {
+    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        self.provider()?.get_parlia_snapshot(block_hash)
     }
 }
 

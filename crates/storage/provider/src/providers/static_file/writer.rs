@@ -9,7 +9,7 @@ use reth_db_api::models::CompactU256;
 use reth_nippy_jar::{NippyJar, NippyJarError, NippyJarWriter};
 use reth_primitives::{
     static_file::{find_fixed_range, SegmentHeader, SegmentRangeInclusive},
-    Header, Receipt, StaticFileSegment, TransactionSignedNoHash,
+    BlobSidecars, Header, Receipt, StaticFileSegment, TransactionSignedNoHash,
 };
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use std::{
@@ -29,6 +29,7 @@ pub(crate) struct StaticFileWriters {
     headers: RwLock<Option<StaticFileProviderRW>>,
     transactions: RwLock<Option<StaticFileProviderRW>>,
     receipts: RwLock<Option<StaticFileProviderRW>>,
+    sidecars: RwLock<Option<StaticFileProviderRW>>,
 }
 
 impl StaticFileWriters {
@@ -41,6 +42,7 @@ impl StaticFileWriters {
             StaticFileSegment::Headers => self.headers.write(),
             StaticFileSegment::Transactions => self.transactions.write(),
             StaticFileSegment::Receipts => self.receipts.write(),
+            StaticFileSegment::Sidecars => self.sidecars.write(),
         };
 
         if write_guard.is_none() {
@@ -51,13 +53,26 @@ impl StaticFileWriters {
     }
 
     pub(crate) fn commit(&self) -> ProviderResult<()> {
-        for writer_lock in [&self.headers, &self.transactions, &self.receipts] {
+        for writer_lock in [&self.headers, &self.transactions, &self.receipts, &self.sidecars] {
             let mut writer = writer_lock.write();
             if let Some(writer) = writer.as_mut() {
                 writer.commit()?;
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn set_writer(
+        &self,
+        segment: StaticFileSegment,
+        writer: Option<StaticFileProviderRW>,
+    ) {
+        match segment {
+            StaticFileSegment::Headers => *self.headers.write() = writer,
+            StaticFileSegment::Transactions => *self.transactions.write() = writer,
+            StaticFileSegment::Receipts => *self.receipts.write() = writer,
+            StaticFileSegment::Sidecars => *self.sidecars.write() = writer,
+        }
     }
 }
 
@@ -187,7 +202,9 @@ impl StaticFileProviderRW {
     /// [`NippyJarWriter`] for more on healing.
     fn ensure_end_range_consistency(&mut self) -> ProviderResult<()> {
         // If we have lost rows (in this run or previous), we need to update the [SegmentHeader].
-        let expected_rows = if self.user_header().segment().is_headers() {
+        let expected_rows = if self.user_header().segment().is_headers() ||
+            self.user_header().segment().is_sidecars()
+        {
             self.user_header().block_len().unwrap_or_default()
         } else {
             self.user_header().tx_len().unwrap_or_default()
@@ -217,6 +234,7 @@ impl StaticFileProviderRW {
                 StaticFileSegment::Receipts => {
                     self.prune_receipt_data(to_delete, last_block_number.expect("should exist"))?
                 }
+                StaticFileSegment::Sidecars => self.prune_sidecars_data(to_delete)?,
             }
         }
 
@@ -379,7 +397,7 @@ impl StaticFileProviderRW {
         let mut remaining_rows = num_rows;
         while remaining_rows > 0 {
             let len = match self.writer.user_header().segment() {
-                StaticFileSegment::Headers => {
+                StaticFileSegment::Headers | StaticFileSegment::Sidecars => {
                     self.writer.user_header().block_len().unwrap_or_default()
                 }
                 StaticFileSegment::Transactions | StaticFileSegment::Receipts => {
@@ -521,6 +539,39 @@ impl StaticFileProviderRW {
         Ok(block_number)
     }
 
+    /// Appends sidecars to static file.
+    ///
+    /// It **CALLS** `increment_block()` since the number of sidecars is equal to the number of
+    /// blocks.
+    ///
+    /// Returns the current [`BlockNumber`] as seen in the static file.
+    pub fn append_sidecars(
+        &mut self,
+        sidecars: &BlobSidecars,
+        block_number: BlockNumber,
+        hash: &BlockHash,
+    ) -> ProviderResult<BlockNumber> {
+        let start = Instant::now();
+        self.ensure_no_queued_prune()?;
+
+        debug_assert!(self.writer.user_header().segment() == StaticFileSegment::Sidecars);
+
+        let block_number = self.increment_block(block_number)?;
+
+        self.append_column(sidecars)?;
+        self.append_column(hash)?;
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_segment_operation(
+                StaticFileSegment::Sidecars,
+                StaticFileProviderOperation::Append,
+                Some(start.elapsed()),
+            );
+        }
+
+        Ok(block_number)
+    }
+
     /// Appends transaction to static file.
     ///
     /// It **DOES NOT CALL** `increment_block()`, it should be handled elsewhere. There might be
@@ -648,6 +699,12 @@ impl StaticFileProviderRW {
         self.queue_prune(to_delete, None)
     }
 
+    /// Adds an instruction to prune `to_delete` sidecars during commit.
+    pub fn prune_sidecars(&mut self, to_delete: u64) -> ProviderResult<()> {
+        debug_assert_eq!(self.writer.user_header().segment(), StaticFileSegment::Sidecars);
+        self.queue_prune(to_delete, None)
+    }
+
     /// Adds an instruction to prune `to_delete` elements during commit.
     ///
     /// Note: `last_block` refers to the block the unwinds ends at if dealing with transaction-based
@@ -729,6 +786,26 @@ impl StaticFileProviderRW {
         if let Some(metrics) = &self.metrics {
             metrics.record_segment_operation(
                 StaticFileSegment::Headers,
+                StaticFileProviderOperation::Prune,
+                Some(start.elapsed()),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Prunes the last `to_delete` sidecars from the data file.
+    fn prune_sidecars_data(&mut self, to_delete: u64) -> ProviderResult<()> {
+        let start = Instant::now();
+
+        let segment = StaticFileSegment::Sidecars;
+        debug_assert!(self.writer.user_header().segment() == segment);
+
+        self.truncate(to_delete, None)?;
+
+        if let Some(metrics) = &self.metrics {
+            metrics.record_segment_operation(
+                StaticFileSegment::Sidecars,
                 StaticFileProviderOperation::Prune,
                 Some(start.elapsed()),
             );

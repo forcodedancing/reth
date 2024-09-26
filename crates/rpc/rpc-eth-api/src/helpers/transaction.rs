@@ -17,7 +17,7 @@ use reth_rpc_types::{
         EIP1559TransactionRequest, EIP2930TransactionRequest, EIP4844TransactionRequest,
         LegacyTransactionRequest,
     },
-    AnyTransactionReceipt, BlockNumberOrTag, TransactionInfo, TransactionRequest,
+    AnyTransactionReceipt, BlockNumberOrTag, BlockSidecar, TransactionInfo, TransactionRequest,
     TypedTransactionRequest,
 };
 use reth_rpc_types_compat::transaction::{from_recovered, from_recovered_with_block_context};
@@ -598,6 +598,40 @@ pub trait EthTransactions: LoadTransaction {
             .find(|signer| signer.is_signer_for(account))
             .map(|signer| dyn_clone::clone_box(&**signer))
             .ok_or_else(|| SignError::NoAccount.into_eth_err())
+    }
+
+    /// Returns the sidecar for the given transaction hash.
+    fn rpc_transaction_sidecar(
+        &self,
+        hash: B256,
+    ) -> impl Future<Output = Result<Option<BlockSidecar>, Self::Error>> + Send
+    where
+        Self: LoadReceipt + 'static,
+    {
+        async move {
+            let meta = match LoadTransaction::provider(self)
+                .transaction_by_hash_with_meta(hash)
+                .map_err(Self::Error::from_eth_err)?
+            {
+                Some((_, meta)) => meta,
+                None => return Ok(None),
+            };
+
+            // If no block sidecars found, return None
+            let sidecars =
+                match LoadTransaction::cache(self).get_sidecars(meta.block_hash).await.unwrap() {
+                    Some(sidecars) => sidecars,
+                    None => return Ok(None),
+                };
+
+            Ok(sidecars.iter().find(|item| item.tx_hash == hash).map(|sidecar| BlockSidecar {
+                blob_sidecar: sidecar.blob_transaction_sidecar.clone(),
+                block_number: sidecar.block_number.to(),
+                block_hash: sidecar.block_hash,
+                tx_index: sidecar.tx_index,
+                tx_hash: sidecar.tx_hash,
+            }))
+        }
     }
 }
 

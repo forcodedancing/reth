@@ -15,6 +15,7 @@ workspace = true
 reth-network-types = { workspace = true, features = ["serde"] }
 reth-prune-types.workspace = true
 reth-stages-types.workspace = true
+reth-primitives = { workspace = true, optional = true }
 
 # serde
 serde.workspace = true
@@ -28,3 +29,8 @@ eyre.workspace = true
 tempfile.workspace = true
 reth-network-peers.workspace = true
 reth-primitives.workspace = true
+
+[features]
+bsc = [
+    "reth-primitives/bsc"
+]

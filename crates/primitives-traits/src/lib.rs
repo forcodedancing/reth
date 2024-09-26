@@ -43,6 +43,10 @@ pub use storage::StorageEntry;
 
 /// Common header types
 pub mod header;
+
+mod blob_sidecar;
+pub use blob_sidecar::{BlobSidecar, BlobSidecars};
+
 #[cfg(any(test, feature = "arbitrary", feature = "test-utils"))]
 pub use header::test_utils;
 pub use header::{BlockHeader, Header, HeaderError, SealedHeader};

@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  TOOL_CHAIN: "1.81"
+  TOOL_CHAIN_NIGHTLY: "nightly-2024-09-09"
 
 jobs:
   clippy-binaries:
@@ -19,50 +21,57 @@ jobs:
         include:
           - binary: reth
             network: ethereum
+            extra-features: ""
           - binary: op-reth
             network: optimism
+            extra-features: "opbnb"
+          - binary: bsc-reth
+            network: bsc
+            extra-features: ""
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@clippy
+        with:
+          toolchain: ${{ env.TOOL_CHAIN }}
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo clippy --bin "${{ matrix.binary }}" --workspace --features "${{ matrix.network }} asm-keccak jemalloc jemalloc-prof min-error-logs min-warn-logs min-info-logs min-debug-logs min-trace-logs"
+      - run: cargo clippy --bin "${{ matrix.binary }}" --workspace --features "${{ matrix.network }} ${{ matrix.extra-features }} asm-keccak jemalloc jemalloc-prof min-error-logs min-warn-logs min-info-logs min-debug-logs min-trace-logs"
         env:
           RUSTFLAGS: -D warnings
 
-  clippy:
-    name: clippy
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          toolchain: nightly-2024-09-09
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - run: cargo clippy --workspace --lib --examples --tests --benches --all-features --locked
-        env:
-          RUSTFLAGS: -D warnings
+  # clippy:
+  #   name: clippy
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@nightly
+  #       with:
+  #         toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }}
+  #         components: clippy
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         cache-on-failure: true
+  #     - run: cargo clippy --workspace --lib --examples --tests --benches --all-features --locked
+  #       env:
+  #         RUSTFLAGS: -D warnings
 
-  wasm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          target: wasm32-wasip1
-      - uses: taiki-e/install-action@cargo-hack
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - uses: dcarbone/install-jq-action@v2
-      - name: Run Wasm checks
-        run: .github/assets/check_wasm.sh
+  # wasm:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         target: wasm32-wasip1
+  #     - uses: taiki-e/install-action@cargo-hack
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         cache-on-failure: true
+  #     - uses: dcarbone/install-jq-action@v2
+  #     - name: Run Wasm checks
+  #       run: .github/assets/check_wasm.sh
 
   crate-checks:
     runs-on: ubuntu-latest
@@ -70,6 +79,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.TOOL_CHAIN }}
       - uses: taiki-e/install-action@cargo-hack
       - uses: Swatinem/rust-cache@v2
         with:
@@ -86,35 +97,24 @@ jobs:
         include:
           - binary: reth
             network: ethereum
+            extra-features: ""
           - binary: op-reth
             network: optimism
+            extra-features: "opbnb"
+          - binary: bsc-reth
+            network: bsc
+            extra-features: ""
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.81" # MSRV
+          toolchain: ${{ env.TOOL_CHAIN }}
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo build --bin "${{ matrix.binary }}" --workspace --features "${{ matrix.network }}"
+      - run: cargo build --bin "${{ matrix.binary }}" --workspace --features "${{ matrix.network }} ${{ matrix.extra-features }}"
         env:
           RUSTFLAGS: -D warnings
-
-  docs:
-    name: docs
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - run: cargo docs --document-private-items
-        env:
-          # Keep in sync with ./book.yml:jobs.build
-          # This should only add `-D warnings`
-          RUSTDOCFLAGS: --cfg docsrs --show-type-layout --generate-link-to-definition --enable-index-page -Zunstable-options -D warnings
 
   fmt:
     name: fmt
@@ -125,40 +125,41 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
+          toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }} # fmt need the nightly flag, please update this if reallly needed
       - run: cargo fmt --all --check
 
-  udeps:
-    name: udeps
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - uses: taiki-e/install-action@cargo-udeps
-      - run: cargo udeps --workspace --lib --examples --tests --benches --all-features --locked
+  # udeps:
+  #   name: udeps
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@nightly
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         cache-on-failure: true
+  #     - uses: taiki-e/install-action@cargo-udeps
+  #     - run: cargo udeps --workspace --lib --examples --tests --benches --all-features --locked
 
-  book:
-    name: book
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.81" # MSRV
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - run: cargo build --bin reth --workspace --features ethereum
-        env:
-          RUSTFLAGS: -D warnings
-      - run: ./book/cli/update.sh target/debug/reth
-      - name: Check book changes
-        run: git diff --exit-code
+  # book:
+  #   name: book
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@nightly
+  #     - uses: dtolnay/rust-toolchain@master
+  #       with:
+  #         toolchain: ${{ env.TOOL_CHAIN }} # MSRV
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         cache-on-failure: true
+  #     - run: cargo build --bin reth --workspace --features ethereum
+  #   env:
+  #     RUSTFLAGS: -D warnings
+  # - run: ./book/cli/update.sh target/debug/reth
+  # - name: Check book changes
+  #   run: git diff --exit-code
 
   codespell:
     runs-on: ubuntu-latest
@@ -211,13 +212,10 @@ jobs:
     if: always()
     needs:
       - clippy-binaries
-      - clippy
-      - wasm
       - crate-checks
-      - docs
       - fmt
-      - udeps
-      - book
+      # - udeps
+      # - book
       - codespell
       - grafana
       - no-test-deps

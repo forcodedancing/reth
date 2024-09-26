@@ -9,6 +9,9 @@ pub use headers::Headers;
 mod receipts;
 pub use receipts::Receipts;
 
+mod sidecars;
+pub use sidecars::Sidecars;
+
 use alloy_primitives::BlockNumber;
 use reth_provider::providers::StaticFileProvider;
 use reth_static_file_types::StaticFileSegment;

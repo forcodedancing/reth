@@ -28,6 +28,12 @@ revm-primitives.workspace = true
 alloy-eips.workspace = true
 alloy-sol-types.workspace = true
 
+# misc
+tracing.workspace = true
+
+# async
+tokio = { workspace = true, features = ["sync", "time"] }
+
 [dev-dependencies]
 reth-testing-utils.workspace = true
 reth-revm = { workspace = true, features = ["test-utils"] }

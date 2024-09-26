@@ -248,6 +248,10 @@ where
 
         let mut blocks = Vec::new();
         for block_number in start_block..=max_block {
+            if block_number % 10000 == 0 {
+                debug!(target: "sync::stages::execution", "Executing block {:?}", block_number);
+            }
+
             // Fetch the block
             let fetch_block_start = Instant::now();
 
@@ -270,7 +274,7 @@ where
             // Execute the block
             let execute_start = Instant::now();
 
-            self.metrics.metered((&block, td).into(), |input| {
+            self.metrics.metered((&block, td, None).into(), |input| {
                 executor.execute_and_verify_one(input).map_err(|error| StageError::Block {
                     block: Box::new(block.header.clone().seal_slow()),
                     error: BlockErrorKind::Execution(error),
@@ -317,8 +321,15 @@ where
 
         // prepare execution output for writing
         let time = Instant::now();
-        let ExecutionOutcome { bundle, receipts, requests, first_block } = executor.finalize();
-        let state = ExecutionOutcome::new(bundle, receipts, first_block, requests);
+        let ExecutionOutcome { bundle, receipts, requests, first_block, snapshots } =
+            executor.finalize();
+        let state = ExecutionOutcome::new_with_snapshots(
+            bundle,
+            receipts,
+            first_block,
+            requests,
+            snapshots,
+        );
         let write_preparation_duration = time.elapsed();
 
         // log the gas per second for the range we just executed
@@ -347,7 +358,7 @@ where
                 "Previous post execute commit input wasn't processed"
             );
             if let Some(previous_input) = previous_input {
-                tracing::debug!(target: "sync::stages::execution", ?previous_input, "Previous post execute commit input wasn't processed");
+                debug!(target: "sync::stages::execution", ?previous_input, "Previous post execute commit input wasn't processed");
             }
         }
 
@@ -358,6 +369,7 @@ where
         writer.write_to_storage(state, OriginalValuesKnown::Yes)?;
 
         let db_write_duration = time.elapsed();
+
         debug!(
             target: "sync::stages::execution",
             block_fetch = ?fetch_block_duration,
@@ -928,6 +940,14 @@ mod tests {
                 nonce: 0x00,
                 bytecode_hash: None,
             };
+            #[cfg(feature = "bsc")]
+            let account2_info = {
+                // tx fee will be collected to system account rather than block beneficiary
+                let mut account2_info = account2_info;
+                account2_info.balance = U256::from(0x1bc16d674ec80000u128);
+
+                account2_info
+            };
             let account3 = address!("a94f5374fce5edbc8e2a8697c15331677e6ebf0b");
             let account3_info = Account {
                 balance: U256::from(0x3635c9adc5de996b46u128),
@@ -1178,6 +1198,22 @@ mod tests {
         let plain_accounts = test_db.table::<tables::PlainAccountState>().unwrap();
         let plain_storage = test_db.table::<tables::PlainStorageState>().unwrap();
 
+        // tx fee will be collected to system account rather than block beneficiary
+        #[cfg(feature = "bsc")]
+        let plain_accounts = {
+            use reth_revm::bsc::SYSTEM_ADDRESS;
+
+            let tx_fee = U256::from(0x0230a0u64);
+            let mut plain_accounts = plain_accounts;
+            assert_eq!(
+                plain_accounts.pop().unwrap(),
+                (SYSTEM_ADDRESS, Account { nonce: 0, balance: tx_fee, bytecode_hash: None })
+            );
+
+            plain_accounts[0].1.balance = plain_accounts[0].1.balance.saturating_add(tx_fee);
+            plain_accounts
+        };
+
         assert_eq!(
             plain_accounts,
             vec![
@@ -1203,6 +1239,20 @@ mod tests {
 
         let account_changesets = test_db.table::<tables::AccountChangeSets>().unwrap();
         let storage_changesets = test_db.table::<tables::StorageChangeSets>().unwrap();
+
+        // system account will also be changed
+        #[cfg(feature = "bsc")]
+        let account_changesets = {
+            use reth_revm::bsc::SYSTEM_ADDRESS;
+
+            let mut account_changesets = account_changesets;
+            assert_eq!(
+                account_changesets.pop().unwrap(),
+                (block.number, AccountBeforeTx { address: SYSTEM_ADDRESS, info: None })
+            );
+
+            account_changesets
+        };
 
         assert_eq!(
             account_changesets,

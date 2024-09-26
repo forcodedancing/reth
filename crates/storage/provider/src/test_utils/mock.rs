@@ -17,13 +17,14 @@ use reth_db_api::models::{AccountBeforeTx, StoredBlockBodyIndices};
 use reth_evm::ConfigureEvmEnv;
 use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_primitives::{
-    Account, Block, BlockHashOrNumber, BlockId, BlockNumberOrTag, BlockWithSenders, Bytecode,
-    GotExpected, Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader,
+    Account, BlobSidecars, Block, BlockHashOrNumber, BlockId, BlockNumberOrTag, BlockWithSenders,
+    Bytecode, GotExpected, Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader,
     TransactionMeta, TransactionSigned, TransactionSignedNoHash, Withdrawal, Withdrawals,
 };
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_api::{
-    DatabaseProviderFactory, StageCheckpointReader, StateProofProvider, StorageRootProvider,
+    DatabaseProviderFactory, SidecarsProvider, StageCheckpointReader, StateProofProvider,
+    StorageRootProvider,
 };
 use reth_storage_errors::provider::{ConsistentViewError, ProviderError, ProviderResult};
 use reth_trie::{
@@ -786,6 +787,16 @@ impl WithdrawalsProvider for MockEthProvider {
         Ok(None)
     }
     fn latest_withdrawal(&self) -> ProviderResult<Option<Withdrawal>> {
+        Ok(None)
+    }
+}
+
+impl SidecarsProvider for MockEthProvider {
+    fn sidecars(&self, _block_hash: &BlockHash) -> ProviderResult<Option<BlobSidecars>> {
+        Ok(None)
+    }
+
+    fn sidecars_by_number(&self, _num: BlockNumber) -> ProviderResult<Option<BlobSidecars>> {
         Ok(None)
     }
 }

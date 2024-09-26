@@ -2,10 +2,11 @@ use crate::{
     AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
     BlockSource, BlockchainTreePendingStateProvider, CanonChainTracker, CanonStateNotifications,
     CanonStateSubscriptions, ChainSpecProvider, ChangeSetReader, DatabaseProviderFactory,
-    EvmEnvProvider, FinalizedBlockReader, FullExecutionDataProvider, HeaderProvider, ProviderError,
-    PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt, RequestsProvider,
-    StageCheckpointReader, StateProviderBox, StateProviderFactory, StaticFileProviderFactory,
-    TransactionVariant, TransactionsProvider, TreeViewer, WithdrawalsProvider,
+    EvmEnvProvider, FinalizedBlockReader, FullExecutionDataProvider, HeaderProvider,
+    ParliaSnapshotReader, ProviderError, PruneCheckpointReader, ReceiptProvider,
+    ReceiptProviderIdExt, RequestsProvider, StageCheckpointReader, StateProviderBox,
+    StateProviderFactory, StaticFileProviderFactory, TransactionVariant, TransactionsProvider,
+    TreeViewer, WithdrawalsProvider,
 };
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use reth_blockchain_tree_api::{
@@ -20,9 +21,10 @@ use reth_db_api::models::{AccountBeforeTx, StoredBlockBodyIndices};
 use reth_evm::ConfigureEvmEnv;
 use reth_node_types::NodeTypesWithDB;
 use reth_primitives::{
-    Account, Block, BlockHashOrNumber, BlockId, BlockNumHash, BlockNumberOrTag, BlockWithSenders,
-    Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionMeta,
-    TransactionSigned, TransactionSignedNoHash, Withdrawal, Withdrawals,
+    parlia::Snapshot, Account, BlobSidecars, Block, BlockHashOrNumber, BlockId, BlockNumHash,
+    BlockNumberOrTag, BlockWithSenders, Header, Receipt, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, TransactionMeta, TransactionSigned, TransactionSignedNoHash, Withdrawal,
+    Withdrawals,
 };
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
@@ -57,6 +59,7 @@ pub use bundle_state_provider::BundleStateProvider;
 mod consistent_view;
 use alloy_rpc_types_engine::ForkchoiceState;
 pub use consistent_view::{ConsistentDbView, ConsistentViewError};
+use reth_storage_api::SidecarsProvider;
 
 mod blockchain_provider;
 pub use blockchain_provider::BlockchainProvider2;
@@ -491,6 +494,16 @@ impl<N: ProviderNodeTypes> WithdrawalsProvider for BlockchainProvider<N> {
     }
 }
 
+impl<N: ProviderNodeTypes> SidecarsProvider for BlockchainProvider<N> {
+    fn sidecars(&self, block_hash: &BlockHash) -> ProviderResult<Option<BlobSidecars>> {
+        self.database.sidecars(block_hash)
+    }
+
+    fn sidecars_by_number(&self, num: BlockNumber) -> ProviderResult<Option<BlobSidecars>> {
+        self.database.sidecars_by_number(num)
+    }
+}
+
 impl<N: ProviderNodeTypes> RequestsProvider for BlockchainProvider<N> {
     fn requests_by_block(
         &self,
@@ -915,5 +928,11 @@ impl<N: ProviderNodeTypes> AccountReader for BlockchainProvider<N> {
     /// Get basic account information.
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
         self.database.provider()?.basic_account(address)
+    }
+}
+
+impl<N: ProviderNodeTypes> ParliaSnapshotReader for BlockchainProvider<N> {
+    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        self.database.provider()?.get_parlia_snapshot(block_hash)
     }
 }

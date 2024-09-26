@@ -41,6 +41,7 @@ impl Default for EngineArgs {
     }
 }
 
+#[cfg(not(feature = "bsc"))]
 fn main() {
     reth_cli_util::sigsegv_handler::install();
 

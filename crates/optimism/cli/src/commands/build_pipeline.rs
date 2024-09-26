@@ -34,6 +34,7 @@ pub(crate) async fn build_import_pipeline<N, C>(
     file_client: Arc<FileClient>,
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,
     disable_exec: bool,
+    skip_state_root_validation: bool,
 ) -> eyre::Result<(Pipeline<N>, impl Stream<Item = NodeEvent>)>
 where
     N: NodeTypesWithDB<ChainSpec = ChainSpec>,
@@ -85,6 +86,7 @@ where
                 executor,
                 config.stages.clone(),
                 PruneModes::default(),
+                skip_state_root_validation,
             )
             .builder()
             .disable_all_if(&StageId::STATE_REQUIRED, || disable_exec),

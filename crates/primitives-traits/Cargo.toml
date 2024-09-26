@@ -39,7 +39,7 @@ proptest = { workspace = true, optional = true }
 proptest-arbitrary-interop = { workspace = true, optional = true }
 
 [dev-dependencies]
-alloy-primitives = { workspace = true, features = ["arbitrary"] }
+alloy-primitives = { workspace = true, features = ["arbitrary", "rand", "rlp"] }
 alloy-consensus = { workspace = true, features = ["arbitrary"] }
 arbitrary = { workspace = true, features = ["derive"] }
 proptest.workspace = true
@@ -61,3 +61,5 @@ arbitrary = [
     "dep:proptest-arbitrary-interop",
 ]
 alloy-compat = ["alloy-rpc-types-eth"]
+
+bsc = []

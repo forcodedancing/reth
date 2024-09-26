@@ -212,6 +212,7 @@ pub fn random_block<R: Rng>(rng: &mut R, number: u64, block_params: BlockParams)
         body: transactions,
         ommers,
         withdrawals: withdrawals.map(Withdrawals::new),
+        sidecars: Some(Default::default()),
         requests: requests.map(Requests),
     }
 }

@@ -509,7 +509,14 @@ where
     };
 
     // seal the block
-    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals, requests: None };
+    let block = Block {
+        header,
+        body: executed_txs,
+        ommers: vec![],
+        withdrawals,
+        sidecars: None,
+        requests: None,
+    };
 
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");

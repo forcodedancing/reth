@@ -22,6 +22,12 @@ pub trait OptimismHardforks: EthereumHardforks {
     fn is_granite_active_at_timestamp(&self, timestamp: u64) -> bool {
         self.fork(OptimismHardfork::Granite).active_at_timestamp(timestamp)
     }
+
+    /// Convenience method to check if [`OptimismHardfork::Wright`] is active at a given block
+    /// number.
+    fn is_wright_active_at_timestamp(&self, timestamp: u64) -> bool {
+        self.fork(OptimismHardfork::Wright).active_at_timestamp(timestamp)
+    }
 }
 
 impl OptimismHardforks for ChainHardforks {}

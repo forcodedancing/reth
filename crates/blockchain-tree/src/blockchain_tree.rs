@@ -27,7 +27,10 @@ use reth_provider::{
 };
 use reth_stages_api::{MetricEvent, MetricEventsSender};
 use reth_storage_errors::provider::{ProviderResult, RootMismatch};
-use reth_trie::{hashed_cursor::HashedPostStateCursorFactory, StateRoot};
+use reth_trie::{
+    hashed_cursor::HashedPostStateCursorFactory, updates::TrieUpdates, HashedPostStateSorted,
+    StateRoot,
+};
 use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseStateRoot};
 use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
@@ -74,6 +77,10 @@ pub struct BlockchainTree<N: NodeTypesWithDB, E> {
     sync_metrics_tx: Option<MetricEventsSender>,
     /// Metrics for the blockchain tree.
     metrics: TreeMetrics,
+    /// Whether to enable prefetch when execute block
+    enable_prefetch: bool,
+    /// Disable state root calculation for blocks.
+    skip_state_root_validation: bool,
 }
 
 impl<N: NodeTypesWithDB, E> BlockchainTree<N, E> {
@@ -143,6 +150,8 @@ where
             canon_state_notification_sender,
             sync_metrics_tx: None,
             metrics: Default::default(),
+            enable_prefetch: false,
+            skip_state_root_validation: false,
         })
     }
 
@@ -164,6 +173,20 @@ where
     /// synchronization process with the blockchain network.
     pub fn with_sync_metrics_tx(mut self, metrics_tx: MetricEventsSender) -> Self {
         self.sync_metrics_tx = Some(metrics_tx);
+        self
+    }
+
+    /// Enable prefetch.
+    pub const fn enable_prefetch(mut self) -> Self {
+        self.enable_prefetch = true;
+        self
+    }
+
+    /// Set the state root calculation to be disabled.
+    ///
+    /// This is helpful when the state root is taking too long to calculate.
+    pub const fn skip_state_root_validation(mut self) -> Self {
+        self.skip_state_root_validation = true;
         self
     }
 
@@ -385,7 +408,7 @@ where
     fn try_append_canonical_chain(
         &mut self,
         block: SealedBlockWithSenders,
-        block_validation_kind: BlockValidationKind,
+        mut block_validation_kind: BlockValidationKind,
     ) -> Result<BlockStatus, InsertBlockErrorKind> {
         let parent = block.parent_num_hash();
         let block_num_hash = block.num_hash();
@@ -404,7 +427,8 @@ where
             .provider_factory
             .chain_spec()
             .fork(EthereumHardfork::Paris)
-            .active_at_ttd(parent_td, U256::ZERO)
+            .active_at_ttd(parent_td, U256::ZERO) &&
+            !self.externals.provider_factory.chain_spec().is_bsc()
         {
             return Err(BlockExecutionError::Validation(BlockValidationError::BlockPreMerge {
                 hash: block.hash(),
@@ -425,6 +449,10 @@ where
             BlockAttachment::HistoricalFork
         };
 
+        if self.skip_state_root_validation {
+            block_validation_kind = BlockValidationKind::SkipStateRootValidation;
+        }
+
         let chain = AppendableChain::new_canonical_fork(
             block,
             &parent_header,
@@ -433,6 +461,7 @@ where
             &self.externals,
             block_attachment,
             block_validation_kind,
+            self.enable_prefetch,
         )?;
 
         self.insert_chain(chain);
@@ -449,7 +478,7 @@ where
         &mut self,
         block: SealedBlockWithSenders,
         chain_id: SidechainId,
-        block_validation_kind: BlockValidationKind,
+        mut block_validation_kind: BlockValidationKind,
     ) -> Result<BlockStatus, InsertBlockErrorKind> {
         let block_num_hash = block.num_hash();
         debug!(target: "blockchain_tree", ?block_num_hash, ?chain_id, "Inserting block into side chain");
@@ -469,6 +498,10 @@ where
 
         let chain_tip = parent_chain.tip().hash();
         let canonical_chain = self.state.block_indices.canonical_chain();
+
+        if self.skip_state_root_validation {
+            block_validation_kind = BlockValidationKind::SkipStateRootValidation;
+        }
 
         // append the block if it is continuing the side chain.
         let block_attachment = if chain_tip == block.parent_hash {
@@ -490,6 +523,7 @@ where
                 canonical_fork,
                 block_attachment,
                 block_validation_kind,
+                self.enable_prefetch,
             )?;
 
             self.state.block_indices.insert_non_fork_block(block_number, block_hash, chain_id);
@@ -504,6 +538,7 @@ where
                 canonical_fork,
                 &self.externals,
                 block_validation_kind,
+                self.enable_prefetch,
             )?;
             self.insert_chain(chain);
             BlockAttachment::HistoricalFork
@@ -1045,7 +1080,8 @@ where
                 .provider_factory
                 .chain_spec()
                 .fork(EthereumHardfork::Paris)
-                .active_at_ttd(td, U256::ZERO)
+                .active_at_ttd(td, U256::ZERO) &&
+                !self.externals.provider_factory.chain_spec().is_bsc()
             {
                 return Err(CanonicalError::from(BlockValidationError::BlockPreMerge {
                     hash: block_hash,
@@ -1214,50 +1250,53 @@ where
         recorder: &mut MakeCanonicalDurationsRecorder,
     ) -> Result<(), CanonicalError> {
         let (blocks, state, chain_trie_updates) = chain.into_inner();
-        let hashed_state = state.hash_state_slow();
-        let prefix_sets = hashed_state.construct_prefix_sets().freeze();
-        let hashed_state_sorted = hashed_state.into_sorted();
-
-        // Compute state root or retrieve cached trie updates before opening write transaction.
-        let block_hash_numbers =
-            blocks.iter().map(|(number, b)| (number, b.hash())).collect::<Vec<_>>();
-        let trie_updates = match chain_trie_updates {
-            Some(updates) => {
-                debug!(target: "blockchain_tree", blocks = ?block_hash_numbers, "Using cached trie updates");
-                self.metrics.trie_updates_insert_cached.increment(1);
-                updates
-            }
-            None => {
-                debug!(target: "blockchain_tree", blocks = ?block_hash_numbers, "Recomputing state root for insert");
-                let provider = self
-                    .externals
-                    .provider_factory
-                    .provider()?
-                    // State root calculation can take a while, and we're sure no write transaction
-                    // will be open in parallel. See https://github.com/paradigmxyz/reth/issues/6168.
-                    .disable_long_read_transaction_safety();
-                let (state_root, trie_updates) = StateRoot::from_tx(provider.tx_ref())
-                    .with_hashed_cursor_factory(HashedPostStateCursorFactory::new(
-                        DatabaseHashedCursorFactory::new(provider.tx_ref()),
-                        &hashed_state_sorted,
-                    ))
-                    .with_prefix_sets(prefix_sets)
-                    .root_with_updates()
-                    .map_err(Into::<BlockValidationError>::into)?;
-                let tip = blocks.tip();
-                if state_root != tip.state_root {
-                    return Err(ProviderError::StateRootMismatch(Box::new(RootMismatch {
-                        root: GotExpected { got: state_root, expected: tip.state_root },
-                        block_number: tip.number,
-                        block_hash: tip.hash(),
-                    }))
-                    .into())
+        let mut hashed_state_sorted = HashedPostStateSorted::default();
+        let mut trie_updates = TrieUpdates::default();
+        if !self.skip_state_root_validation {
+            let hashed_state = state.hash_state_slow();
+            let prefix_sets = hashed_state.construct_prefix_sets().freeze();
+            hashed_state_sorted = hashed_state.into_sorted();
+            // Compute state root or retrieve cached trie updates before opening write transaction.
+            let block_hash_numbers =
+                blocks.iter().map(|(number, b)| (number, b.hash())).collect::<Vec<_>>();
+            trie_updates = match chain_trie_updates {
+                Some(updates) => {
+                    debug!(target: "blockchain_tree", blocks = ?block_hash_numbers, "Using cached trie updates");
+                    self.metrics.trie_updates_insert_cached.increment(1);
+                    updates
                 }
-                self.metrics.trie_updates_insert_recomputed.increment(1);
-                trie_updates
-            }
-        };
-        recorder.record_relative(MakeCanonicalAction::RetrieveStateTrieUpdates);
+                None => {
+                    debug!(target: "blockchain_tree", blocks = ?block_hash_numbers, "Recomputing state root for insert");
+                    let provider = self
+                        .externals
+                        .provider_factory
+                        .provider()?
+                        // State root calculation can take a while, and we're sure no write
+                        // transaction will be open in parallel. See https://github.com/paradigmxyz/reth/issues/6168.
+                        .disable_long_read_transaction_safety();
+                    let (state_root, trie_updates) = StateRoot::from_tx(provider.tx_ref())
+                        .with_hashed_cursor_factory(HashedPostStateCursorFactory::new(
+                            DatabaseHashedCursorFactory::new(provider.tx_ref()),
+                            &hashed_state_sorted,
+                        ))
+                        .with_prefix_sets(prefix_sets)
+                        .root_with_updates()
+                        .map_err(Into::<BlockValidationError>::into)?;
+                    let tip = blocks.tip();
+                    if state_root != tip.state_root {
+                        return Err(ProviderError::StateRootMismatch(Box::new(RootMismatch {
+                            root: GotExpected { got: state_root, expected: tip.state_root },
+                            block_number: tip.number,
+                            block_hash: tip.hash(),
+                        }))
+                        .into())
+                    }
+                    self.metrics.trie_updates_insert_recomputed.increment(1);
+                    trie_updates
+                }
+            };
+            recorder.record_relative(MakeCanonicalAction::RetrieveStateTrieUpdates);
+        }
 
         let provider_rw = self.externals.provider_factory.provider_rw()?;
         provider_rw
@@ -1626,6 +1665,7 @@ mod tests {
                     body: body.clone().into_iter().map(|tx| tx.into_signed()).collect(),
                     ommers: Vec::new(),
                     withdrawals: Some(Withdrawals::default()),
+                    sidecars: None,
                     requests: None,
                 },
                 body.iter().map(|tx| tx.signer()).collect(),

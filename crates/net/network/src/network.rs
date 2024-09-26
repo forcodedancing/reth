@@ -12,8 +12,9 @@ use reth_discv4::Discv4;
 use reth_discv5::Discv5;
 use reth_eth_wire::{DisconnectReason, NewBlock, NewPooledTransactionHashes, SharedTransactions};
 use reth_network_api::{
+    events::EngineMessage,
     test_utils::{PeersHandle, PeersHandleProvider},
-    BlockDownloaderProvider, DiscoveryEvent, NetworkError, NetworkEvent,
+    BlockDownloaderProvider, DiscoveryEvent, EngineRxProvider, NetworkError, NetworkEvent,
     NetworkEventListenerProvider, NetworkInfo, NetworkStatus, PeerInfo, PeerRequest, Peers,
     PeersInfo,
 };
@@ -27,7 +28,7 @@ use reth_primitives::{Head, TransactionSigned, B256};
 use reth_tokio_util::{EventSender, EventStream};
 use secp256k1::SecretKey;
 use tokio::sync::{
-    mpsc::{self, UnboundedSender},
+    mpsc::{self, UnboundedReceiver, UnboundedSender},
     oneshot,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -55,6 +56,7 @@ impl NetworkHandle {
         num_active_peers: Arc<AtomicUsize>,
         listener_address: Arc<Mutex<SocketAddr>>,
         to_manager_tx: UnboundedSender<NetworkHandleMessage>,
+        engine_rx: Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>>,
         secret_key: SecretKey,
         local_peer_id: PeerId,
         peers: PeersHandle,
@@ -68,6 +70,7 @@ impl NetworkHandle {
         let inner = NetworkInner {
             num_active_peers,
             to_manager_tx,
+            engine_rx,
             listener_address,
             secret_key,
             local_peer_id,
@@ -91,6 +94,15 @@ impl NetworkHandle {
 
     fn manager(&self) -> &UnboundedSender<NetworkHandleMessage> {
         &self.inner.to_manager_tx
+    }
+
+    /// Returns a new [`FetchClient`] that can be cloned and shared.
+    ///
+    /// The [`FetchClient`] is the entrypoint for sending requests to the network.
+    pub async fn fetch_client(&self) -> Result<FetchClient, oneshot::error::RecvError> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.manager().send(NetworkHandleMessage::FetchClient(tx));
+        rx.await
     }
 
     /// Returns the mode of the network, either pow, or pos
@@ -401,12 +413,20 @@ impl BlockDownloaderProvider for NetworkHandle {
     }
 }
 
+impl EngineRxProvider for NetworkHandle {
+    fn get_to_engine_rx(&self) -> Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>> {
+        self.inner.engine_rx.clone()
+    }
+}
+
 #[derive(Debug)]
 struct NetworkInner {
     /// Number of active peer sessions the node's currently handling.
     num_active_peers: Arc<AtomicUsize>,
     /// Sender half of the message channel to the [`crate::NetworkManager`].
     to_manager_tx: UnboundedSender<NetworkHandleMessage>,
+    /// The receiver of the message channel to the Task Engine.
+    engine_rx: Arc<tokio::sync::Mutex<UnboundedReceiver<EngineMessage>>>,
     /// The local address that accepts incoming connections.
     listener_address: Arc<Mutex<SocketAddr>>,
     /// The secret key used for authenticating sessions.

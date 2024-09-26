@@ -10,10 +10,11 @@ use crate::{
     BlockReader, BlockWriter, BundleStateInit, DBProvider, EvmEnvProvider, FinalizedBlockReader,
     FinalizedBlockWriter, HashingWriter, HeaderProvider, HeaderSyncGap, HeaderSyncGapProvider,
     HistoricalStateProvider, HistoryWriter, LatestStateProvider, OriginalValuesKnown,
-    ProviderError, PruneCheckpointReader, PruneCheckpointWriter, RequestsProvider, RevertsInit,
-    StageCheckpointReader, StateChangeWriter, StateProviderBox, StateReader, StateWriter,
-    StatsReader, StorageReader, StorageTrieWriter, TransactionVariant, TransactionsProvider,
-    TransactionsProviderExt, TrieWriter, WithdrawalsProvider,
+    ParliaSnapshotReader, ProviderError, PruneCheckpointReader, PruneCheckpointWriter,
+    RequestsProvider, RevertsInit, SidecarsProvider, StageCheckpointReader, StateChangeWriter,
+    StateProviderBox, StateReader, StateWriter, StatsReader, StorageReader, StorageTrieWriter,
+    TransactionVariant, TransactionsProvider, TransactionsProviderExt, TrieWriter,
+    WithdrawalsProvider,
 };
 use alloy_primitives::{keccak256, Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use itertools::{izip, Itertools};
@@ -38,10 +39,10 @@ use reth_evm::ConfigureEvmEnv;
 use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_network_p2p::headers::downloader::SyncTarget;
 use reth_primitives::{
-    Account, Block, BlockHashOrNumber, BlockWithSenders, Bytecode, GotExpected, Header, Receipt,
-    Requests, SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment, StorageEntry,
-    TransactionMeta, TransactionSigned, TransactionSignedEcRecovered, TransactionSignedNoHash,
-    Withdrawal, Withdrawals,
+    parlia::Snapshot, Account, BlobSidecars, Block, BlockHashOrNumber, BlockWithSenders, Bytecode,
+    GotExpected, Header, Receipt, Requests, SealedBlock, SealedBlockWithSenders, SealedHeader,
+    StaticFileSegment, StorageEntry, TransactionMeta, TransactionSigned,
+    TransactionSignedEcRecovered, TransactionSignedNoHash, Withdrawal, Withdrawals,
 };
 use reth_prune_types::{PruneCheckpoint, PruneModes, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
@@ -457,6 +458,7 @@ impl<TX: DbTx> DatabaseProvider<TX> {
             })
             .collect();
 
+        // the sidecars will always be None as this is not needed
         construct_block(header, body, senders, ommers, withdrawals, requests)
     }
 
@@ -484,6 +486,7 @@ impl<TX: DbTx> DatabaseProvider<TX> {
             Range<TxNumber>,
             Vec<Header>,
             Option<Withdrawals>,
+            Option<BlobSidecars>,
             Option<Requests>,
         ) -> ProviderResult<R>,
     {
@@ -541,7 +544,11 @@ impl<TX: DbTx> DatabaseProvider<TX> {
                             .unwrap_or_default()
                     };
 
-                if let Ok(b) = assemble_block(header, tx_range, ommers, withdrawals, requests) {
+                let sidecars = Some(Default::default()); // no need to read sidecars
+
+                if let Ok(b) =
+                    assemble_block(header, tx_range, ommers, withdrawals, sidecars, requests)
+                {
                     blocks.push(b);
                 }
             }
@@ -575,6 +582,7 @@ impl<TX: DbTx> DatabaseProvider<TX> {
             Vec<TransactionSigned>,
             Vec<Header>,
             Option<Withdrawals>,
+            Option<BlobSidecars>,
             Option<Requests>,
             Vec<Address>,
         ) -> ProviderResult<B>,
@@ -582,40 +590,43 @@ impl<TX: DbTx> DatabaseProvider<TX> {
         let mut tx_cursor = self.tx.cursor_read::<tables::Transactions>()?;
         let mut senders_cursor = self.tx.cursor_read::<tables::TransactionSenders>()?;
 
-        self.block_range(range, headers_range, |header, tx_range, ommers, withdrawals, requests| {
-            let (body, senders) = if tx_range.is_empty() {
-                (Vec::new(), Vec::new())
-            } else {
-                let body = self
-                    .transactions_by_tx_range_with_cursor(tx_range.clone(), &mut tx_cursor)?
-                    .into_iter()
-                    .map(Into::into)
-                    .collect::<Vec<TransactionSigned>>();
-                // fetch senders from the senders table
-                let known_senders =
-                    senders_cursor
+        self.block_range(
+            range,
+            headers_range,
+            |header, tx_range, ommers, withdrawals, sidecars, requests| {
+                let (body, senders) = if tx_range.is_empty() {
+                    (Vec::new(), Vec::new())
+                } else {
+                    let body = self
+                        .transactions_by_tx_range_with_cursor(tx_range.clone(), &mut tx_cursor)?
+                        .into_iter()
+                        .map(Into::into)
+                        .collect::<Vec<TransactionSigned>>();
+                    // fetch senders from the senders table
+                    let known_senders = senders_cursor
                         .walk_range(tx_range.clone())?
                         .collect::<Result<HashMap<_, _>, _>>()?;
 
-                let mut senders = Vec::with_capacity(body.len());
-                for (tx_num, tx) in tx_range.zip(body.iter()) {
-                    match known_senders.get(&tx_num) {
-                        None => {
-                            // recover the sender from the transaction if not found
-                            let sender = tx
-                                .recover_signer_unchecked()
-                                .ok_or_else(|| ProviderError::SenderRecoveryError)?;
-                            senders.push(sender);
+                    let mut senders = Vec::with_capacity(body.len());
+                    for (tx_num, tx) in tx_range.zip(body.iter()) {
+                        match known_senders.get(&tx_num) {
+                            None => {
+                                // recover the sender from the transaction if not found
+                                let sender = tx
+                                    .recover_signer_unchecked()
+                                    .ok_or_else(|| ProviderError::SenderRecoveryError)?;
+                                senders.push(sender);
+                            }
+                            Some(sender) => senders.push(*sender),
                         }
-                        Some(sender) => senders.push(*sender),
                     }
-                }
 
-                (body, senders)
-            };
+                    (body, senders)
+                };
 
-            assemble_block(header, body, ommers, withdrawals, requests, senders)
-        })
+                assemble_block(header, body, ommers, withdrawals, sidecars, requests, senders)
+            },
+        )
     }
 
     /// Get requested blocks transaction with senders
@@ -705,6 +716,7 @@ impl<TX: DbTx> DatabaseProvider<TX> {
         let block_ommers = self.get::<tables::BlockOmmers>(range.clone())?;
         let block_withdrawals = self.get::<tables::BlockWithdrawals>(range.clone())?;
         let block_requests = self.get::<tables::BlockRequests>(range.clone())?;
+        let block_sidecars = self.get::<tables::Sidecars>(range.clone())?;
 
         let block_tx = self.get_block_transaction_range(range)?;
         let mut blocks = Vec::with_capacity(block_headers.len());
@@ -718,9 +730,11 @@ impl<TX: DbTx> DatabaseProvider<TX> {
         let mut block_ommers_iter = block_ommers.into_iter();
         let mut block_withdrawals_iter = block_withdrawals.into_iter();
         let mut block_requests_iter = block_requests.into_iter();
+        let mut block_sidecars_iter = block_sidecars.into_iter();
         let mut block_ommers = block_ommers_iter.next();
         let mut block_withdrawals = block_withdrawals_iter.next();
         let mut block_requests = block_requests_iter.next();
+        let mut block_sidecars = block_sidecars_iter.next();
 
         for ((main_block_number, header), (_, header_hash), (_, tx)) in
             izip!(block_header_iter, block_header_hashes_iter, block_tx_iter)
@@ -767,8 +781,22 @@ impl<TX: DbTx> DatabaseProvider<TX> {
                 requests = None;
             }
 
+            // sidecars can be missing
+            let cancun_is_active = self.chain_spec.is_cancun_active_at_timestamp(header.timestamp);
+            let mut sidecars = Some(BlobSidecars::default());
+            if cancun_is_active {
+                if let Some((block_number, _)) = block_sidecars.as_ref() {
+                    if *block_number == main_block_number {
+                        sidecars = Some(block_sidecars.take().unwrap().1);
+                        block_sidecars = block_sidecars_iter.next();
+                    }
+                }
+            } else {
+                sidecars = None;
+            };
+
             blocks.push(SealedBlockWithSenders {
-                block: SealedBlock { header, body, ommers, withdrawals, requests },
+                block: SealedBlock { header, body, ommers, withdrawals, sidecars, requests },
                 senders,
             })
         }
@@ -1406,6 +1434,7 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
         let block_withdrawals = self.take::<tables::BlockWithdrawals>(range.clone())?;
         let block_requests = self.take::<tables::BlockRequests>(range.clone())?;
         let block_tx = self.take_block_transaction_range(range.clone())?;
+        let block_sidecars = self.take::<tables::Sidecars>(range.clone())?;
 
         let mut blocks = Vec::with_capacity(block_headers.len());
 
@@ -1421,9 +1450,11 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
         let mut block_ommers_iter = block_ommers.into_iter();
         let mut block_withdrawals_iter = block_withdrawals.into_iter();
         let mut block_requests_iter = block_requests.into_iter();
+        let mut block_sidecars_iter = block_sidecars.into_iter();
         let mut block_ommers = block_ommers_iter.next();
         let mut block_withdrawals = block_withdrawals_iter.next();
         let mut block_requests = block_requests_iter.next();
+        let mut block_sidecars = block_sidecars_iter.next();
 
         for ((main_block_number, header), (_, header_hash), (_, tx)) in
             izip!(block_header_iter, block_header_hashes_iter, block_tx_iter)
@@ -1470,8 +1501,22 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
                 requests = None;
             }
 
+            // sidecars can be missing
+            let cancun_is_active = self.chain_spec.is_cancun_active_at_timestamp(header.timestamp);
+            let mut sidecars = Some(BlobSidecars::default());
+            if cancun_is_active {
+                if let Some((block_number, _)) = block_sidecars.as_ref() {
+                    if *block_number == main_block_number {
+                        sidecars = Some(block_sidecars.take().unwrap().1);
+                        block_sidecars = block_sidecars_iter.next();
+                    }
+                }
+            } else {
+                sidecars = None;
+            };
+
             blocks.push(SealedBlockWithSenders {
-                block: SealedBlock { header, body, ommers, withdrawals, requests },
+                block: SealedBlock { header, body, ommers, withdrawals, sidecars, requests },
                 senders,
             })
         }
@@ -1899,7 +1944,16 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                     None => return Ok(None),
                 };
 
-                return Ok(Some(Block { header, body: transactions, ommers, withdrawals, requests }))
+                let sidecars = self.sidecars(&self.block_hash(number)?.unwrap_or_default())?;
+
+                return Ok(Some(Block {
+                    header,
+                    body: transactions,
+                    ommers,
+                    withdrawals,
+                    sidecars,
+                    requests,
+                }))
             }
         }
 
@@ -1959,13 +2013,20 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
             transaction_kind,
             |block_number| self.header_by_number(block_number),
             |header, body, senders, ommers, withdrawals, requests| {
-                Block { header, body, ommers, withdrawals, requests }
-                    // Note: we're using unchecked here because we know the block contains valid txs
-                    // wrt to its height and can ignore the s value check so pre
-                    // EIP-2 txs are allowed
-                    .try_with_senders_unchecked(senders)
-                    .map(Some)
-                    .map_err(|_| ProviderError::SenderRecoveryError)
+                Block {
+                    header,
+                    body,
+                    ommers,
+                    withdrawals,
+                    sidecars: Some(Default::default()),
+                    requests,
+                }
+                // Note: we're using unchecked here because we know the block contains valid txs
+                // wrt to its height and can ignore the s value check so pre
+                // EIP-2 txs are allowed
+                .try_with_senders_unchecked(senders)
+                .map(Some)
+                .map_err(|_| ProviderError::SenderRecoveryError)
             },
         )
     }
@@ -1980,13 +2041,20 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
             transaction_kind,
             |block_number| self.sealed_header(block_number),
             |header, body, senders, ommers, withdrawals, requests| {
-                SealedBlock { header, body, ommers, withdrawals, requests }
-                    // Note: we're using unchecked here because we know the block contains valid txs
-                    // wrt to its height and can ignore the s value check so pre
-                    // EIP-2 txs are allowed
-                    .try_with_senders_unchecked(senders)
-                    .map(Some)
-                    .map_err(|_| ProviderError::SenderRecoveryError)
+                SealedBlock {
+                    header,
+                    body,
+                    ommers,
+                    withdrawals,
+                    sidecars: Some(Default::default()),
+                    requests,
+                }
+                // Note: we're using unchecked here because we know the block contains valid txs
+                // wrt to its height and can ignore the s value check so pre
+                // EIP-2 txs are allowed
+                .try_with_senders_unchecked(senders)
+                .map(Some)
+                .map_err(|_| ProviderError::SenderRecoveryError)
             },
         )
     }
@@ -1996,7 +2064,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
         self.block_range(
             range,
             |range| self.headers_range(range),
-            |header, tx_range, ommers, withdrawals, requests| {
+            |header, tx_range, ommers, withdrawals, sidecars, requests| {
                 let body = if tx_range.is_empty() {
                     Vec::new()
                 } else {
@@ -2005,7 +2073,7 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
                         .map(Into::into)
                         .collect()
                 };
-                Ok(Block { header, body, ommers, withdrawals, requests })
+                Ok(Block { header, body, ommers, withdrawals, sidecars, requests })
             },
         )
     }
@@ -2017,8 +2085,8 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
         self.block_with_senders_range(
             range,
             |range| self.headers_range(range),
-            |header, body, ommers, withdrawals, requests, senders| {
-                Block { header, body, ommers, withdrawals, requests }
+            |header, body, ommers, withdrawals, sidecars, requests, senders| {
+                Block { header, body, ommers, withdrawals, sidecars, requests }
                     .try_with_senders_unchecked(senders)
                     .map_err(|_| ProviderError::SenderRecoveryError)
             },
@@ -2032,9 +2100,9 @@ impl<TX: DbTx> BlockReader for DatabaseProvider<TX> {
         self.block_with_senders_range(
             range,
             |range| self.sealed_headers_range(range),
-            |header, body, ommers, withdrawals, requests, senders| {
+            |header, body, ommers, withdrawals, sidecars, requests, senders| {
                 SealedBlockWithSenders::new(
-                    SealedBlock { header, body, ommers, withdrawals, requests },
+                    SealedBlock { header, body, ommers, withdrawals, sidecars, requests },
                     senders,
                 )
                 .ok_or(ProviderError::SenderRecoveryError)
@@ -2340,6 +2408,25 @@ impl<TX: DbTx> WithdrawalsProvider for DatabaseProvider<TX> {
         let latest_block_withdrawal = self.tx.cursor_read::<tables::BlockWithdrawals>()?.last()?;
         Ok(latest_block_withdrawal
             .and_then(|(_, mut block_withdrawal)| block_withdrawal.withdrawals.pop()))
+    }
+}
+
+impl<TX: DbTx> SidecarsProvider for DatabaseProvider<TX> {
+    fn sidecars(&self, block_hash: &BlockHash) -> ProviderResult<Option<BlobSidecars>> {
+        if let Some(num) = self.block_number(*block_hash)? {
+            Ok(self.sidecars_by_number(num)?)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn sidecars_by_number(&self, num: BlockNumber) -> ProviderResult<Option<BlobSidecars>> {
+        self.static_file_provider.get_with_static_file_or_database(
+            StaticFileSegment::Sidecars,
+            num,
+            |static_file| static_file.sidecars_by_number(num),
+            || Ok(self.tx.get::<tables::Sidecars>(num)?),
+        )
     }
 }
 
@@ -3471,6 +3558,10 @@ impl<TX: DbTxMut + DbTx + 'static> BlockWriter for DatabaseProvider<TX> {
             }
         }
 
+        let sidecars = block.block.sidecars.unwrap_or_default();
+        self.tx.put::<tables::Sidecars>(block_number, sidecars)?;
+        durations_recorder.record_relative(metrics::Action::InsertBlockSidecars);
+
         let block_indices = StoredBlockBodyIndices { first_tx_num, tx_count };
         self.tx.put::<tables::BlockBodyIndices>(block_number, block_indices.clone())?;
         durations_recorder.record_relative(metrics::Action::InsertBlockBodyIndices);
@@ -3601,6 +3692,12 @@ impl<TX: DbTxMut> FinalizedBlockWriter for DatabaseProvider<TX> {
         Ok(self
             .tx
             .put::<tables::ChainState>(tables::ChainStateKey::LastFinalizedBlock, block_number)?)
+    }
+}
+
+impl<TX: DbTx> ParliaSnapshotReader for DatabaseProvider<TX> {
+    fn get_parlia_snapshot(&self, block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        Ok(self.tx.get::<tables::ParliaSnapshot>(block_hash)?)
     }
 }
 

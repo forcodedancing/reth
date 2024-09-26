@@ -30,3 +30,5 @@ reth-optimism-chainspec.workspace = true
 
 [features]
 optimism = ["reth-primitives/optimism"]
+
+opbnb = ["reth-primitives/opbnb"]

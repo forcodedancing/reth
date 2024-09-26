@@ -26,6 +26,7 @@ fn transform_block<F: FnOnce(Block) -> Block>(src: SealedBlock, f: F) -> Executi
         body: transformed.body,
         ommers: transformed.ommers,
         withdrawals: transformed.withdrawals,
+        sidecars: transformed.sidecars,
         requests: transformed.requests,
     })
 }
@@ -84,20 +85,22 @@ fn payload_validation() {
         b
     });
     assert_matches!(
-        try_into_sealed_block(invalid_extra_data_block,None),
+        try_into_sealed_block(invalid_extra_data_block, None),
         Err(PayloadError::ExtraData(data)) if data == block_with_invalid_extra_data
     );
 
     // Zero base fee
-    let block_with_zero_base_fee = transform_block(block.clone(), |mut b| {
-        b.header.base_fee_per_gas = Some(0);
-        b
-    });
-    assert_matches!(
-
-        try_into_sealed_block(block_with_zero_base_fee,None),
-        Err(PayloadError::BaseFee(val)) if val.is_zero()
-    );
+    #[cfg(not(feature = "optimism"))]
+    {
+        let block_with_zero_base_fee = transform_block(block.clone(), |mut b| {
+            b.header.base_fee_per_gas = Some(0);
+            b
+        });
+        assert_matches!(
+            try_into_sealed_block(block_with_zero_base_fee, None),
+            Err(PayloadError::BaseFee(val)) if val.is_zero()
+        );
+    }
 
     // Invalid encoded transactions
     let mut payload_with_invalid_txs: ExecutionPayloadV1 = block_to_payload_v1(block.clone());

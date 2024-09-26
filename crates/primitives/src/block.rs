@@ -1,5 +1,5 @@
 use crate::{
-    Address, Bytes, GotExpected, Header, SealedHeader, TransactionSigned,
+    Address, BlobSidecars, Bytes, GotExpected, Header, Requests, SealedHeader, TransactionSigned,
     TransactionSignedEcRecovered, Withdrawals, B256,
 };
 use alloc::vec::Vec;
@@ -12,7 +12,6 @@ use derive_more::{Deref, DerefMut};
 use proptest::prelude::prop_compose;
 #[cfg(any(test, feature = "arbitrary"))]
 pub use reth_primitives_traits::test_utils::{generate_valid_header, valid_header_strategy};
-use reth_primitives_traits::Requests;
 use serde::{Deserialize, Serialize};
 
 // HACK(onbjerg): we need this to always set `requests` to `None` since we might otherwise generate
@@ -43,6 +42,9 @@ pub struct Block {
     pub ommers: Vec<Header>,
     /// Block withdrawals.
     pub withdrawals: Option<Withdrawals>,
+    // only for bsc
+    /// Tx sidecars for the block.
+    pub sidecars: Option<BlobSidecars>,
     /// Block requests.
     pub requests: Option<Requests>,
 }
@@ -55,6 +57,7 @@ impl Block {
             body: self.body,
             ommers: self.ommers,
             withdrawals: self.withdrawals,
+            sidecars: self.sidecars,
             requests: self.requests,
         }
     }
@@ -68,6 +71,7 @@ impl Block {
             body: self.body,
             ommers: self.ommers,
             withdrawals: self.withdrawals,
+            sidecars: self.sidecars,
             requests: self.requests,
         }
     }
@@ -192,6 +196,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Block {
             // for now just generate empty requests, see HACK above
             requests: u.arbitrary()?,
             withdrawals: u.arbitrary()?,
+            sidecars: None,
         })
     }
 }
@@ -293,6 +298,9 @@ pub struct SealedBlock {
     pub ommers: Vec<Header>,
     /// Block withdrawals.
     pub withdrawals: Option<Withdrawals>,
+    // only for bsc
+    /// Tx sidecars for the block.
+    pub sidecars: Option<BlobSidecars>,
     /// Block requests.
     pub requests: Option<Requests>,
 }
@@ -301,8 +309,8 @@ impl SealedBlock {
     /// Create a new sealed block instance using the sealed header and block body.
     #[inline]
     pub fn new(header: SealedHeader, body: BlockBody) -> Self {
-        let BlockBody { transactions, ommers, withdrawals, requests } = body;
-        Self { header, body: transactions, ommers, withdrawals, requests }
+        let BlockBody { transactions, ommers, withdrawals, sidecars, requests } = body;
+        Self { header, body: transactions, ommers, withdrawals, sidecars, requests }
     }
 
     /// Header hash.
@@ -326,6 +334,7 @@ impl SealedBlock {
                 transactions: self.body,
                 ommers: self.ommers,
                 withdrawals: self.withdrawals,
+                sidecars: self.sidecars,
                 requests: self.requests,
             },
         )
@@ -419,6 +428,7 @@ impl SealedBlock {
             body: self.body,
             ommers: self.ommers,
             withdrawals: self.withdrawals,
+            sidecars: self.sidecars,
             requests: self.requests,
         }
     }
@@ -561,6 +571,9 @@ pub struct BlockBody {
     pub ommers: Vec<Header>,
     /// Withdrawals in the block.
     pub withdrawals: Option<Withdrawals>,
+    // only for bsc
+    /// Tx sidecars for the block.
+    pub sidecars: Option<BlobSidecars>,
     /// Requests in the block.
     pub requests: Option<Requests>,
 }
@@ -574,6 +587,7 @@ impl BlockBody {
             body: self.transactions.clone(),
             ommers: self.ommers.clone(),
             withdrawals: self.withdrawals.clone(),
+            sidecars: self.sidecars.clone(),
             requests: self.requests.clone(),
         }
     }
@@ -609,7 +623,10 @@ impl BlockBody {
             self.ommers.capacity() * core::mem::size_of::<Header>() +
             self.withdrawals
                 .as_ref()
-                .map_or(core::mem::size_of::<Option<Withdrawals>>(), Withdrawals::total_size)
+                .map_or(core::mem::size_of::<Option<Withdrawals>>(), Withdrawals::total_size) +
+            self.sidecars
+                .as_ref()
+                .map_or(std::mem::size_of::<Option<BlobSidecars>>(), BlobSidecars::total_size)
     }
 }
 
@@ -619,6 +636,7 @@ impl From<Block> for BlockBody {
             transactions: block.body,
             ommers: block.ommers,
             withdrawals: block.withdrawals,
+            sidecars: block.sidecars,
             requests: block.requests,
         }
     }
@@ -636,7 +654,13 @@ impl<'a> arbitrary::Arbitrary<'a> for BlockBody {
         let ommers = (0..2).map(|_| Header::arbitrary(u)).collect::<arbitrary::Result<Vec<_>>>()?;
 
         // for now just generate empty requests, see HACK above
-        Ok(Self { transactions, ommers, requests: None, withdrawals: u.arbitrary()? })
+        Ok(Self {
+            transactions,
+            ommers,
+            sidecars: None,
+            requests: None,
+            withdrawals: u.arbitrary()?,
+        })
     }
 }
 
@@ -658,6 +682,7 @@ mod tests {
         let id = serde_json::from_value::<BlockId>(num);
         assert_eq!(id.unwrap(), BlockId::from(175));
     }
+
     #[test]
     fn can_parse_block_hash() {
         let block_hash =
@@ -669,6 +694,7 @@ mod tests {
         let id = serde_json::from_value::<BlockId>(block_hash_json).unwrap();
         assert_eq!(id, BlockId::from(block_hash,));
     }
+
     #[test]
     fn can_parse_block_hash_with_canonical() {
         let block_hash =
@@ -681,6 +707,7 @@ mod tests {
         let id = serde_json::from_value::<BlockId>(block_hash_json).unwrap();
         assert_eq!(id, block_id)
     }
+
     #[test]
     fn can_parse_blockid_tags() {
         let tags =
@@ -691,6 +718,7 @@ mod tests {
             assert_eq!(id.unwrap(), BlockId::from(tag))
         }
     }
+
     #[test]
     fn repeated_keys_is_err() {
         let num = serde_json::json!({"blockNumber": 1, "requireCanonical": true, "requireCanonical": false});
@@ -699,6 +727,7 @@ mod tests {
             serde_json::json!({"blockNumber": 1, "requireCanonical": true, "blockNumber": 23});
         assert!(serde_json::from_value::<BlockId>(num).is_err());
     }
+
     /// Serde tests
     #[test]
     fn serde_blockid_tags() {
@@ -742,6 +771,7 @@ mod tests {
         let block_id: BlockId = serde_json::from_value::<BlockId>(block_id_param.clone()).unwrap();
         assert_eq!(BlockId::Number(BlockNumberOrTag::Latest), block_id);
     }
+
     #[test]
     fn serde_rpc_payload_block_object() {
         let example_payload = r#"{"method":"eth_call","params":[{"to":"0xebe8efa441b9302a0d7eaecc277c09d20d684540","data":"0x45848dfc"},{"blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"}],"id":1,"jsonrpc":"2.0"}"#;
@@ -755,6 +785,7 @@ mod tests {
         let serialized = serde_json::to_string(&BlockId::from(hash)).unwrap();
         assert_eq!("{\"blockHash\":\"0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3\"}", serialized)
     }
+
     #[test]
     fn serde_rpc_payload_block_number() {
         let example_payload = r#"{"method":"eth_call","params":[{"to":"0xebe8efa441b9302a0d7eaecc277c09d20d684540","data":"0x45848dfc"},{"blockNumber": "0x0"}],"id":1,"jsonrpc":"2.0"}"#;
@@ -765,6 +796,7 @@ mod tests {
         let serialized = serde_json::to_string(&BlockId::from(0u64)).unwrap();
         assert_eq!("\"0x0\"", serialized)
     }
+
     #[test]
     #[should_panic]
     fn serde_rpc_payload_block_number_duplicate_key() {
@@ -772,6 +804,7 @@ mod tests {
         let parsed_block_id = serde_json::from_str::<BlockId>(payload);
         parsed_block_id.unwrap();
     }
+
     #[test]
     fn serde_rpc_payload_block_hash() {
         let payload = r#"{"blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"}"#;

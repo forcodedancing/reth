@@ -14,7 +14,10 @@ use reth_consensus::{Consensus, ConsensusError, PostExecutionInput};
 use reth_evm::execute::{BlockExecutorProvider, Executor};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::{Chain, ExecutionOutcome};
-use reth_primitives::{ForkBlock, GotExpected, SealedBlockWithSenders, SealedHeader};
+use reth_primitives::{
+    revm_primitives::EvmState, ForkBlock, GotExpected, Header, SealedBlockWithSenders,
+    SealedHeader, B256,
+};
 use reth_provider::{
     providers::{BundleStateProvider, ConsistentDbView, ProviderNodeTypes},
     FullExecutionDataProvider, ProviderError, StateRootProvider, TryIntoHistoricalStateProvider,
@@ -22,9 +25,12 @@ use reth_provider::{
 use reth_revm::database::StateProviderDatabase;
 use reth_trie::{updates::TrieUpdates, HashedPostState, TrieInput};
 use reth_trie_parallel::parallel_root::ParallelStateRoot;
+use reth_trie_prefetch::TriePrefetch;
 use std::{
-    collections::BTreeMap,
+    clone::Clone,
+    collections::{BTreeMap, HashMap},
     ops::{Deref, DerefMut},
+    sync::Arc,
     time::Instant,
 };
 
@@ -64,6 +70,7 @@ impl AppendableChain {
     ///
     /// if [`BlockValidationKind::Exhaustive`] is specified, the method will verify the state root
     /// of the block.
+    #[allow(clippy::too_many_arguments)]
     pub fn new_canonical_fork<N, E>(
         block: SealedBlockWithSenders,
         parent_header: &SealedHeader,
@@ -72,6 +79,7 @@ impl AppendableChain {
         externals: &TreeExternals<N, E>,
         block_attachment: BlockAttachment,
         block_validation_kind: BlockValidationKind,
+        enable_prefetch: bool,
     ) -> Result<Self, InsertBlockErrorKind>
     where
         N: ProviderNodeTypes,
@@ -90,10 +98,12 @@ impl AppendableChain {
         let (bundle_state, trie_updates) = Self::validate_and_execute(
             block.clone(),
             parent_header,
+            None,
             state_provider,
             externals,
             block_attachment,
             block_validation_kind,
+            enable_prefetch,
         )?;
 
         Ok(Self::new(Chain::new(vec![block], bundle_state, trie_updates)))
@@ -102,6 +112,7 @@ impl AppendableChain {
     /// Create a new chain that forks off of an existing sidechain.
     ///
     /// This differs from [`AppendableChain::new_canonical_fork`] in that this starts a new fork.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_chain_fork<N, E>(
         &self,
         block: SealedBlockWithSenders,
@@ -110,6 +121,7 @@ impl AppendableChain {
         canonical_fork: ForkBlock,
         externals: &TreeExternals<N, E>,
         block_validation_kind: BlockValidationKind,
+        enable_prefetch: bool,
     ) -> Result<Self, InsertBlockErrorKind>
     where
         N: ProviderNodeTypes,
@@ -122,11 +134,6 @@ impl AppendableChain {
         )?;
 
         let mut execution_outcome = self.execution_outcome().clone();
-
-        // Revert state to the state after execution of the parent block
-        execution_outcome.revert_to(parent.number);
-
-        // Revert changesets to get the state of the parent that we need to apply the change.
         let bundle_state_data = BundleStateDataRef {
             execution_outcome: &execution_outcome,
             sidechain_block_hashes: &side_chain_block_hashes,
@@ -136,10 +143,12 @@ impl AppendableChain {
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
             parent,
+            None,
             bundle_state_data,
             externals,
             BlockAttachment::HistoricalFork,
             block_validation_kind,
+            enable_prefetch,
         )?;
         // extending will also optimize few things, mostly related to selfdestruct and wiping of
         // storage.
@@ -165,13 +174,16 @@ impl AppendableChain {
     ///   - [`BlockAttachment`] represents if the block extends the canonical chain, and thus we can
     ///     cache the trie state updates.
     ///   - [`BlockValidationKind`] determines if the state root __should__ be validated.
+    #[allow(clippy::too_many_arguments)]
     fn validate_and_execute<EDP, N, E>(
         block: SealedBlockWithSenders,
         parent_block: &SealedHeader,
+        ancestor_blocks: Option<&HashMap<B256, Header>>,
         bundle_state_data_provider: EDP,
         externals: &TreeExternals<N, E>,
         block_attachment: BlockAttachment,
         block_validation_kind: BlockValidationKind,
+        enable_prefetch: bool,
     ) -> Result<(ExecutionOutcome, Option<TrieUpdates>), BlockExecutionError>
     where
         EDP: FullExecutionDataProvider,
@@ -202,18 +214,27 @@ impl AppendableChain {
 
         let provider = BundleStateProvider::new(state_provider, bundle_state_data_provider);
 
+        let (prefetch_tx, interrupt_tx) =
+            if enable_prefetch { Self::setup_prefetch(externals) } else { (None, None) };
+
         let db = StateProviderDatabase::new(&provider);
-        let executor = externals.executor_factory.executor(db);
+        let executor = externals.executor_factory.executor(db, prefetch_tx);
+
         let block_hash = block.hash();
         let block = block.unseal();
 
-        let state = executor.execute((&block, U256::MAX).into())?;
+        let state = executor.execute((&block, U256::MAX, ancestor_blocks).into())?;
         externals.consensus.validate_block_post_execution(
             &block,
             PostExecutionInput::new(&state.receipts, &state.requests),
         )?;
 
         let initial_execution_outcome = ExecutionOutcome::from((state, block.number));
+
+        // stop the prefetch task.
+        if let Some(interrupt_tx) = interrupt_tx {
+            let _ = interrupt_tx.send(());
+        }
 
         // check state root if the block extends the canonical chain __and__ if state root
         // validation was requested.
@@ -238,6 +259,13 @@ impl AppendableChain {
                 (state_root, None)
             };
             if block.state_root != state_root {
+                tracing::debug!(
+                    target: "blockchain_tree::chain",
+                    number = block.number,
+                    hash = %block_hash,
+                    receipts = ?&initial_execution_outcome.receipts,
+                    "Mismatched state root"
+                );
                 return Err(ConsensusError::BodyStateRootDiff(
                     GotExpected { got: state_root, expected: block.state_root }.into(),
                 )
@@ -280,12 +308,16 @@ impl AppendableChain {
         canonical_fork: ForkBlock,
         block_attachment: BlockAttachment,
         block_validation_kind: BlockValidationKind,
+        enable_prefetch: bool,
     ) -> Result<(), InsertBlockErrorKind>
     where
         N: ProviderNodeTypes,
         E: BlockExecutorProvider,
     {
         let parent_block = self.chain.tip();
+
+        let ancestor_blocks =
+            self.headers().map(|h| return (h.hash() as B256, h.header().clone())).collect();
 
         let bundle_state_data = BundleStateDataRef {
             execution_outcome: self.execution_outcome(),
@@ -297,14 +329,48 @@ impl AppendableChain {
         let (block_state, _) = Self::validate_and_execute(
             block.clone(),
             parent_block,
+            Some(&ancestor_blocks),
             bundle_state_data,
             externals,
             block_attachment,
             block_validation_kind,
+            enable_prefetch,
         )?;
         // extend the state.
         self.chain.append_block(block, block_state);
 
         Ok(())
+    }
+
+    fn setup_prefetch<N, E>(
+        externals: &TreeExternals<N, E>,
+    ) -> (
+        Option<tokio::sync::mpsc::UnboundedSender<EvmState>>,
+        Option<tokio::sync::oneshot::Sender<()>>,
+    )
+    where
+        N: ProviderNodeTypes,
+        E: BlockExecutorProvider,
+    {
+        let (prefetch_tx, prefetch_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (interrupt_tx, interrupt_rx) = tokio::sync::oneshot::channel();
+
+        let mut trie_prefetch = TriePrefetch::new();
+        let consistent_view = if let Ok(view) =
+            ConsistentDbView::new_with_latest_tip(externals.provider_factory.clone())
+        {
+            view
+        } else {
+            tracing::debug!("Failed to create consistent view for trie prefetch");
+            return (None, None)
+        };
+
+        tokio::spawn({
+            async move {
+                trie_prefetch.run(Arc::new(consistent_view), prefetch_rx, interrupt_rx).await;
+            }
+        });
+
+        (Some(prefetch_tx), Some(interrupt_tx))
     }
 }

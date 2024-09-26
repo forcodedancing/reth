@@ -436,7 +436,7 @@ mod tests {
         /// # Panics
         ///
         /// 1. If there are any entries in the [`tables::TransactionHashNumbers`] table above a
-        ///    given block number.
+        ///    givenblock number.
         /// 2. If the is no requested block entry in the bodies table, but
         ///    [`tables::TransactionHashNumbers`] is    not empty.
         fn ensure_no_hash_by_block(&self, number: BlockNumber) -> Result<(), TestRunnerError> {

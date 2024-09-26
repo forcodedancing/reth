@@ -24,6 +24,8 @@ pub struct PrunerBuilder {
     timeout: Option<Duration>,
     /// The finished height of all `ExEx`'s.
     finished_exex_height: watch::Receiver<FinishedExExHeight>,
+    /// The number of recent sidecars to keep in the static file provider.
+    recent_sidecars_kept_blocks: usize,
 }
 
 impl PrunerBuilder {
@@ -35,6 +37,7 @@ impl PrunerBuilder {
         Self::default()
             .block_interval(pruner_config.block_interval)
             .segments(pruner_config.segments)
+            .recent_sidecars_kept_blocks(pruner_config.recent_sidecars_kept_blocks)
     }
 
     /// Sets the minimum pruning interval measured in blocks.
@@ -73,6 +76,12 @@ impl PrunerBuilder {
         self
     }
 
+    /// Sets the number of recent sidecars to keep in the static file provider.
+    pub const fn recent_sidecars_kept_blocks(mut self, recent_sidecars_kept_blocks: usize) -> Self {
+        self.recent_sidecars_kept_blocks = recent_sidecars_kept_blocks;
+        self
+    }
+
     /// Builds a [Pruner] from the current configuration with the given provider factory.
     pub fn build_with_provider_factory<PF>(self, provider_factory: PF) -> Pruner<PF::ProviderRW, PF>
     where
@@ -81,7 +90,7 @@ impl PrunerBuilder {
     {
         let segments =
             SegmentSet::from_components(provider_factory.static_file_provider(), self.segments);
-
+        let static_file_path = Some(provider_factory.static_file_provider().path().to_path_buf());
         Pruner::new_with_factory(
             provider_factory,
             segments.into_vec(),
@@ -89,6 +98,8 @@ impl PrunerBuilder {
             self.delete_limit,
             self.timeout,
             self.finished_exex_height,
+            self.recent_sidecars_kept_blocks,
+            static_file_path,
         )
     }
 
@@ -98,7 +109,8 @@ impl PrunerBuilder {
         Provider:
             DBProvider<Tx: DbTxMut> + BlockReader + PruneCheckpointWriter + TransactionsProvider,
     {
-        let segments = SegmentSet::<Provider>::from_components(static_file_provider, self.segments);
+        let segments =
+            SegmentSet::<Provider>::from_components(static_file_provider.clone(), self.segments);
 
         Pruner::new(
             segments.into_vec(),
@@ -106,6 +118,8 @@ impl PrunerBuilder {
             self.delete_limit,
             self.timeout,
             self.finished_exex_height,
+            self.recent_sidecars_kept_blocks,
+            Some(static_file_provider.path().to_path_buf()),
         )
     }
 }
@@ -118,6 +132,8 @@ impl Default for PrunerBuilder {
             delete_limit: MAINNET.prune_delete_limit,
             timeout: None,
             finished_exex_height: watch::channel(FinishedExExHeight::NoExExs).1,
+            recent_sidecars_kept_blocks: 0, /* not enabled by default
+                                             * recent_sidecars_kept_blocks: 518400, // 18 days */
         }
     }
 }

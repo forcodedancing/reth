@@ -16,11 +16,15 @@ use reth_beacon_consensus::{
     BeaconConsensusEngine,
 };
 use reth_blockchain_tree::{noop::NoopBlockchainTree, BlockchainTreeConfig};
+#[cfg(feature = "bsc")]
+use reth_bsc_engine::ParliaEngineBuilder;
 use reth_chainspec::ChainSpec;
 use reth_consensus_debug_client::{DebugConsensusClient, EtherscanBlockProvider, RpcBlockProvider};
 use reth_engine_util::EngineMessageStreamExt;
 use reth_exex::ExExManagerHandle;
 use reth_network::{BlockDownloaderProvider, NetworkEventListenerProvider};
+#[cfg(feature = "bsc")]
+use reth_network_api::EngineRxProvider;
 use reth_node_api::{
     FullNodeComponents, FullNodeTypes, NodeAddOns, NodeTypesWithDB, NodeTypesWithEngine,
 };
@@ -35,6 +39,8 @@ use reth_node_core::{
 };
 use reth_node_events::{cl::ConsensusLayerHealthEvents, node};
 use reth_primitives::format_ether;
+#[cfg(feature = "bsc")]
+use reth_primitives::parlia::ParliaConfig;
 use reth_provider::providers::BlockchainProvider;
 use reth_rpc_engine_api::{capabilities::EngineCapabilities, EngineApi};
 use reth_rpc_types::{engine::ClientVersionV1, WithOtherFields};
@@ -259,6 +265,7 @@ where
                 static_file_producer,
                 ctx.components().block_executor().clone(),
                 pipeline_exex_handle,
+                ctx.node_config().skip_state_root_validation,
             )?;
 
             let pipeline_events = pipeline.events();
@@ -280,9 +287,27 @@ where
                 static_file_producer,
                 ctx.components().block_executor().clone(),
                 pipeline_exex_handle,
+                ctx.node_config().skip_state_root_validation,
             )?;
-
-            (pipeline, Either::Right(network_client.clone()))
+            #[cfg(feature = "bsc")]
+            {
+                let engine_rx = ctx.node_adapter().components.network().get_to_engine_rx();
+                let client = ParliaEngineBuilder::new(
+                    ctx.chain_spec(),
+                    ParliaConfig::default(),
+                    ctx.blockchain_db().clone(),
+                    ctx.blockchain_db().clone(),
+                    consensus_engine_tx.clone(),
+                    engine_rx,
+                    network_client.clone(),
+                )
+                .build(ctx.node_config().debug.tip.is_none());
+                (pipeline, Either::Right(client))
+            }
+            #[cfg(not(feature = "bsc"))]
+            {
+                (pipeline, Either::Right(network_client.clone()))
+            }
         };
 
         let pipeline_events = pipeline.events();

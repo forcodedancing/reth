@@ -75,6 +75,7 @@ rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 derive_more.workspace = true
+cfg-if = "1.0.0"
 
 [dev-dependencies]
 reth-evm-ethereum.workspace = true
@@ -87,6 +88,10 @@ jsonrpsee = { workspace = true, features = ["client"] }
 
 [features]
 js-tracer = ["revm-inspectors/js-tracer", "reth-rpc-eth-types/js-tracer"]
+bsc = [
+    "reth-primitives/bsc",
+    "reth-rpc-eth-api/bsc",
+]
 optimism = [
     "reth-primitives/optimism",
     "reth-rpc-types-compat/optimism",

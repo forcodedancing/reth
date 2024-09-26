@@ -7,9 +7,10 @@ pub use reth_storage_errors::provider::ProviderError;
 
 use core::fmt::Display;
 
-use reth_primitives::{BlockNumber, BlockWithSenders, Receipt};
+use reth_primitives::{BlockNumber, BlockWithSenders, Header, Receipt};
 use reth_prune_types::PruneModes;
-use revm_primitives::db::Database;
+use revm_primitives::{db::Database, EvmState};
+use tokio::sync::mpsc::UnboundedSender;
 
 /// A general purpose executor trait that executes an input (e.g. block) and produces an output
 /// (e.g. state changes and receipts).
@@ -109,7 +110,7 @@ pub trait BlockExecutorProvider: Send + Sync + Clone + Unpin + 'static {
     /// the returned state.
     type Executor<DB: Database<Error: Into<ProviderError> + Display>>: for<'a> Executor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = BlockExecutionOutput<Receipt>,
         Error = BlockExecutionError,
     >;
@@ -117,7 +118,7 @@ pub trait BlockExecutorProvider: Send + Sync + Clone + Unpin + 'static {
     /// An executor that can execute a batch of blocks given a database.
     type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>>: for<'a> BatchExecutor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = ExecutionOutcome,
         Error = BlockExecutionError,
     >;
@@ -125,7 +126,11 @@ pub trait BlockExecutorProvider: Send + Sync + Clone + Unpin + 'static {
     /// Creates a new executor for single block execution.
     ///
     /// This is used to execute a single block and get the changed state.
-    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
+    fn executor<DB>(
+        &self,
+        db: DB,
+        prefetch_rx: Option<UnboundedSender<EvmState>>,
+    ) -> Self::Executor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>;
 
@@ -153,7 +158,11 @@ mod tests {
         type Executor<DB: Database<Error: Into<ProviderError> + Display>> = TestExecutor<DB>;
         type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> = TestExecutor<DB>;
 
-        fn executor<DB>(&self, _db: DB) -> Self::Executor<DB>
+        fn executor<DB>(
+            &self,
+            _db: DB,
+            _prefetch_tx: Option<UnboundedSender<EvmState>>,
+        ) -> Self::Executor<DB>
         where
             DB: Database<Error: Into<ProviderError> + Display>,
         {
@@ -171,7 +180,7 @@ mod tests {
     struct TestExecutor<DB>(PhantomData<DB>);
 
     impl<DB> Executor<DB> for TestExecutor<DB> {
-        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
         type Output = BlockExecutionOutput<Receipt>;
         type Error = BlockExecutionError;
 
@@ -181,7 +190,7 @@ mod tests {
     }
 
     impl<DB> BatchExecutor<DB> for TestExecutor<DB> {
-        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+        type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
         type Output = ExecutionOutcome;
         type Error = BlockExecutionError;
 
@@ -210,15 +219,16 @@ mod tests {
     fn test_provider() {
         let provider = TestExecutorProvider;
         let db = CacheDB::<EmptyDBTyped<ProviderError>>::default();
-        let executor = provider.executor(db);
+        let executor = provider.executor(db, None);
         let block = Block {
             header: Default::default(),
             body: vec![],
             ommers: vec![],
             withdrawals: None,
+            sidecars: None,
             requests: None,
         };
         let block = BlockWithSenders::new(block, Default::default()).unwrap();
-        let _ = executor.execute(BlockExecutionInput::new(&block, U256::ZERO));
+        let _ = executor.execute(BlockExecutionInput::new(&block, U256::ZERO, None));
     }
 }

@@ -10,7 +10,7 @@ use reth_node_builder::{NodeBuilder, WithLaunchContext};
 use reth_node_core::{
     args::{
         utils::DefaultChainSpecParser, DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs,
-        PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
+        PayloadBuilderArgs, PerformanceOptimizationArgs, PruningArgs, RpcServerArgs, TxPoolArgs,
     },
     node_config::NodeConfig,
     version,
@@ -110,6 +110,14 @@ pub struct NodeCommand<
     /// Additional cli arguments
     #[command(flatten, next_help_heading = "Extension")]
     pub ext: Ext,
+
+    /// Enable prefetch when executing block
+    #[arg(long, default_value_t = false)]
+    pub enable_prefetch: bool,
+
+    /// All performance optimization related arguments
+    #[command(flatten)]
+    pub performance_optimization: PerformanceOptimizationArgs,
 }
 
 impl<C: ChainSpecParser<ChainSpec = ChainSpec>> NodeCommand<C> {
@@ -156,8 +164,9 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>, Ext: clap::Args + fmt::Debug> No
             dev,
             pruning,
             ext,
+            enable_prefetch,
+            performance_optimization,
         } = self;
-
         // set up node config
         let mut node_config = NodeConfig {
             datadir,
@@ -173,6 +182,8 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>, Ext: clap::Args + fmt::Debug> No
             db,
             dev,
             pruning,
+            enable_prefetch,
+            skip_state_root_validation: performance_optimization.skip_state_root_validation,
         };
 
         // Register the prometheus recorder before creating the database,

@@ -45,10 +45,15 @@ where
         let block = block.unseal();
         let l1_block_info =
             reth_evm_optimism::extract_l1_info(&block).map_err(OpEthApiError::from)?;
-
-        let op_receipt_meta = self
+        let mut op_receipt_meta = self
             .build_op_receipt_meta(&tx, l1_block_info, &receipt)
             .map_err(OpEthApiError::from)?;
+
+        if self.inner.provider().chain_spec().is_wright_active_at_timestamp(block.timestamp) &&
+            tx.effective_gas_price(meta.base_fee) == 0
+        {
+            op_receipt_meta.l1_block_info.l1_fee = Some(0);
+        }
 
         let receipt_resp = ReceiptBuilder::new(&tx, meta, &receipt, &receipts)
             .map_err(Self::Error::from_eth_err)?

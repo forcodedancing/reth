@@ -6,11 +6,12 @@ use crate::execute::{
 use parking_lot::Mutex;
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::ExecutionOutcome;
-use reth_primitives::{BlockNumber, BlockWithSenders, Receipt};
+use reth_primitives::{BlockNumber, BlockWithSenders, Header, Receipt};
 use reth_prune_types::PruneModes;
 use reth_storage_errors::provider::ProviderError;
-use revm_primitives::db::Database;
+use revm_primitives::{db::Database, EvmState};
 use std::{fmt::Display, sync::Arc};
+use tokio::sync::mpsc::UnboundedSender;
 
 /// A [`BlockExecutorProvider`] that returns mocked execution results.
 #[derive(Clone, Debug, Default)]
@@ -30,7 +31,7 @@ impl BlockExecutorProvider for MockExecutorProvider {
 
     type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> = Self;
 
-    fn executor<DB>(&self, _: DB) -> Self::Executor<DB>
+    fn executor<DB>(&self, _: DB, _: Option<UnboundedSender<EvmState>>) -> Self::Executor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
@@ -46,24 +47,25 @@ impl BlockExecutorProvider for MockExecutorProvider {
 }
 
 impl<DB> Executor<DB> for MockExecutorProvider {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
     fn execute(self, _: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let ExecutionOutcome { bundle, receipts, requests, first_block: _ } =
+        let ExecutionOutcome { bundle, receipts, requests, .. } =
             self.exec_results.lock().pop().unwrap();
         Ok(BlockExecutionOutput {
             state: bundle,
             receipts: receipts.into_iter().flatten().flatten().collect(),
             requests: requests.into_iter().flatten().collect(),
             gas_used: 0,
+            snapshot: None,
         })
     }
 }
 
 impl<DB> BatchExecutor<DB> for MockExecutorProvider {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 

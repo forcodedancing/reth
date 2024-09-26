@@ -60,3 +60,9 @@ optimism = [
     "reth-rpc-eth-api/optimism",
     "revm/optimism",
 ]
+
+opbnb = [
+    "reth-evm-optimism/opbnb",
+    "reth-primitives/opbnb",
+    "revm/opbnb",
+]

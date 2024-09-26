@@ -56,6 +56,7 @@ tempfile = { workspace = true, optional = true }
 reth-chainspec.workspace = true
 reth-primitives = { workspace = true, features = ["test-utils", "arbitrary"] }
 reth-db = { workspace = true, features = ["test-utils", "mdbx"] }
+reth-evm-bsc.workspace = true
 reth-evm-ethereum.workspace = true
 reth-execution-errors.workspace = true
 reth-consensus = { workspace = true, features = ["test-utils"] }
@@ -98,6 +99,9 @@ test-utils = [
     "reth-stages-api/test-utils",
     "dep:reth-testing-utils",
     "dep:tempfile",
+]
+bsc = [
+    "reth-evm-bsc/bsc",
 ]
 
 [[bench]]

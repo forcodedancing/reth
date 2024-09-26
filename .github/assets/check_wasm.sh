@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set +e  # Disable immediate exit on error
 
+tool_chain=$1
+
 # Array of crates to compile
 crates=($(cargo metadata --format-version=1 --no-deps | jq -r '.packages[].name' | grep '^reth' | sort))
 # Array of crates to exclude

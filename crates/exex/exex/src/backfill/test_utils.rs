@@ -27,6 +27,7 @@ pub(crate) fn to_execution_outcome(
         receipts: block_execution_output.receipts.clone().into(),
         first_block: block_number,
         requests: vec![Requests(block_execution_output.requests.clone())],
+        snapshots: vec![],
     }
 }
 
@@ -61,11 +62,18 @@ where
 
     // Execute the block to produce a block execution output
     let mut block_execution_output = EthExecutorProvider::ethereum(chain_spec)
-        .executor(StateProviderDatabase::new(LatestStateProviderRef::new(
-            provider.tx_ref(),
-            provider.static_file_provider().clone(),
-        )))
-        .execute(BlockExecutionInput { block, total_difficulty: U256::ZERO })?;
+        .executor(
+            StateProviderDatabase::new(LatestStateProviderRef::new(
+                provider.tx_ref(),
+                provider.static_file_provider().clone(),
+            )),
+            None,
+        )
+        .execute(BlockExecutionInput {
+            block,
+            total_difficulty: U256::ZERO,
+            ancestor_headers: None,
+        })?;
     block_execution_output.state.reverts.sort();
 
     // Convert the block execution output to an execution outcome for committing to the database
@@ -114,6 +122,7 @@ fn blocks(
                 ..Default::default()
             }),
         )],
+        sidecars: Some(Default::default()),
         ..Default::default()
     }
     .with_recovered_senders()
@@ -144,6 +153,7 @@ fn blocks(
                 ..Default::default()
             }),
         )],
+        sidecars: Some(Default::default()),
         ..Default::default()
     }
     .with_recovered_senders()
@@ -191,8 +201,8 @@ where
         ));
 
     let mut execution_outcome = executor.execute_and_verify_batch(vec![
-        (&block1, U256::ZERO).into(),
-        (&block2, U256::ZERO).into(),
+        (&block1, U256::ZERO, None).into(),
+        (&block2, U256::ZERO, None).into(),
     ])?;
     execution_outcome.state_mut().reverts.sort();
 

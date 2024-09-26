@@ -2,6 +2,8 @@
 
 use eyre::eyre;
 use reth_network_types::{PeersConfig, SessionsConfig};
+#[cfg(feature = "bsc")]
+use reth_primitives::parlia::ParliaConfig;
 use reth_prune_types::PruneModes;
 use reth_stages_types::ExecutionStageThresholds;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -28,6 +30,9 @@ pub struct Config {
     pub peers: PeersConfig,
     /// Configuration for peer sessions.
     pub sessions: SessionsConfig,
+    #[cfg(feature = "bsc")]
+    /// Configuration for parlia consensus.
+    pub parlia: ParliaConfig,
 }
 
 impl Config {
@@ -376,6 +381,8 @@ impl Default for IndexHistoryConfig {
 pub struct PruneConfig {
     /// Minimum pruning interval measured in blocks.
     pub block_interval: usize,
+    /// The number of recent sidecars to keep in the static file provider.
+    pub recent_sidecars_kept_blocks: usize,
     /// Pruning configuration for every part of the data that can be pruned.
     #[serde(alias = "parts")]
     pub segments: PruneModes,
@@ -383,7 +390,7 @@ pub struct PruneConfig {
 
 impl Default for PruneConfig {
     fn default() -> Self {
-        Self { block_interval: 5, segments: PruneModes::none() }
+        Self { block_interval: 5, recent_sidecars_kept_blocks: 0, segments: PruneModes::none() }
     }
 }
 

@@ -16,13 +16,13 @@ use reth_db_api::models::{AccountBeforeTx, StoredBlockBodyIndices};
 use reth_errors::ProviderError;
 use reth_evm::ConfigureEvmEnv;
 use reth_primitives::{
-    Account, Block, BlockHashOrNumber, BlockId, BlockNumberOrTag, BlockWithSenders, Bytecode,
-    Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionMeta,
-    TransactionSigned, TransactionSignedNoHash, Withdrawal, Withdrawals,
+    parlia::Snapshot, Account, BlobSidecars, Block, BlockHashOrNumber, BlockId, BlockNumberOrTag,
+    BlockWithSenders, Bytecode, Header, Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader,
+    TransactionMeta, TransactionSigned, TransactionSignedNoHash, Withdrawal, Withdrawals,
 };
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::{StageCheckpoint, StageId};
-use reth_storage_api::{StateProofProvider, StorageRootProvider};
+use reth_storage_api::{SidecarsProvider, StateProofProvider, StorageRootProvider};
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{
     updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof, TrieInput,
@@ -34,10 +34,10 @@ use crate::{
     providers::StaticFileProvider,
     traits::{BlockSource, ReceiptProvider},
     AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
-    ChainSpecProvider, ChangeSetReader, EvmEnvProvider, HeaderProvider, PruneCheckpointReader,
-    ReceiptProviderIdExt, RequestsProvider, StageCheckpointReader, StateProvider, StateProviderBox,
-    StateProviderFactory, StateRootProvider, StaticFileProviderFactory, TransactionVariant,
-    TransactionsProvider, WithdrawalsProvider,
+    ChainSpecProvider, ChangeSetReader, EvmEnvProvider, HeaderProvider, ParliaSnapshotReader,
+    PruneCheckpointReader, ReceiptProviderIdExt, RequestsProvider, StageCheckpointReader,
+    StateProvider, StateProviderBox, StateProviderFactory, StateRootProvider,
+    StaticFileProviderFactory, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
 };
 
 /// Supports various api interfaces for testing purposes.
@@ -528,6 +528,16 @@ impl WithdrawalsProvider for NoopProvider {
     }
 }
 
+impl SidecarsProvider for NoopProvider {
+    fn sidecars(&self, _block_hash: &BlockHash) -> ProviderResult<Option<BlobSidecars>> {
+        Ok(None)
+    }
+
+    fn sidecars_by_number(&self, _num: BlockNumber) -> ProviderResult<Option<BlobSidecars>> {
+        Ok(None)
+    }
+}
+
 impl RequestsProvider for NoopProvider {
     fn requests_by_block(
         &self,
@@ -572,5 +582,11 @@ impl ForkChoiceSubscriptions for NoopProvider {
     fn subscribe_finalized_block(&self) -> ForkChoiceNotifications {
         let (_, rx) = watch::channel(None);
         ForkChoiceNotifications(rx)
+    }
+}
+
+impl ParliaSnapshotReader for NoopProvider {
+    fn get_parlia_snapshot(&self, _block_hash: B256) -> ProviderResult<Option<Snapshot>> {
+        Ok(None)
     }
 }

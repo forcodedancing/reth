@@ -1,6 +1,7 @@
 use crate::{
     BlockIdReader, BlockNumReader, HeaderProvider, ReceiptProvider, ReceiptProviderIdExt,
-    RequestsProvider, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
+    RequestsProvider, SidecarsProvider, TransactionVariant, TransactionsProvider,
+    WithdrawalsProvider,
 };
 use alloy_primitives::{BlockNumber, B256};
 use reth_db_models::StoredBlockBodyIndices;
@@ -54,6 +55,7 @@ pub trait BlockReader:
     + ReceiptProvider
     + RequestsProvider
     + WithdrawalsProvider
+    + SidecarsProvider
     + Send
     + Sync
 {

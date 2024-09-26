@@ -34,7 +34,7 @@ macro_rules! add_segments {
         }
     };
 }
-add_segments!(Header, Receipt, Transaction);
+add_segments!(Header, Receipt, Transaction, Sidecar);
 
 ///  Trait for specifying a mask to select one column value.
 pub trait ColumnSelectorOne {

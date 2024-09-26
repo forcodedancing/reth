@@ -17,7 +17,6 @@ use reth_downloaders::{
 };
 use reth_evm::execute::BlockExecutorProvider;
 use reth_exex::ExExManagerHandle;
-use reth_network::BlockDownloaderProvider;
 use reth_network_p2p::HeadersClient;
 use reth_node_builder::NodeTypesWithEngine;
 use reth_node_core::{

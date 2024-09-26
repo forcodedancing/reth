@@ -12,6 +12,8 @@ use reth_stages_api::{
 #[non_exhaustive]
 pub struct FinishStage;
 
+impl FinishStage {}
+
 impl<DB: Database> Stage<DB> for FinishStage {
     fn id(&self) -> StageId {
         StageId::Finish

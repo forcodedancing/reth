@@ -107,6 +107,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> ImportCommand<C> {
                 StaticFileProducer::new(provider_factory.clone(), PruneModes::default()),
                 self.no_state,
                 executor.clone(),
+                self.env.performance_optimization.skip_state_root_validation,
             )?;
 
             // override the tip
@@ -158,6 +159,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> ImportCommand<C> {
 ///
 /// If configured to execute, all stages will run. Otherwise, only stages that don't require state
 /// will run.
+#[allow(clippy::too_many_arguments)]
 pub fn build_import_pipeline<N, C, E>(
     config: &Config,
     provider_factory: ProviderFactory<N>,
@@ -166,6 +168,7 @@ pub fn build_import_pipeline<N, C, E>(
     static_file_producer: StaticFileProducer<ProviderFactory<N>>,
     disable_exec: bool,
     executor: E,
+    skip_state_root_validation: bool,
 ) -> eyre::Result<(Pipeline<N>, impl Stream<Item = NodeEvent>)>
 where
     N: NodeTypesWithDB<ChainSpec = ChainSpec>,
@@ -217,6 +220,7 @@ where
                 executor,
                 config.stages.clone(),
                 PruneModes::default(),
+                skip_state_root_validation,
             )
             .builder()
             .disable_all_if(&StageId::STATE_REQUIRED, || disable_exec),

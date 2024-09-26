@@ -477,6 +477,7 @@ mod tests {
                 body,
                 ommers,
                 withdrawals: None,
+                sidecars: None,
                 requests: None,
             },
             parent,
@@ -544,6 +545,7 @@ mod tests {
             transactions: vec![transaction],
             ommers: vec![],
             withdrawals: Some(Withdrawals::default()),
+            sidecars: None,
             requests: None,
         };
 

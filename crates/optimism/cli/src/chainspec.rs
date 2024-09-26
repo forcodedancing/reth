@@ -4,7 +4,8 @@ use reth_chainspec::ChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_node_core::args::utils::parse_custom_chain_spec;
 use reth_optimism_chainspec::{
-    OpChainSpec, BASE_MAINNET, BASE_SEPOLIA, OP_DEV, OP_MAINNET, OP_SEPOLIA,
+    OpChainSpec, BASE_MAINNET, BASE_SEPOLIA, OPBNB_MAINNET, OPBNB_QA, OPBNB_TESTNET, OP_DEV,
+    OP_MAINNET, OP_SEPOLIA,
 };
 
 /// Clap value parser for [`OpChainSpec`]s.
@@ -18,6 +19,9 @@ fn chain_value_parser(s: &str) -> eyre::Result<Arc<OpChainSpec>, eyre::Error> {
         "optimism_sepolia" | "optimism-sepolia" => OP_SEPOLIA.clone(),
         "base" => BASE_MAINNET.clone(),
         "base_sepolia" | "base-sepolia" => BASE_SEPOLIA.clone(),
+        "opbnb_mainnet" | "opbnb-mainnet" => OPBNB_MAINNET.clone(),
+        "opbnb_testnet" | "opbnb-testnet" => OPBNB_TESTNET.clone(),
+        "opbnb_qa" | "opbnb-qa" => OPBNB_QA.clone(),
         _ => Arc::new(OpChainSpec { inner: parse_custom_chain_spec(s)? }),
     })
 }
@@ -37,6 +41,12 @@ impl ChainSpecParser for OpChainSpecParser {
         "base",
         "base_sepolia",
         "base-sepolia",
+        "opbnb_mainnet",
+        "opbnb-mainnet",
+        "opbnb_testnet",
+        "opbnb-testnet",
+        "opbnb_qa",
+        "opbnb-qa",
     ];
 
     fn parse(s: &str) -> eyre::Result<Arc<Self::ChainSpec>> {

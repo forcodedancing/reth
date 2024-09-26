@@ -5,10 +5,11 @@ use core::fmt::Display;
 use crate::execute::{BatchExecutor, BlockExecutorProvider, Executor};
 use reth_execution_errors::BlockExecutionError;
 use reth_execution_types::{BlockExecutionInput, BlockExecutionOutput, ExecutionOutcome};
-use reth_primitives::{BlockNumber, BlockWithSenders, Receipt};
+use reth_primitives::{BlockNumber, BlockWithSenders, Header, Receipt};
 use reth_prune_types::PruneModes;
 use reth_storage_errors::provider::ProviderError;
-use revm_primitives::db::Database;
+use revm_primitives::{db::Database, EvmState};
+use tokio::sync::mpsc::UnboundedSender;
 
 // re-export Either
 pub use futures_util::future::Either;
@@ -24,13 +25,17 @@ where
     type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> =
         Either<A::BatchExecutor<DB>, B::BatchExecutor<DB>>;
 
-    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
+    fn executor<DB>(
+        &self,
+        db: DB,
+        prefetch_tx: Option<UnboundedSender<EvmState>>,
+    ) -> Self::Executor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
         match self {
-            Self::Left(a) => Either::Left(a.executor(db)),
-            Self::Right(b) => Either::Right(b.executor(db)),
+            Self::Left(a) => Either::Left(a.executor(db, prefetch_tx)),
+            Self::Right(b) => Either::Right(b.executor(db, prefetch_tx)),
         }
     }
 
@@ -49,19 +54,19 @@ impl<A, B, DB> Executor<DB> for Either<A, B>
 where
     A: for<'a> Executor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = BlockExecutionOutput<Receipt>,
         Error = BlockExecutionError,
     >,
     B: for<'a> Executor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = BlockExecutionOutput<Receipt>,
         Error = BlockExecutionError,
     >,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -77,19 +82,19 @@ impl<A, B, DB> BatchExecutor<DB> for Either<A, B>
 where
     A: for<'a> BatchExecutor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = ExecutionOutcome,
         Error = BlockExecutionError,
     >,
     B: for<'a> BatchExecutor<
         DB,
-        Input<'a> = BlockExecutionInput<'a, BlockWithSenders>,
+        Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>,
         Output = ExecutionOutcome,
         Error = BlockExecutionError,
     >,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 

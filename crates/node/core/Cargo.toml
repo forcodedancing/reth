@@ -39,6 +39,7 @@ reth-consensus-common.workspace = true
 reth-prune-types.workspace = true
 reth-stages-types.workspace = true
 reth-optimism-chainspec = { workspace = true, optional = true }
+reth-bsc-chainspec = { workspace = true, optional = true }
 
 # ethereum
 alloy-genesis.workspace = true
@@ -88,6 +89,14 @@ optimism = [
     "reth-rpc-eth-api/optimism",
     "dep:reth-optimism-chainspec",
 ]
+opbnb = [
+    "reth-primitives/opbnb",
+]
+bsc = [
+    "reth-primitives/bsc",
+    "dep:reth-bsc-chainspec",
+]
+
 # Features for vergen to generate correct env vars
 jemalloc = []
 asm-keccak = []

@@ -107,11 +107,12 @@ where
                 body: block.body,
                 ommers: block.ommers,
                 withdrawals: block.withdrawals,
+                sidecars: block.sidecars,
                 requests: block.requests,
             }
             .with_senders_unchecked(senders);
 
-            executor.execute_and_verify_one((&block, td).into())?;
+            executor.execute_and_verify_one((&block, td, None).into())?;
             execution_duration += execute_start.elapsed();
 
             // TODO(alexey): report gas metrics using `block.header.gas_used`
@@ -199,13 +200,16 @@ where
             .ok_or_else(|| ProviderError::HeaderNotFound(block_number.into()))?;
 
         // Configure the executor to use the previous block's state.
-        let executor = self.executor.executor(StateProviderDatabase::new(
-            self.provider.history_by_block_number(block_number.saturating_sub(1))?,
-        ));
+        let executor = self.executor.executor(
+            StateProviderDatabase::new(
+                self.provider.history_by_block_number(block_number.saturating_sub(1))?,
+            ),
+            None,
+        );
 
         trace!(target: "exex::backfill", number = block_number, txs = block_with_senders.block.body.len(), "Executing block");
 
-        let block_execution_output = executor.execute((&block_with_senders, td).into())?;
+        let block_execution_output = executor.execute((&block_with_senders, td, None).into())?;
 
         Ok((block_with_senders, block_execution_output))
     }

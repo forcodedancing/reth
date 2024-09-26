@@ -36,6 +36,9 @@ revm-primitives.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+# async
+tokio = { workspace = true, features = ["sync", "time"] }
+
 [dev-dependencies]
 reth-revm = { workspace = true, features = ["test-utils"] }
 reth-optimism-chainspec.workspace = true
@@ -46,4 +49,8 @@ optimism = [
     "reth-execution-types/optimism",
     "reth-optimism-consensus/optimism",
     "reth-revm/optimism",
+]
+opbnb = [
+    "reth-primitives/opbnb",
+    "revm-primitives/opbnb",
 ]

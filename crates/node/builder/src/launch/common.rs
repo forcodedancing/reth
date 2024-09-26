@@ -440,6 +440,7 @@ where
                     NoopBlockExecutorProvider::default(),
                     self.toml_config().stages.clone(),
                     self.prune_modes(),
+                    self.node_config().skip_state_root_validation,
                 ))
                 .build(
                     factory.clone(),
@@ -685,12 +686,21 @@ where
             consensus.clone(),
             components.block_executor().clone(),
         );
-        let tree = BlockchainTree::new(tree_externals, *self.tree_config())?
+
+        let mut tree = BlockchainTree::new(tree_externals, *self.tree_config())?
             .with_sync_metrics_tx(self.sync_metrics_tx())
             // Note: This is required because we need to ensure that both the components and the
             // tree are using the same channel for canon state notifications. This will be removed
             // once the Blockchain provider no longer depends on an instance of the tree
             .with_canon_state_notification_sender(self.canon_state_notification_sender());
+
+        if self.node_config().enable_prefetch {
+            tree = tree.enable_prefetch();
+        }
+
+        if self.node_config().skip_state_root_validation {
+            tree = tree.skip_state_root_validation();
+        }
 
         let blockchain_tree = Arc::new(ShareableBlockchainTree::new(tree));
 

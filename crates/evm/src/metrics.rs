@@ -7,7 +7,7 @@ use std::time::Instant;
 use metrics::{Counter, Gauge, Histogram};
 use reth_execution_types::BlockExecutionInput;
 use reth_metrics::Metrics;
-use reth_primitives::BlockWithSenders;
+use reth_primitives::{BlockWithSenders, Header};
 
 /// Executor metrics.
 // TODO(onbjerg): add sload/sstore, acc load/acc change, bytecode metrics
@@ -26,9 +26,9 @@ pub struct ExecutorMetrics {
 
 impl ExecutorMetrics {
     /// Execute the given block and update metrics for the execution.
-    pub fn metered<F, R>(&self, input: BlockExecutionInput<'_, BlockWithSenders>, f: F) -> R
+    pub fn metered<F, R>(&self, input: BlockExecutionInput<'_, BlockWithSenders, Header>, f: F) -> R
     where
-        F: FnOnce(BlockExecutionInput<'_, BlockWithSenders>) -> R,
+        F: FnOnce(BlockExecutionInput<'_, BlockWithSenders, Header>) -> R,
     {
         let gas_used = input.block.gas_used;
 

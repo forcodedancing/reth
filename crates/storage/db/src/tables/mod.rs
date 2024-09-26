@@ -31,9 +31,10 @@ use reth_db_api::{
     table::{Decode, DupSort, Encode, Table},
 };
 use reth_primitives::{
-    Account, Bytecode, Header, Receipt, Requests, StorageEntry, TransactionSignedNoHash,
+    parlia::Snapshot, Account, Bytecode, Header, Receipt, Requests, StorageEntry,
+    TransactionSignedNoHash,
 };
-use reth_primitives_traits::IntegerList;
+use reth_primitives_traits::{BlobSidecars, IntegerList};
 use reth_prune_types::{PruneCheckpoint, PruneSegment};
 use reth_stages_types::StageCheckpoint;
 use reth_trie_common::{BranchNodeCompact, StorageTrieEntry, StoredNibbles, StoredNibblesSubKey};
@@ -307,6 +308,9 @@ tables! {
     /// Canonical only Stores transaction receipts.
     table Receipts<Key = TxNumber, Value = Receipt>;
 
+    /// Canonical only Stores block sidecars.
+    table Sidecars<Key = BlockNumber, Value = BlobSidecars>;
+
     /// Stores all smart contract bytecodes.
     /// There will be multiple accounts that have same bytecode
     /// So we would need to introduce reference counter.
@@ -409,6 +413,9 @@ tables! {
 
     /// Stores generic chain state info, like the last finalized block.
     table ChainState<Key = ChainStateKey, Value = BlockNumber>;
+
+    /// Stores the parlia snapshot data by block hash.
+    table ParliaSnapshot<Key = BlockHash, Value = Snapshot>;
 }
 
 /// Keys for the `ChainState` table.

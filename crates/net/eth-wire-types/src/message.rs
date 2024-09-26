@@ -10,6 +10,7 @@ use super::{
     broadcast::NewBlockHashes, BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders,
     GetNodeData, GetPooledTransactions, GetReceipts, NewBlock, NewPooledTransactionHashes66,
     NewPooledTransactionHashes68, NodeData, PooledTransactions, Receipts, Status, Transactions,
+    UpgradeStatus,
 };
 use crate::{EthVersion, SharedTransactions};
 
@@ -110,6 +111,10 @@ impl ProtocolMessage {
             EthMessageID::Receipts => {
                 let request_pair = RequestPair::<Receipts>::decode(buf)?;
                 EthMessage::Receipts(request_pair)
+            }
+            EthMessageID::UpgradeStatus => {
+                let upgrade_status = UpgradeStatus::decode(buf)?;
+                EthMessage::UpgradeStatus(upgrade_status)
             }
         };
         Ok(Self { message_type, message })
@@ -215,6 +220,8 @@ pub enum EthMessage {
     GetReceipts(RequestPair<GetReceipts>),
     /// Represents a Receipts request-response pair.
     Receipts(RequestPair<Receipts>),
+    /// Represents a `UpgradeStatus` request-response pair.
+    UpgradeStatus(UpgradeStatus),
 }
 
 impl EthMessage {
@@ -238,6 +245,7 @@ impl EthMessage {
             Self::NodeData(_) => EthMessageID::NodeData,
             Self::GetReceipts(_) => EthMessageID::GetReceipts,
             Self::Receipts(_) => EthMessageID::Receipts,
+            Self::UpgradeStatus(_) => EthMessageID::UpgradeStatus,
         }
     }
 }
@@ -261,6 +269,7 @@ impl Encodable for EthMessage {
             Self::NodeData(data) => data.encode(out),
             Self::GetReceipts(request) => request.encode(out),
             Self::Receipts(receipts) => receipts.encode(out),
+            Self::UpgradeStatus(status) => status.encode(out),
         }
     }
     fn length(&self) -> usize {
@@ -281,6 +290,7 @@ impl Encodable for EthMessage {
             Self::NodeData(data) => data.length(),
             Self::GetReceipts(request) => request.length(),
             Self::Receipts(receipts) => receipts.length(),
+            Self::UpgradeStatus(status) => status.length(),
         }
     }
 }
@@ -363,6 +373,8 @@ pub enum EthMessageID {
     GetReceipts = 0x0f,
     /// Represents receipts.
     Receipts = 0x10,
+    /// BSC messages overloaded in eth/66.
+    UpgradeStatus = 0x0b,
 }
 
 impl EthMessageID {
@@ -399,6 +411,7 @@ impl Decodable for EthMessageID {
             0x0e => Self::NodeData,
             0x0f => Self::GetReceipts,
             0x10 => Self::Receipts,
+            0x0b => Self::UpgradeStatus,
             _ => return Err(alloy_rlp::Error::Custom("Invalid message ID")),
         };
         buf.advance(1);

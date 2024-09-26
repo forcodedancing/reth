@@ -13,7 +13,9 @@ use reth_db::{
 };
 use reth_errors::{ProviderError, ProviderResult};
 use reth_execution_types::ExecutionOutcome;
-use reth_primitives::{Header, SealedBlock, StaticFileSegment, TransactionSignedNoHash};
+use reth_primitives::{
+    parlia::Snapshot, BlobSidecars, Header, SealedBlock, StaticFileSegment, TransactionSignedNoHash,
+};
 use reth_stages_types::{StageCheckpoint, StageId};
 use reth_storage_api::{
     DBProvider, HeaderProvider, ReceiptWriter, StageCheckpointWriter, TransactionsProviderExt,
@@ -26,6 +28,7 @@ use tracing::{debug, instrument};
 mod database;
 mod static_file;
 use database::DatabaseWriter;
+use reth_db_api::cursor::DbCursorRW;
 
 enum StorageType<C = (), S = ()> {
     Database(C),
@@ -227,8 +230,8 @@ where
         Ok(())
     }
 
-    /// Writes the header & transactions to static files, and updates their respective checkpoints
-    /// on database.
+    /// Writes the header & transactions & sidecars to static files, and updates their respective
+    /// checkpoints on database.
     #[instrument(level = "trace", skip_all, fields(block = ?block.num_hash()) target = "storage")]
     fn save_header_and_transactions(&self, block: Arc<SealedBlock>) -> ProviderResult<()> {
         debug!(target: "provider::storage_writer", "Writing headers and transactions.");
@@ -261,6 +264,16 @@ where
                 block.header().number,
                 std::iter::once(&no_hash_transactions),
             )?;
+
+            let sidecar_writer =
+                self.static_file().get_writer(block.number, StaticFileSegment::Sidecars)?;
+            let mut storage_writer = UnifiedStorageWriter::from(self.database(), sidecar_writer);
+            storage_writer.append_sidecars_from_blocks(std::iter::once((
+                &block.sidecars.clone().unwrap_or_default(),
+                block.number,
+                block.hash(),
+            )))?;
+
             self.database()
                 .save_stage_checkpoint(StageId::Bodies, StageCheckpoint::new(block.number))?;
         }
@@ -425,6 +438,29 @@ where
         }
         Ok(())
     }
+
+    /// Appends sidecars to static files
+    ///
+    /// NOTE: The static file writer used to construct this [`UnifiedStorageWriter`] MUST be a
+    /// writer for the Sidecars segment.
+    pub fn append_sidecars_from_blocks<SC, I>(
+        &mut self,
+        sidecars: impl Iterator<Item = I>,
+    ) -> ProviderResult<()>
+    where
+        I: Borrow<(SC, u64, B256)>,
+        SC: Borrow<BlobSidecars>,
+    {
+        self.ensure_static_file_segment(StaticFileSegment::Sidecars)?;
+
+        for pair in sidecars {
+            let (sc, block_number, hash) = pair.borrow();
+            let sc = sc.borrow();
+            self.static_file_mut().append_sidecars(sc, *block_number, hash)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a, 'b, ProviderDB> UnifiedStorageWriter<'a, ProviderDB, StaticFileProviderRWRefMut<'b>>
@@ -444,10 +480,12 @@ where
     /// - `initial_block_number`: The starting block number.
     /// - `blocks`: An iterator over blocks, each block having a vector of optional receipts. If
     ///   `receipt` is `None`, it has been pruned.
+    /// - `snapshots`: A vector of snapshots to be written to the database.
     pub fn append_receipts_from_blocks(
         &mut self,
         initial_block_number: BlockNumber,
         blocks: impl Iterator<Item = Vec<Option<reth_primitives::Receipt>>>,
+        snapshots: Vec<Snapshot>,
     ) -> ProviderResult<()> {
         let mut bodies_cursor =
             self.database().tx_ref().cursor_read::<tables::BlockBodyIndices>()?;
@@ -504,6 +542,15 @@ where
             };
         }
 
+        // Write snapshots to the database.
+        if !snapshots.is_empty() {
+            let mut snapshot_cursor =
+                self.database().tx_ref().cursor_write::<tables::ParliaSnapshot>()?;
+            for snap in snapshots {
+                snapshot_cursor.upsert(snap.block_hash, snap)?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -528,6 +575,7 @@ where
         self.append_receipts_from_blocks(
             execution_outcome.first_block,
             execution_outcome.receipts.into_iter(),
+            execution_outcome.snapshots,
         )?;
 
         self.database().write_state_changes(plain_state)?;
@@ -1380,6 +1428,7 @@ mod tests {
             receipts: vec![vec![Some(Receipt::default()); 2]; 7].into(),
             first_block: 10,
             requests: Vec::new(),
+            snapshots: Vec::new(),
         };
 
         let mut this = base.clone();
@@ -1597,6 +1646,7 @@ mod tests {
             receipts: vec![vec![Some(Receipt::default()); 2]; 1].into(),
             first_block: 2,
             requests: Vec::new(),
+            snapshots: Vec::new(),
         };
 
         test.prepend_state(previous_state);

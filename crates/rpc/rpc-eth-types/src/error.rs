@@ -50,6 +50,9 @@ pub enum EthApiError {
     /// Thrown when an unknown block or transaction index is encountered
     #[error("unknown block or tx index")]
     UnknownBlockOrTxIndex,
+    /// Thrown when an unknown parent block is encountered
+    #[error("unknown parent block")]
+    UnknownParentBlock,
     /// When an invalid block range is provided
     #[error("invalid block range")]
     InvalidBlockRange,
@@ -166,7 +169,7 @@ impl From<EthApiError> for jsonrpsee_types::error::ErrorObject<'static> {
             EthApiError::EvmCustom(_) |
             EthApiError::EvmPrecompile(_) |
             EthApiError::InvalidRewardPercentiles => internal_rpc_err(error.to_string()),
-            EthApiError::UnknownBlockOrTxIndex => {
+            EthApiError::UnknownBlockOrTxIndex | EthApiError::UnknownParentBlock => {
                 rpc_error_with_code(EthRpcErrorCode::ResourceNotFound.code(), error.to_string())
             }
             // TODO(onbjerg): We rewrite the error message here because op-node does string matching

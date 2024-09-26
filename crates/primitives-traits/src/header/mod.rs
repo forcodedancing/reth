@@ -7,6 +7,7 @@ pub use error::HeaderError;
 #[cfg(any(test, feature = "test-utils", feature = "arbitrary"))]
 pub mod test_utils;
 
+use crate::constants::EIP1559_INITIAL_BASE_FEE;
 use alloy_consensus::constants::{EMPTY_OMMER_ROOT_HASH, EMPTY_ROOT_HASH};
 use alloy_eips::{
     calc_next_block_base_fee, eip1559::BaseFeeParams, merge::ALLOWED_FUTURE_BLOCK_TIME_SECONDS,
@@ -251,12 +252,16 @@ impl Header {
     ///
     /// Returns a `None` if no base fee is set, no EIP-1559 support
     pub fn next_block_base_fee(&self, base_fee_params: BaseFeeParams) -> Option<u64> {
-        Some(calc_next_block_base_fee(
-            self.gas_used as u128,
-            self.gas_limit as u128,
-            self.base_fee_per_gas? as u128,
-            base_fee_params,
-        ) as u64)
+        if cfg!(feature = "bsc") {
+            Some(EIP1559_INITIAL_BASE_FEE)
+        } else {
+            Some(calc_next_block_base_fee(
+                self.gas_used as u128,
+                self.gas_limit as u128,
+                self.base_fee_per_gas? as u128,
+                base_fee_params,
+            ) as u64)
+        }
     }
 
     /// Calculate excess blob gas for the next block according to the EIP-4844 spec.

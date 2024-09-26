@@ -46,10 +46,16 @@ op-alloy-rpc-types.workspace = true
 
 [features]
 default = ["std"]
+bsc = [
+    "reth-ethereum-forks/bsc"
+]
 optimism = [
     "reth-ethereum-forks/optimism",
     "serde",
     "dep:op-alloy-rpc-types",
+]
+opbnb = [
+    "reth-ethereum-forks/opbnb"
 ]
 std = []
 arbitrary = [

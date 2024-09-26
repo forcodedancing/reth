@@ -66,6 +66,7 @@ arbitrary = [
     "reth-eth-wire-types/arbitrary",
     "dep:arbitrary",
 ]
+bsc = ["reth-primitives/bsc"]
 serde = ["dep:serde", "reth-eth-wire-types/serde"]
 
 [[test]]

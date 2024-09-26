@@ -363,6 +363,7 @@ impl StorageInner {
             body: transactions,
             ommers: ommers.clone(),
             withdrawals: withdrawals.clone(),
+            sidecars: None,
             requests: requests.clone(),
         }
         .with_recovered_senders()
@@ -376,7 +377,7 @@ impl StorageInner {
 
         // execute the block
         let block_execution_output =
-            executor.executor(&mut db).execute((&block, U256::ZERO).into())?;
+            executor.executor(&mut db, None).execute((&block, U256::ZERO, None).into())?;
         let gas_used = block_execution_output.gas_used;
         let execution_outcome = ExecutionOutcome::from((block_execution_output, block.number));
         let hashed_state = HashedPostState::from_bundle_state(&execution_outcome.state().state);
@@ -386,7 +387,7 @@ impl StorageInner {
         // root here
 
         let Block { mut header, body, .. } = block.block;
-        let body = BlockBody { transactions: body, ommers, withdrawals, requests };
+        let body = BlockBody { transactions: body, ommers, withdrawals, sidecars: None, requests };
 
         trace!(target: "consensus::auto", ?execution_outcome, ?header, ?body, "executed block, calculating state root and completing header");
 

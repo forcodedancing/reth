@@ -15,7 +15,7 @@ use reth_evm::{
 };
 use reth_execution_types::ExecutionOutcome;
 use reth_optimism_consensus::validate_block_post_execution;
-use reth_primitives::{BlockWithSenders, Header, Receipt, Receipts, TxType};
+use reth_primitives::{Address, BlockWithSenders, Header, Receipt, Receipts, TxType};
 use reth_prune_types::PruneModes;
 use reth_revm::{
     batch::BlockBatchRecord,
@@ -28,10 +28,16 @@ use reth_revm::{
 };
 use revm_primitives::{
     db::{Database, DatabaseCommit},
-    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
+    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, EvmState, ResultAndState,
 };
-use std::{collections::hash_map::Entry, fmt::Display, sync::Arc};
-use tracing::trace;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Display,
+    str::FromStr,
+    sync::Arc,
+};
+use tokio::sync::mpsc::UnboundedSender;
+use tracing::{debug, trace};
 
 /// Provides executors to execute regular optimism blocks
 #[derive(Debug, Clone)]
@@ -61,15 +67,36 @@ impl<EvmConfig> OpExecutorProvider<EvmConfig>
 where
     EvmConfig: ConfigureEvm<Header = Header>,
 {
-    fn op_executor<DB>(&self, db: DB) -> OpBlockExecutor<EvmConfig, DB>
+    fn op_executor<DB>(
+        &self,
+        db: DB,
+        prefetch_tx: Option<UnboundedSender<EvmState>>,
+    ) -> OpBlockExecutor<EvmConfig, DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        OpBlockExecutor::new(
-            self.chain_spec.clone(),
-            self.evm_config.clone(),
-            State::builder().with_database(db).with_bundle_update().without_state_clear().build(),
-        )
+        if let Some(tx) = prefetch_tx {
+            OpBlockExecutor::new_with_prefetch_tx(
+                self.chain_spec.clone(),
+                self.evm_config.clone(),
+                State::builder()
+                    .with_database(db)
+                    .with_bundle_update()
+                    .without_state_clear()
+                    .build(),
+                tx,
+            )
+        } else {
+            OpBlockExecutor::new(
+                self.chain_spec.clone(),
+                self.evm_config.clone(),
+                State::builder()
+                    .with_database(db)
+                    .with_bundle_update()
+                    .without_state_clear()
+                    .build(),
+            )
+        }
     }
 }
 
@@ -82,18 +109,22 @@ where
 
     type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> =
         OpBatchExecutor<EvmConfig, DB>;
-    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
+    fn executor<DB>(
+        &self,
+        db: DB,
+        prefetch_tx: Option<UnboundedSender<EvmState>>,
+    ) -> Self::Executor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        self.op_executor(db)
+        self.op_executor(db, prefetch_tx)
     }
 
     fn batch_executor<DB>(&self, db: DB) -> Self::BatchExecutor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        let executor = self.op_executor(db);
+        let executor = self.op_executor(db, None);
         OpBatchExecutor { executor, batch_record: BlockBatchRecord::default() }
     }
 }
@@ -122,6 +153,7 @@ where
         &self,
         block: &BlockWithSenders,
         mut evm: Evm<'_, Ext, &mut State<DB>>,
+        tx: Option<UnboundedSender<EvmState>>,
     ) -> Result<(Vec<Receipt>, u64), BlockExecutionError>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
@@ -200,6 +232,12 @@ where
                 "Executed transaction"
             );
 
+            if let Some(tx) = tx.as_ref() {
+                tx.send(state.clone()).unwrap_or_else(|err| {
+                    debug!(target: "evm_executor", ?err, "Failed to send post state to prefetch channel")
+                });
+            }
+
             evm.db_mut().commit(state);
 
             // append gas used
@@ -240,12 +278,24 @@ pub struct OpBlockExecutor<EvmConfig, DB> {
     executor: OpEvmExecutor<EvmConfig>,
     /// The state to use for execution
     state: State<DB>,
+    /// Prefetch channel
+    prefetch_tx: Option<UnboundedSender<EvmState>>,
 }
 
 impl<EvmConfig, DB> OpBlockExecutor<EvmConfig, DB> {
     /// Creates a new Optimism block executor.
     pub const fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig, state: State<DB>) -> Self {
-        Self { executor: OpEvmExecutor { chain_spec, evm_config }, state }
+        Self { executor: OpEvmExecutor { chain_spec, evm_config }, state, prefetch_tx: None }
+    }
+
+    /// Creates a new Optimism block executor with a prefetch channel.
+    pub const fn new_with_prefetch_tx(
+        chain_spec: Arc<ChainSpec>,
+        evm_config: EvmConfig,
+        state: State<DB>,
+        tx: UnboundedSender<EvmState>,
+    ) -> Self {
+        Self { executor: OpEvmExecutor { chain_spec, evm_config }, state, prefetch_tx: Some(tx) }
     }
 
     /// Returns the chain spec.
@@ -299,7 +349,7 @@ where
 
         let (receipts, gas_used) = {
             let evm = self.executor.evm_config.evm_with_env(&mut self.state, env);
-            self.executor.execute_pre_and_transactions(block, evm)
+            self.executor.execute_pre_and_transactions(block, evm, self.prefetch_tx.clone())
         }?;
 
         // 3. apply post execution changes
@@ -324,6 +374,50 @@ where
     ) -> Result<(), BlockExecutionError> {
         let balance_increments =
             post_block_balance_increments(self.chain_spec(), block, total_difficulty);
+
+        #[cfg(all(feature = "optimism", feature = "opbnb"))]
+        if self
+            .chain_spec()
+            .fork(OptimismHardfork::PreContractForkBlock)
+            .transitions_at_block(block.number)
+        {
+            // WBNBContract WBNB preDeploy contract address
+            let w_bnb_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000006").unwrap();
+            // GovernanceToken contract address
+            let governance_token_contract_address =
+                Address::from_str("0x4200000000000000000000000000000000000042").unwrap();
+
+            let w_bnb_contract_account =
+                self.state.load_cache_account(w_bnb_contract_address).map_err(|err| err.into())?;
+            // change the token symbol and token name
+            let w_bnb_contract_change =  w_bnb_contract_account.change(
+                w_bnb_contract_account.account_info().unwrap(), HashMap::from([
+                    // nameSlot { Name: "Wrapped BNB" }
+                    (
+                        U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                        StorageSlot { present_value: U256::from_str("0x5772617070656420424e42000000000000000000000000000000000000000016").unwrap(), ..Default::default() },
+                    ),
+                    // symbolSlot { Symbol: "wBNB" }
+                    (
+                        U256::from_str("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
+                        StorageSlot { present_value: U256::from_str("0x57424e4200000000000000000000000000000000000000000000000000000008").unwrap(), ..Default::default() },
+                    ),
+                ])
+            );
+
+            let governance_token_account = self
+                .state
+                .load_cache_account(governance_token_contract_address)
+                .map_err(|err| err.into())?;
+            // destroy governance token contract
+            let governance_token_change = governance_token_account.selfdestruct().unwrap();
+
+            self.state.apply_transition(vec![
+                (w_bnb_contract_address, w_bnb_contract_change),
+                (governance_token_contract_address, governance_token_change),
+            ]);
+        }
         // increment balances
         self.state
             .increment_balances(balance_increments)
@@ -338,7 +432,7 @@ where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -350,7 +444,7 @@ where
     ///
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
         let (receipts, gas_used) = self.execute_without_verification(block, total_difficulty)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
@@ -361,6 +455,7 @@ where
             receipts,
             requests: vec![],
             gas_used,
+            snapshot: None,
         })
     }
 }
@@ -379,7 +474,7 @@ where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -393,7 +488,7 @@ where
     ///
     /// Returns an error if the block could not be executed or failed verification.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
         let (receipts, gas_used) =
             self.executor.execute_without_verification(block, total_difficulty)?;
 
@@ -443,7 +538,13 @@ where
             }
         }
 
-        Ok(BlockExecutionOutput { state: bundle_state, receipts, requests: vec![], gas_used })
+        Ok(BlockExecutionOutput {
+            state: bundle_state,
+            receipts,
+            requests: vec![],
+            gas_used,
+            snapshot: None,
+        })
     }
 }
 
@@ -475,17 +576,16 @@ where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 
     fn execute_and_verify_one(&mut self, input: Self::Input<'_>) -> Result<(), Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
 
         if self.batch_record.first_block().is_none() {
             self.batch_record.set_first_block(block.number);
         }
-
         let (receipts, _gas_used) =
             self.executor.execute_without_verification(block, total_difficulty)?;
 
@@ -634,11 +734,13 @@ mod tests {
                             body: vec![tx, tx_deposit],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![addr, addr],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -718,11 +820,13 @@ mod tests {
                             body: vec![tx, tx_deposit],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![addr, addr],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )

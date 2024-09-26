@@ -7,7 +7,7 @@ use rand::Rng;
 use reth_eth_wire::HeadersDirection;
 use reth_network::{
     test_utils::{NetworkEventStream, Testnet},
-    BlockDownloaderProvider, NetworkEventListenerProvider,
+    NetworkEventListenerProvider,
 };
 use reth_network_api::{NetworkInfo, Peers};
 use reth_network_p2p::{
@@ -79,6 +79,7 @@ async fn test_get_body() {
             transactions: block.body,
             ommers: block.ommers,
             withdrawals: None,
+            sidecars: None,
             requests: None,
         };
         assert_eq!(blocks[0], expected);

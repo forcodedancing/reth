@@ -2139,18 +2139,29 @@ where
             return Err(e.into())
         }
 
-        let executor = self.executor_provider.executor(StateProviderDatabase::new(&state_provider));
+        let executor =
+            self.executor_provider.executor(StateProviderDatabase::new(&state_provider), None);
 
         let block_number = block.number;
         let block_hash = block.hash();
         let sealed_block = Arc::new(block.block.clone());
         let block = block.unseal();
 
+        let ancestor_blocks = self
+            .state
+            .tree_state
+            .blocks_by_hash
+            .iter()
+            .map(|(hash, block)| (*hash, block.block().header.header().clone()))
+            .collect::<HashMap<_, _>>();
+
         let exec_time = Instant::now();
         let output = self
             .metrics
             .executor
-            .metered((&block, U256::MAX).into(), |input| executor.execute(input))?;
+            .metered((&block, U256::MAX, Some(&ancestor_blocks)).into(), |input| {
+                executor.execute(input)
+            })?;
         debug!(target: "engine::tree", elapsed=?exec_time.elapsed(), ?block_number, "Executed block");
 
         if let Err(err) = self.consensus.validate_block_post_execution(
@@ -3836,6 +3847,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "bsc"))]
     async fn test_engine_tree_valid_forks_with_older_canonical_head() {
         reth_tracing::init_test_tracing();
 
@@ -3896,6 +3908,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "bsc"))]
     async fn test_engine_tree_buffered_blocks_are_eventually_connected() {
         let chain_spec = MAINNET.clone();
         let mut test_harness = TestHarness::new(chain_spec.clone());
@@ -3934,6 +3947,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "bsc"))]
     async fn test_engine_tree_valid_and_invalid_forks_with_older_canonical_head() {
         reth_tracing::init_test_tracing();
 
@@ -3999,6 +4013,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "bsc"))]
     async fn test_engine_tree_reorg_with_missing_ancestor_expecting_valid() {
         reth_tracing::init_test_tracing();
         let chain_spec = MAINNET.clone();

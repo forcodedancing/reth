@@ -82,6 +82,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                 tx.clear::<tables::BlockOmmers>()?;
                 tx.clear::<tables::BlockWithdrawals>()?;
                 tx.clear::<tables::BlockRequests>()?;
+                tx.clear::<tables::Sidecars>()?;
                 tx.put::<tables::StageCheckpoints>(
                     StageId::Bodies.to_string(),
                     Default::default(),
@@ -102,6 +103,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                 tx.clear::<tables::StorageChangeSets>()?;
                 tx.clear::<tables::Bytecodes>()?;
                 tx.clear::<tables::Receipts>()?;
+                tx.clear::<tables::ParliaSnapshot>()?;
                 tx.put::<tables::StageCheckpoints>(
                     StageId::Execution.to_string(),
                     Default::default(),

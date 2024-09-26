@@ -2,21 +2,30 @@ name: Lint GitHub Actions workflows
 on:
   pull_request:
     paths:
-    - '.github/**'
+      - '.github/**'
   merge_group:
   push:
     paths:
-    - '.github/**'
+      - '.github/**'
 
 jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: build actionlint config for runner labels
+        shell: bash
+        run: |
+          cat > .github/actionlint.yaml<< EOF
+          self-hosted-runner:
+            # Labels of self-hosted runner in array of string
+            labels:
+              - bnb-chain-ap-qa-cicd-runners
+          EOF
       - name: Download actionlint
         id: get_actionlint
         run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
         shell: bash
       - name: Check workflow files
-        run: SHELLCHECK_OPTS="-S error" ${{ steps.get_actionlint.outputs.executable }} -color
+        run: SHELLCHECK_OPTS="-S error" ${{ steps.get_actionlint.outputs.executable }} -color -config-file .github/actionlint.yaml
         shell: bash

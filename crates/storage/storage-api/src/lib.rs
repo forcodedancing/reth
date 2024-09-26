@@ -52,6 +52,9 @@ pub use trie::*;
 mod withdrawals;
 pub use withdrawals::*;
 
+mod sidecars;
+pub use sidecars::*;
+
 mod database_provider;
 pub use database_provider::*;
 

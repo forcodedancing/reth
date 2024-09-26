@@ -11,7 +11,8 @@ use reth_ethereum_forks::{
     ForkFilter, ForkFilterKey, ForkHash, ForkId, Hardfork, Head, DEV_HARDFORKS,
 };
 use reth_network_peers::{
-    base_nodes, base_testnet_nodes, holesky_nodes, mainnet_nodes, op_nodes, op_testnet_nodes,
+    base_nodes, base_testnet_nodes, bsc_mainnet_nodes, bsc_testnet_nodes, holesky_nodes,
+    mainnet_nodes, op_nodes, op_testnet_nodes, opbnb_mainnet_nodes, opbnb_testnet_nodes,
     sepolia_nodes, NodeRecord,
 };
 use reth_primitives_traits::{
@@ -248,6 +249,20 @@ impl ChainSpec {
                     NamedChain::Sepolia
             )
         )
+    }
+
+    /// Returns `true` if this chain contains Bsc configuration.
+    #[inline]
+    pub fn is_bsc(&self) -> bool {
+        self.chain == Chain::bsc_mainnet() ||
+            self.chain == Chain::bsc_testnet() ||
+            self.chain == Chain::from_id(714)
+    }
+
+    /// Returns `true` if this chain is Bsc mainnet.
+    #[inline]
+    pub fn is_bsc_mainnet(&self) -> bool {
+        self.chain == Chain::bsc_mainnet()
     }
 
     /// Returns `true` if this chain contains Optimism configuration.
@@ -506,6 +521,11 @@ impl ChainSpec {
         for timestamp in self.hardforks.forks_iter().filter_map(|(_, cond)| {
             cond.as_timestamp().filter(|time| time > &self.genesis.timestamp)
         }) {
+            // Skip Fermat hardfork for opbnb
+            if timestamp == 1698991506 || timestamp == 1701151200 {
+                continue;
+            }
+
             let cond = ForkCondition::Timestamp(timestamp);
             if cond.active_at_head(head) {
                 if timestamp != current_applied {
@@ -597,6 +617,10 @@ impl ChainSpec {
             C::Optimism => Some(op_nodes()),
             C::BaseGoerli | C::BaseSepolia => Some(base_testnet_nodes()),
             C::OptimismSepolia | C::OptimismGoerli | C::OptimismKovan => Some(op_testnet_nodes()),
+            C::BNBSmartChain => Some(bsc_mainnet_nodes()),
+            C::BNBSmartChainTestnet => Some(bsc_testnet_nodes()),
+            C::OpBNBTestnet => Some(opbnb_testnet_nodes()),
+            C::OpBNBMainnet => Some(opbnb_mainnet_nodes()),
             _ => None,
         }
     }
@@ -1144,11 +1168,11 @@ pub fn test_fork_ids(spec: &ChainSpec, cases: &[(Head, ForkId)]) {
 #[cfg(test)]
 mod tests {
     use core::ops::Deref;
-    use std::{collections::HashMap, str::FromStr};
+    use std::collections::HashMap;
 
     use alloy_chains::Chain;
     use alloy_genesis::{ChainConfig, GenesisAccount};
-    use alloy_primitives::{b256, hex};
+    use alloy_primitives::hex;
     use reth_ethereum_forks::{ForkCondition, ForkHash, ForkId, Head};
     use reth_trie_common::TrieAccount;
 
@@ -2319,7 +2343,11 @@ Post-merge hard forks (timestamp based):
     }
 
     #[test]
+    #[cfg(not(feature = "bsc"))]
     fn test_default_cancun_header_forkhash() {
+        use alloy_primitives::b256;
+        use std::str::FromStr;
+
         // set the gas limit from the hive test genesis according to the hash
         let genesis = Genesis { gas_limit: 0x2fefd8u128, ..Default::default() };
         let default_chainspec = ChainSpecBuilder::default()

@@ -1,25 +1,40 @@
-use reth_primitives::{Request, U256};
+use reth_primitives::{parlia::Snapshot, Request, B256, U256};
 use revm::db::BundleState;
+use std::collections::HashMap;
 
 /// A helper type for ethereum block inputs that consists of a block and the total difficulty.
 #[derive(Debug)]
-pub struct BlockExecutionInput<'a, Block> {
+pub struct BlockExecutionInput<'a, Block, Header> {
     /// The block to execute.
     pub block: &'a Block,
     /// The total difficulty of the block.
     pub total_difficulty: U256,
+    /// The headers of the block's ancestor
+    pub ancestor_headers: Option<&'a HashMap<B256, Header>>,
 }
 
-impl<'a, Block> BlockExecutionInput<'a, Block> {
+impl<'a, Block, Header> BlockExecutionInput<'a, Block, Header> {
     /// Creates a new input.
-    pub const fn new(block: &'a Block, total_difficulty: U256) -> Self {
-        Self { block, total_difficulty }
+    pub const fn new(
+        block: &'a Block,
+        total_difficulty: U256,
+        ancestor_headers: Option<&'a HashMap<B256, Header>>,
+    ) -> Self {
+        Self { block, total_difficulty, ancestor_headers }
     }
 }
 
-impl<'a, Block> From<(&'a Block, U256)> for BlockExecutionInput<'a, Block> {
-    fn from((block, total_difficulty): (&'a Block, U256)) -> Self {
-        Self::new(block, total_difficulty)
+impl<'a, Block, Header> From<(&'a Block, U256, Option<&'a HashMap<B256, Header>>)>
+    for BlockExecutionInput<'a, Block, Header>
+{
+    fn from(
+        (block, total_difficulty, ancestor_headers): (
+            &'a Block,
+            U256,
+            Option<&'a HashMap<B256, Header>>,
+        ),
+    ) -> Self {
+        Self::new(block, total_difficulty, ancestor_headers)
     }
 }
 
@@ -36,4 +51,7 @@ pub struct BlockExecutionOutput<T> {
     pub requests: Vec<Request>,
     /// The total gas used by the block.
     pub gas_used: u64,
+
+    /// Parlia snapshot.
+    pub snapshot: Option<Snapshot>,
 }

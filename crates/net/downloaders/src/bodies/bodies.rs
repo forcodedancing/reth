@@ -668,6 +668,7 @@ mod tests {
                         transactions: block.body,
                         ommers: block.ommers,
                         withdrawals: None,
+                        sidecars: None,
                         requests: None,
                     },
                 )

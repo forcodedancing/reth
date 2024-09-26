@@ -2,10 +2,11 @@
 
 use std::{fmt, net::SocketAddr, sync::Arc};
 
+use alloy_primitives::B256;
 use reth_eth_wire_types::{
-    message::RequestPair, BlockBodies, BlockHeaders, Capabilities, DisconnectReason, EthMessage,
-    EthVersion, GetBlockBodies, GetBlockHeaders, GetNodeData, GetPooledTransactions, GetReceipts,
-    NodeData, PooledTransactions, Receipts, Status,
+    message::RequestPair, BlockBodies, BlockHashNumber, BlockHeaders, Capabilities,
+    DisconnectReason, EthMessage, EthVersion, GetBlockBodies, GetBlockHeaders, GetNodeData,
+    GetPooledTransactions, GetReceipts, NewBlock, NodeData, PooledTransactions, Receipts, Status,
 };
 use reth_ethereum_forks::ForkId;
 use reth_network_p2p::error::{RequestError, RequestResult};
@@ -230,4 +231,30 @@ impl fmt::Debug for PeerRequestSender {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PeerRequestSender").field("peer_id", &self.peer_id).finish_non_exhaustive()
     }
+}
+
+/// All message variants that can be sent to `TaskEngine`.
+#[derive(Debug)]
+pub enum EngineMessage {
+    /// Announce new block hashes
+    NewBlockHashes(BlockHashesEvent),
+    /// Broadcast new block.
+    NewBlock(BlockEvent),
+}
+
+/// internal message to engine task
+#[derive(Debug, Clone)]
+pub struct BlockHashesEvent {
+    /// New block hashes and the block number for each blockhash.
+    /// Clients should request blocks using a [`GetBlockBodies`](crate::GetBlockBodies) message.
+    pub hashes: Vec<BlockHashNumber>,
+}
+
+/// internal message to engine task
+#[derive(Debug, Clone)]
+pub struct BlockEvent {
+    /// Hash of the block
+    pub hash: B256,
+    /// Raw received message
+    pub block: Arc<NewBlock>,
 }

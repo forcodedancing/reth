@@ -32,6 +32,10 @@ asm-keccak = ["reth-optimism-cli/asm-keccak", "reth-node-optimism/asm-keccak"]
 
 optimism = ["reth-optimism-cli/optimism", "reth-node-optimism/optimism"]
 
+opbnb = [
+    "reth-node-optimism/opbnb"
+]
+
 [[bin]]
 name = "op-reth"
 path = "src/main.rs"

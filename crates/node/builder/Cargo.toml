@@ -86,8 +86,12 @@ fdlimit.workspace = true
 jsonrpsee.workspace = true
 rayon.workspace = true
 
-# tracing
+## tracing
 tracing.workspace = true
+
+## bsc
+reth-bsc-consensus = { workspace = true, optional = true }
+reth-bsc-engine = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
@@ -95,3 +99,7 @@ tempfile.workspace = true
 [features]
 default = []
 test-utils = ["reth-db/test-utils"]
+bsc = [
+    "reth-bsc-engine/bsc",
+    "reth-beacon-consensus/bsc",
+]

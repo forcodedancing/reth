@@ -97,6 +97,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> ImportOpCommand<C> {
                 Arc::new(file_client),
                 StaticFileProducer::new(provider_factory.clone(), PruneModes::default()),
                 true,
+                self.env.performance_optimization.skip_state_root_validation,
             )
             .await?;
 

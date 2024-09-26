@@ -179,7 +179,7 @@ mod tests {
                 .unwrap();
 
         let (_tx, rx) = watch::channel(FinishedExExHeight::NoExExs);
-        let pruner = Pruner::new_with_factory(provider_factory.clone(), vec![], 0, 0, None, rx);
+        let pruner = Pruner::new_with_factory(provider_factory.clone(), vec![], 0, 0, None, rx, 0);
 
         let (sync_metrics_tx, _sync_metrics_rx) = unbounded_channel();
         let (tx, _rx) = unbounded_channel();

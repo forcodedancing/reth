@@ -7,8 +7,9 @@ use once_cell::sync::Lazy;
 use reth_db::tables;
 use reth_db_api::{database::Database, models::StoredBlockBodyIndices};
 use reth_primitives::{
-    Account, Header, Receipt, Requests, SealedBlock, SealedBlockWithSenders, SealedHeader,
-    Signature, Transaction, TransactionSigned, TxLegacy, TxType, Withdrawal, Withdrawals,
+    Account, BlobSidecars, Header, Receipt, Requests, SealedBlock, SealedBlockWithSenders,
+    SealedHeader, Signature, Transaction, TransactionSigned, TxLegacy, TxType, Withdrawal,
+    Withdrawals,
 };
 use reth_trie::root::{state_root_unhashed, storage_root_unhashed};
 use revm::{
@@ -156,6 +157,7 @@ pub fn genesis() -> SealedBlock {
         body: vec![],
         ommers: vec![],
         withdrawals: Some(Withdrawals::default()),
+        sidecars: Some(BlobSidecars::default()),
         requests: Some(Requests::default()),
     }
 }

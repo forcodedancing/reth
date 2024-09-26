@@ -1729,10 +1729,11 @@ where
 
             BlockchainTreeAction::InsertDownloadedPayload { block } => {
                 let downloaded_num_hash = block.num_hash();
-                match self.blockchain.insert_block_without_senders(
-                    block,
-                    BlockValidationKind::SkipStateRootValidation,
-                ) {
+                let start = Instant::now();
+                match self
+                    .blockchain
+                    .insert_block_without_senders(block.clone(), BlockValidationKind::Exhaustive)
+                {
                     Ok(status) => {
                         match status {
                             InsertPayloadOk::Inserted(BlockStatus::Valid(_)) => {
@@ -1753,6 +1754,14 @@ where
                                         )
                                     }
                                 }
+
+                                let elapsed = start.elapsed();
+                                let event_block = Arc::new(block);
+                                let event = BeaconConsensusEngineEvent::CanonicalBlockAdded(
+                                    event_block,
+                                    elapsed,
+                                );
+                                self.event_sender.notify(event);
                             }
                             InsertPayloadOk::Inserted(BlockStatus::Disconnected {
                                 head,

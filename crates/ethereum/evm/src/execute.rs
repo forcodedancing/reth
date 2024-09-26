@@ -35,9 +35,11 @@ use reth_revm::{
 };
 use revm_primitives::{
     db::{Database, DatabaseCommit},
-    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, ResultAndState,
+    BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, EvmState, ResultAndState,
 };
 use std::collections::hash_map::Entry;
+use tokio::sync::mpsc::UnboundedSender;
+use tracing::debug;
 
 /// Provides executors to execute regular ethereum blocks
 #[derive(Debug, Clone)]
@@ -69,15 +71,36 @@ impl<EvmConfig> EthExecutorProvider<EvmConfig>
 where
     EvmConfig: ConfigureEvm<Header = Header>,
 {
-    fn eth_executor<DB>(&self, db: DB) -> EthBlockExecutor<EvmConfig, DB>
+    fn eth_executor<DB>(
+        &self,
+        db: DB,
+        prefetch_tx: Option<UnboundedSender<EvmState>>,
+    ) -> EthBlockExecutor<EvmConfig, DB>
     where
         DB: Database<Error: Into<ProviderError>>,
     {
-        EthBlockExecutor::new(
-            self.chain_spec.clone(),
-            self.evm_config.clone(),
-            State::builder().with_database(db).with_bundle_update().without_state_clear().build(),
-        )
+        if let Some(tx) = prefetch_tx {
+            EthBlockExecutor::new_with_prefetch_tx(
+                self.chain_spec.clone(),
+                self.evm_config.clone(),
+                State::builder()
+                    .with_database(db)
+                    .with_bundle_update()
+                    .without_state_clear()
+                    .build(),
+                tx,
+            )
+        } else {
+            EthBlockExecutor::new(
+                self.chain_spec.clone(),
+                self.evm_config.clone(),
+                State::builder()
+                    .with_database(db)
+                    .with_bundle_update()
+                    .without_state_clear()
+                    .build(),
+            )
+        }
     }
 }
 
@@ -91,18 +114,22 @@ where
     type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> =
         EthBatchExecutor<EvmConfig, DB>;
 
-    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
+    fn executor<DB>(
+        &self,
+        db: DB,
+        prefetch_tx: Option<UnboundedSender<EvmState>>,
+    ) -> Self::Executor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        self.eth_executor(db)
+        self.eth_executor(db, prefetch_tx)
     }
 
     fn batch_executor<DB>(&self, db: DB) -> Self::BatchExecutor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        let executor = self.eth_executor(db);
+        let executor = self.eth_executor(db, None);
         EthBatchExecutor { executor, batch_record: BlockBatchRecord::default() }
     }
 }
@@ -142,6 +169,7 @@ where
         &self,
         block: &BlockWithSenders,
         mut evm: Evm<'_, Ext, &mut State<DB>>,
+        tx: Option<UnboundedSender<EvmState>>,
     ) -> Result<EthExecuteOutput, BlockExecutionError>
     where
         DB: Database,
@@ -191,6 +219,13 @@ where
                     error: Box::new(new_err),
                 }
             })?;
+
+            if let Some(tx) = tx.as_ref() {
+                tx.send(state.clone()).unwrap_or_else(|err| {
+                    debug!(target: "evm_executor", ?err, "Failed to send post state to prefetch channel")
+                });
+            }
+
             evm.db_mut().commit(state);
 
             // append gas used
@@ -245,12 +280,24 @@ pub struct EthBlockExecutor<EvmConfig, DB> {
     executor: EthEvmExecutor<EvmConfig>,
     /// The state to use for execution
     state: State<DB>,
+    /// Prefetch channel
+    prefetch_tx: Option<UnboundedSender<EvmState>>,
 }
 
 impl<EvmConfig, DB> EthBlockExecutor<EvmConfig, DB> {
     /// Creates a new Ethereum block executor.
     pub const fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig, state: State<DB>) -> Self {
-        Self { executor: EthEvmExecutor { chain_spec, evm_config }, state }
+        Self { executor: EthEvmExecutor { chain_spec, evm_config }, state, prefetch_tx: None }
+    }
+
+    /// Creates a new Ethereum block executor with a prefetch channel.
+    pub const fn new_with_prefetch_tx(
+        chain_spec: Arc<ChainSpec>,
+        evm_config: EvmConfig,
+        state: State<DB>,
+        tx: UnboundedSender<EvmState>,
+    ) -> Self {
+        Self { executor: EthEvmExecutor { chain_spec, evm_config }, state, prefetch_tx: Some(tx) }
     }
 
     #[inline]
@@ -306,7 +353,7 @@ where
         let env = self.evm_env_for_block(&block.header, total_difficulty);
         let output = {
             let evm = self.executor.evm_config.evm_with_env(&mut self.state, env);
-            self.executor.execute_state_transitions(block, evm)
+            self.executor.execute_state_transitions(block, evm, self.prefetch_tx.clone())
         }?;
 
         // 3. apply post execution changes
@@ -359,7 +406,7 @@ where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -369,14 +416,20 @@ where
     ///
     /// Returns an error if the block could not be executed or failed verification.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
         let EthExecuteOutput { receipts, requests, gas_used } =
             self.execute_without_verification(block, total_difficulty)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
 
-        Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, requests, gas_used })
+        Ok(BlockExecutionOutput {
+            state: self.state.take_bundle(),
+            receipts,
+            requests,
+            gas_used,
+            snapshot: None,
+        })
     }
 }
 
@@ -394,7 +447,7 @@ where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 
@@ -408,7 +461,7 @@ where
     ///
     /// Returns an error if the block could not be executed or failed verification.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
         let EthExecuteOutput { receipts, requests, gas_used } =
             self.executor.execute_without_verification(block, total_difficulty)?;
 
@@ -458,7 +511,13 @@ where
             }
         }
 
-        Ok(BlockExecutionOutput { state: bundle_state, receipts, requests, gas_used })
+        Ok(BlockExecutionOutput {
+            state: bundle_state,
+            receipts,
+            requests,
+            gas_used,
+            snapshot: None,
+        })
     }
 }
 
@@ -488,17 +547,16 @@ where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders, Header>;
     type Output = ExecutionOutcome;
     type Error = BlockExecutionError;
 
     fn execute_and_verify_one(&mut self, input: Self::Input<'_>) -> Result<(), Self::Error> {
-        let BlockExecutionInput { block, total_difficulty } = input;
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
 
         if self.batch_record.first_block().is_none() {
             self.batch_record.set_first_block(block.number);
         }
-
         let EthExecuteOutput { receipts, requests, gas_used: _ } =
             self.executor.execute_without_verification(block, total_difficulty)?;
 
@@ -620,7 +678,7 @@ mod tests {
 
         // attempt to execute a block without parent beacon block root, expect err
         let err = provider
-            .executor(StateProviderDatabase::new(&db))
+            .executor(StateProviderDatabase::new(&db), None)
             .execute(
                 (
                     &BlockWithSenders {
@@ -629,11 +687,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -649,7 +709,7 @@ mod tests {
         // fix header, set a gas limit
         header.parent_beacon_block_root = Some(B256::with_last_byte(0x69));
 
-        let mut executor = provider.executor(StateProviderDatabase::new(&db));
+        let mut executor = provider.executor(StateProviderDatabase::new(&db), None);
 
         // Now execute a block with the fixed header, ensure that it does not fail
         executor
@@ -660,6 +720,7 @@ mod tests {
                         body: vec![],
                         ommers: vec![],
                         withdrawals: None,
+                        sidecars: None,
                         requests: None,
                     },
                     senders: vec![],
@@ -726,11 +787,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -779,11 +842,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -823,11 +888,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -850,11 +917,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -909,11 +978,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -994,11 +1065,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1044,11 +1117,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1101,11 +1176,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1164,11 +1241,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1218,11 +1297,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1260,11 +1341,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1302,11 +1385,13 @@ mod tests {
                             body: vec![],
                             ommers: vec![],
                             withdrawals: None,
+                            sidecars: None,
                             requests: None,
                         },
                         senders: vec![],
                     },
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1381,7 +1466,7 @@ mod tests {
 
         let provider = executor_provider(chain_spec);
 
-        let executor = provider.executor(StateProviderDatabase::new(&db));
+        let executor = provider.executor(StateProviderDatabase::new(&db), None);
 
         let BlockExecutionOutput { receipts, requests, .. } = executor
             .execute(
@@ -1391,11 +1476,13 @@ mod tests {
                         body: vec![tx],
                         ommers: vec![],
                         withdrawals: None,
+                        sidecars: None,
                         requests: None,
                     }
                     .with_recovered_senders()
                     .unwrap(),
                     U256::ZERO,
+                    None,
                 )
                     .into(),
             )
@@ -1469,7 +1556,8 @@ mod tests {
         );
 
         // Create an executor from the state provider
-        let executor = executor_provider(chain_spec).executor(StateProviderDatabase::new(&db));
+        let executor =
+            executor_provider(chain_spec).executor(StateProviderDatabase::new(&db), None);
 
         // Execute the block and capture the result
         let exec_result = executor.execute(
@@ -1479,11 +1567,13 @@ mod tests {
                     body: vec![tx],
                     ommers: vec![],
                     withdrawals: None,
+                    sidecars: None,
                     requests: None,
                 }
                 .with_recovered_senders()
                 .unwrap(),
                 U256::ZERO,
+                None,
             )
                 .into(),
         );
