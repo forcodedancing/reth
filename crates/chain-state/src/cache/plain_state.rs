@@ -25,8 +25,8 @@ lazy_static! {
     /// Storage cache
     static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
 
-    /// Mapping for deleting storages
-    static ref PLAIN_STORAGES_MAPPING: Mutex<HashMap<Address, HashSet<B256>>> = Mutex::new(HashMap::new());
+    //// Mapping for deleting storages
+    //static ref PLAIN_STORAGES_MAPPING: Mutex<HashMap<Address, HashSet<B256>>> = Mutex::new(HashMap::new());
 
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
@@ -44,16 +44,16 @@ pub fn insert_account(k: Address, v: Account) {
 
 /// Insert storage into the cache
 pub fn insert_storage(k: AddressStorageKey, v: U256) {
-    {
-        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get_mut(&k.0) {
-            set.insert(k.1);
-        } else {
-            let mut s = HashSet::new();
-            s.insert(k.1);
-            map.insert(k.0, s);
-        }
-    }
+    //{
+    //     let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+    //     if let Some(set) = map.get_mut(&k.0) {
+    //         set.insert(k.1);
+    //     } else {
+    //         let mut s = HashSet::new();
+    //         s.insert(k.1);
+    //         map.insert(k.0, s);
+    //     }
+    // }
     PLAIN_STORAGES.insert(k, v);
 }
 // }
@@ -134,21 +134,19 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
     }
 
     // Update storage cache
+    let mut should_wipe = false;
     for storage in &change_set.storage {
         if storage.wipe_storage {
-            let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-            if let Some(set) = map.get(&storage.address) {
-                for s in set {
-                    let storage_key = (storage.address, *s);
-                    PLAIN_STORAGES.remove(&storage_key);
-                }
-            }
-            map.remove(&storage.address);
+            should_wipe = true;
+            break
         }
 
         for (k, v) in storage.storage.clone() {
             insert_storage((storage.address, StorageKey::from(k)), v);
         }
+    }
+    if should_wipe {
+        PLAIN_STORAGES.clear();
     }
 }
 
@@ -156,6 +154,6 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
 pub(crate) fn clear_plain_state() {
     PLAIN_ACCOUNTS.clear();
     PLAIN_STORAGES.clear();
-    let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-    map.clear();
+    // let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+    // map.clear();
 }
