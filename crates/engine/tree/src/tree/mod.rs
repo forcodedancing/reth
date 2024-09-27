@@ -2264,7 +2264,7 @@ where
         let root_elapsed = root_time.elapsed();
         self.metrics.block_validation.record_state_root(root_elapsed.as_secs_f64());
         debug!(target: "engine::tree", ?root_elapsed, ?block_number, "Calculated state root");
-        update_root_total(block_number, elapsed.as_millis());
+        update_root_total(block_number, root_elapsed.as_millis());
 
         let executed = ExecutedBlock {
             block: sealed_block.clone(),
