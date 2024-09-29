@@ -1292,6 +1292,9 @@ where
         // the canonical chain
         self.canonical_in_memory_state.clear_state();
 
+        // clear finalized state/hashed/trie caches
+        reth_chain_state::cache::clear_cache();
+
         if let Ok(Some(new_head)) = self.provider.sealed_header(backfill_height) {
             // update the tracked chain height, after backfill sync both the canonical height and
             // persisted height are the same

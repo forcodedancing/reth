@@ -110,6 +110,9 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
         UnifiedStorageWriter::from(&provider_rw, &sf_provider).remove_blocks_above(new_tip_num)?;
         UnifiedStorageWriter::commit_unwind(provider_rw, sf_provider)?;
 
+        reth_chain_state::cache::clear_cache();
+        debug!(target: "tree::persistence", "Finish to clear state cache");
+
         debug!(target: "engine::persistence", ?new_tip_num, ?new_tip_hash, "Removed blocks from disk");
         self.metrics.remove_blocks_above_duration_seconds.record(start_time.elapsed());
         Ok(new_tip_hash.map(|hash| BlockNumHash { hash, number: new_tip_num }))
@@ -126,6 +129,10 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             .map(|block| BlockNumHash { hash: block.block().hash(), number: block.block().number });
 
         if last_block_hash_num.is_some() {
+            // update plain state cache
+            reth_chain_state::cache::write_to_cache(blocks.clone());
+            debug!(target: "tree::persistence", "Finish to write state cache");
+
             let provider_rw = self.provider.provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
 
