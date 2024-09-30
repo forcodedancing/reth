@@ -66,7 +66,25 @@ mod metrics;
 use crate::{engine::EngineApiRequest, tree::metrics::EngineApiMetrics};
 pub use config::TreeConfig;
 pub use invalid_block_hook::{InvalidBlockHooks, NoopInvalidBlockHook};
+use lazy_static::lazy_static;
+use parking_lot::RwLock;
 pub use reth_engine_primitives::InvalidBlockHook;
+use std::sync::atomic::AtomicU64;
+
+lazy_static! {
+    static ref EXECUTION_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_execution_total(block: u64, inc: u128) {
+    let mut binding = EXECUTION_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_execution", execution = ?new, block = ?block, "Total execution time");
+    }
+}
 
 /// Keeps track of the state of the tree.
 ///
@@ -2166,6 +2184,8 @@ where
                 executor.execute(input)
             })?;
         debug!(target: "engine::tree", elapsed=?exec_time.elapsed(), ?block_number, "Executed block");
+        let exec_elapsed = exec_time.elapsed();
+        update_execution_total(block_number, exec_elapsed.as_millis());
 
         if let Err(err) = self.consensus.validate_block_post_execution(
             &block,
