@@ -218,6 +218,7 @@ mod tests {
             Box::new(NoopInvalidBlockHook::default()),
             sync_metrics_tx,
             false,
+            false,
         );
     }
 }
