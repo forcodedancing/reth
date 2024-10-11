@@ -8,6 +8,7 @@ use reth_provider::{
 };
 use reth_prune::{PrunerError, PrunerOutput, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
+use reth_trie_db;
 use std::{
     sync::mpsc::{Receiver, SendError, Sender},
     time::Instant,
@@ -126,6 +127,13 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             .map(|block| BlockNumHash { hash: block.block().hash(), number: block.block().number });
 
         if last_block_hash_num.is_some() {
+            for block in &blocks {
+                debug!("Start to write block {} to cache", block.block.header.number);
+                let trie_updates = block.trie_updates();
+                reth_trie_db::cache::write_trie_updates(&trie_updates);
+                debug!("Finish to write block {} to cache", block.block.header.number);
+            }
+
             let provider_rw = self.provider.provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
 

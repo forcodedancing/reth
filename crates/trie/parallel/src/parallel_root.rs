@@ -16,7 +16,7 @@ use reth_trie::{
     walker::TrieWalker,
     HashBuilder, Nibbles, StorageRoot, TrieAccount, TrieInput,
 };
-use reth_trie_db::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory};
+use reth_trie_db::{cache::cached_trie_cursor, DatabaseHashedCursorFactory};
 use std::collections::HashMap;
 use thiserror::Error;
 use tracing::*;
@@ -93,7 +93,7 @@ where
             .map(|(hashed_address, prefix_set)| {
                 let provider_ro = self.view.provider_ro()?;
                 let trie_cursor_factory = InMemoryTrieCursorFactory::new(
-                    DatabaseTrieCursorFactory::new(provider_ro.tx_ref()),
+                    cached_trie_cursor::CachedTrieCursorFactory::new(provider_ro.tx_ref()),
                     &trie_nodes_sorted,
                 );
                 let hashed_cursor_factory = HashedPostStateCursorFactory::new(
@@ -118,7 +118,7 @@ where
 
         let provider_ro = self.view.provider_ro()?;
         let trie_cursor_factory = InMemoryTrieCursorFactory::new(
-            DatabaseTrieCursorFactory::new(provider_ro.tx_ref()),
+            cached_trie_cursor::CachedTrieCursorFactory::new(provider_ro.tx_ref()),
             &trie_nodes_sorted,
         );
         let hashed_cursor_factory = HashedPostStateCursorFactory::new(
