@@ -6,7 +6,7 @@ use reth_revm::db::{BundleState, OriginalValuesKnown};
 // Cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
 const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 10;
-const CONTRACT_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE / 10;
+const CONTRACT_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE / 100;
 
 // Type alias for address and storage key tuple
 type AddressStorageKey = (Address, StorageKey);
