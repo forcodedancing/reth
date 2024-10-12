@@ -1,7 +1,13 @@
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
+
 use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256, U256};
 use reth_revm::db::{BundleState, OriginalValuesKnown};
+use tracing::info;
 
 // Cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
@@ -21,6 +27,9 @@ lazy_static! {
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
      pub(crate) static ref CONTRACT_CODES: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
+
+    /// Mapping for deleting storages
+    static ref PLAIN_STORAGES_MAPPING: Mutex<HashMap<Address, HashSet<B256>>> = Mutex::new(HashMap::new());
 }
 
 pub(crate) fn insert_account(k: Address, v: Account) {
@@ -29,7 +38,47 @@ pub(crate) fn insert_account(k: Address, v: Account) {
 
 /// Insert storage into the cache
 pub(crate) fn insert_storage(k: AddressStorageKey, v: U256) {
+    {
+        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&k.0) {
+            set.insert(k.1);
+        } else {
+            map.insert(k.0, HashSet::from([k.1]));
+        }
+    }
+
     PLAIN_STORAGES.insert(k, v);
+}
+
+pub(crate) fn remove_storages(address: Address) {
+    let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+    if let Some(set) = map.remove(&address) {
+        for s in &set {
+            let storage_key = (address, *s);
+            PLAIN_STORAGES.remove(&storage_key);
+        }
+    }
+}
+pub(crate) fn insert_storages(address: Address, storages: Vec<(U256, U256)>) {
+    if storages.is_empty() {
+        return;
+    }
+
+    {
+        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
+        if let Some(set) = map.get_mut(&address) {
+            set.extend(storages.iter().map(|(k, _)| StorageKey::from(*k)));
+        } else {
+            map.insert(
+                address,
+                HashSet::from_iter(storages.iter().map(|(k, _)| StorageKey::from(*k))),
+            );
+        }
+    }
+
+    for (k, v) in storages {
+        PLAIN_STORAGES.insert((address, StorageKey::from(k)), v);
+    }
 }
 
 // Get account from cache
@@ -76,19 +125,13 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
     }
 
     // Update storage cache
-    let mut should_wipe = false;
     for storage in &change_set.storage {
         if storage.wipe_storage {
-            should_wipe = true;
-            break
+            info!(target: "blockchain_tree", "wipe_storage is true.");
+            remove_storages(storage.address);
         }
 
-        for (k, v) in storage.storage.clone() {
-            insert_storage((storage.address, StorageKey::from(k)), v);
-        }
-    }
-    if should_wipe {
-        PLAIN_STORAGES.clear();
+        insert_storages(storage.address, storage.storage.clone());
     }
 }
 
