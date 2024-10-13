@@ -7343,6 +7343,7 @@ dependencies = [
  "reth-storage-api",
  "reth-trie",
  "revm",
+ "schnellru",
  "tokio",
  "tokio-stream",
  "tracing",
