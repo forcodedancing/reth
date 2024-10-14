@@ -3,8 +3,8 @@ use reth_chain_state::ExecutedBlock;
 use reth_errors::ProviderError;
 use reth_primitives::BlockNumHash;
 use reth_provider::{
-    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader, ProviderFactory,
-    StaticFileProviderFactory,
+    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader,
+    DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory,
 };
 use reth_prune::{PrunerError, PrunerOutput, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
@@ -129,12 +129,15 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             .map(|block| BlockNumHash { hash: block.block().hash(), number: block.block().number });
 
         if last_block_hash_num.is_some() {
-            // update plain state cache
-            reth_chain_state::cache::write_to_cache(blocks.clone());
-            debug!(target: "tree::persistence", "Finish to write state cache");
-
             let provider_rw = self.provider.provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
+
+            // update plain state cache
+            let provider_ro = self.provider.database_provider_ro()?;
+            let mut cache_writer =
+                reth_chain_state::cache::plain_state::PlainCacheWriter::new(provider_ro.tx_ref());
+            cache_writer.write_plain_state(blocks.clone());
+            debug!(target: "tree::persistence", "Finish to write state cache");
 
             UnifiedStorageWriter::from(&provider_rw, &static_file_provider).save_blocks(&blocks)?;
             UnifiedStorageWriter::commit(provider_rw, static_file_provider)?;
