@@ -1,20 +1,40 @@
 use crate::metrics::PersistenceMetrics;
+use lazy_static::lazy_static;
+use parking_lot::RwLock;
 use reth_chain_state::ExecutedBlock;
 use reth_errors::ProviderError;
 use reth_primitives::BlockNumHash;
 use reth_provider::{
-    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader, ProviderFactory,
-    StaticFileProviderFactory,
+    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader,
+    DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory,
 };
 use reth_prune::{PrunerError, PrunerOutput, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
 use std::{
-    sync::mpsc::{Receiver, SendError, Sender},
+    sync::{
+        atomic::AtomicU64,
+        mpsc::{Receiver, SendError, Sender},
+    },
     time::Instant,
 };
 use thiserror::Error;
 use tokio::sync::oneshot;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
+
+lazy_static! {
+    static ref WRITE_CACHE_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_write_cache_total(block: u64, inc: u128) {
+    let mut binding = WRITE_CACHE_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "blockchain_tree_write_cache", execution = ?new, block = ?block, "Total write cache time");
+    }
+}
 
 /// Writes parts of reth's in memory tree state to the database and static files.
 ///
@@ -129,12 +149,18 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             .map(|block| BlockNumHash { hash: block.block().hash(), number: block.block().number });
 
         if last_block_hash_num.is_some() {
-            // update plain state cache
-            reth_chain_state::cache::write_to_cache(blocks.clone());
-            debug!(target: "tree::persistence", "Finish to write state cache");
-
             let provider_rw = self.provider.provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
+
+            // update plain state cache
+            let exec_time = Instant::now();
+            let provider_ro = self.provider.database_provider_ro()?;
+            let mut cache_writer =
+                reth_chain_state::cache::plain_state::PlainCacheWriter::new(provider_ro.tx_ref());
+            cache_writer.write_plain_state(blocks.clone());
+            let exec_elapsed = exec_time.elapsed();
+            update_write_cache_total(last_block_hash_num.unwrap().number, exec_elapsed.as_millis());
+            debug!(target: "tree::persistence", "Finish to write state cache");
 
             UnifiedStorageWriter::from(&provider_rw, &static_file_provider).save_blocks(&blocks)?;
             UnifiedStorageWriter::commit(provider_rw, static_file_provider)?;

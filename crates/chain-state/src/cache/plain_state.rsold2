@@ -21,16 +21,11 @@ lazy_static! {
     /// Account cache
     pub(crate) static ref PLAIN_ACCOUNTS: Cache<Address, Account> = Cache::new(ACCOUNT_CACHE_SIZE);
 
-    /// Storage cache
-     pub(crate) static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
-
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
      pub(crate) static ref CONTRACT_CODES: Cache<B256, Bytecode> = Cache::new(CONTRACT_CACHE_SIZE);
 
-    /// Mapping for deleting storages
-    static ref PLAIN_STORAGES_MAPPING: Mutex<HashMap<Address, HashSet<B256>>> = Mutex::new(HashMap::new());
-
+     pub(crate) static ref STORAGES: Mutex<LruMap<Address, LruMap<B256, U256>>> = Mutex::new(LruMap::new(ByLength::new(ACCOUNT_CACHE_SIZE as u32)));
 }
 
 pub(crate) fn insert_account(k: Address, v: Account) {
@@ -39,46 +34,42 @@ pub(crate) fn insert_account(k: Address, v: Account) {
 
 /// Insert storage into the cache
 pub(crate) fn insert_storage(k: AddressStorageKey, v: U256) {
-    {
-        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get_mut(&k.0) {
-            set.insert(k.1);
-        } else {
-            map.insert(k.0, HashSet::from([k.1]));
+    let mut outer = STORAGES.lock().unwrap();
+    match outer.get(&k.0) {
+        Some(inner) => {
+            inner.insert(k.1, v);
+        }
+        None => {
+            let mut inner = LruMap::new(ByLength::new(100));
+            inner.insert(k.1, v);
+            outer.insert(k.0, inner);
         }
     }
-
-    PLAIN_STORAGES.insert(k, v);
 }
 
 pub(crate) fn remove_storages(address: Address) {
-    let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-    if let Some(set) = map.remove(&address) {
-        for s in &set {
-            let storage_key = (address, *s);
-            PLAIN_STORAGES.remove(&storage_key);
-        }
-    }
+    let mut outer = STORAGES.lock().unwrap();
+    outer.remove(&address);
 }
 pub(crate) fn insert_storages(address: Address, storages: Vec<(U256, U256)>) {
     if storages.is_empty() {
         return;
     }
 
-    {
-        let mut map = PLAIN_STORAGES_MAPPING.lock().unwrap();
-        if let Some(set) = map.get_mut(&address) {
-            set.extend(storages.iter().map(|(k, _)| StorageKey::from(*k)));
-        } else {
-            map.insert(
-                address,
-                HashSet::from_iter(storages.iter().map(|(k, _)| StorageKey::from(*k))),
-            );
+    let mut outer = STORAGES.lock().unwrap();
+    match outer.get(&address) {
+        Some(inner) => {
+            for (k, v) in storages {
+                inner.insert(StorageKey::from(k), v);
+            }
         }
-    }
-
-    for (k, v) in storages {
-        PLAIN_STORAGES.insert((address, StorageKey::from(k)), v);
+        None => {
+            let mut inner = LruMap::new(ByLength::new(100));
+            for (k, v) in storages {
+                inner.insert(StorageKey::from(k), v);
+            }
+            outer.insert(address, inner);
+        }
     }
 }
 
@@ -89,7 +80,14 @@ pub(crate) fn get_account(k: &Address) -> Option<Account> {
 
 // Get storage from cache
 pub(crate) fn get_storage(k: &AddressStorageKey) -> Option<StorageValue> {
-    PLAIN_STORAGES.get(k)
+    let mut outer = STORAGES.lock().unwrap();
+    match outer.get(&k.0) {
+        Some(inner) => match inner.get(&k.1) {
+            Some(value) => Some(*value),
+            None => None,
+        },
+        None => None,
+    }
 }
 
 // Get code from cache
@@ -139,5 +137,6 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
 /// Clear cached accounts and storages.
 pub(crate) fn clear_plain_state() {
     PLAIN_ACCOUNTS.clear();
-    PLAIN_STORAGES.clear();
+    let mut outer = STORAGES.lock().unwrap();
+    outer.clear();
 }
