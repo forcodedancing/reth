@@ -6,26 +6,22 @@ use reth_db_api::transaction::DbTx;
 use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256, U256};
 use reth_revm::db::{BundleState, OriginalValuesKnown};
 use std::sync::atomic::AtomicU64;
-
-lazy_static! {
-    static ref CACHE_SZ: AtomicU64 = AtomicU64::new(0);
-}
 use tracing::info;
 
 // Cache sizes
-const ACCOUNT_CACHE_SIZE: usize = 1000000;
-const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 5;
-const CONTRACT_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE / 100;
+const ACCOUNT_CACHE_SIZE: usize = 500000;
+const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 2;
+const CONTRACT_CACHE_SIZE: usize = 10000;
 
 // Type alias for address and storage key tuple
 type AddressStorageKey = (Address, StorageKey);
 
 lazy_static! {
     /// Account cache
-    pub(crate) static ref PLAIN_ACCOUNTS: Cache<Address, Account> = Cache::new(ACCOUNT_CACHE_SIZE);
+    pub static ref PLAIN_ACCOUNTS: Cache<Address, Account> = Cache::new(ACCOUNT_CACHE_SIZE);
 
     /// Storage cache
-     pub(crate) static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
+     pub static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
 
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
@@ -39,12 +35,6 @@ pub(crate) fn insert_account(k: Address, v: Account) {
 /// Insert storage into the cache
 pub(crate) fn insert_storage(k: AddressStorageKey, v: U256) {
     PLAIN_STORAGES.insert(k, v);
-
-    let current = CACHE_SZ.load(std::sync::atomic::Ordering::Relaxed);
-    CACHE_SZ.store(current + 1, std::sync::atomic::Ordering::Relaxed);
-    if current % 10000 == 0 {
-        info!("CACHE_SZ {}", current);
-    }
 }
 
 // Get account from cache
@@ -85,6 +75,10 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
         match cursor {
             Ok(mut cursor) => {
                 for block in blocks {
+                    if block.block.number % 100 == 0 {
+                        info!("CACHE_SZ {}", PLAIN_STORAGES.len());
+                    };
+                    PLAIN_STORAGES.len();
                     let bundle_state = block.execution_outcome().clone().bundle;
                     let change_set = bundle_state.into_plain_state(OriginalValuesKnown::Yes);
 
@@ -95,13 +89,14 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                                 PLAIN_ACCOUNTS.remove(address);
                             }
                             Some(acc) => {
-                                PLAIN_ACCOUNTS.insert(
+                                let _ = PLAIN_ACCOUNTS.replace(
                                     *address,
                                     Account {
                                         nonce: acc.nonce,
                                         balance: acc.balance,
                                         bytecode_hash: Some(acc.code_hash),
                                     },
+                                    true,
                                 );
                             }
                         }
@@ -125,7 +120,11 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                         }
 
                         for (k, v) in storage.storage.clone() {
-                            insert_storage((storage.address, StorageKey::from(k)), v);
+                            let _ = PLAIN_STORAGES.replace(
+                                (storage.address, StorageKey::from(k)),
+                                v,
+                                true,
+                            );
                         }
                     }
                 }

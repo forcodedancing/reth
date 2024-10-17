@@ -7326,6 +7326,7 @@ dependencies = [
  "alloy-signer",
  "alloy-signer-local",
  "auto_impl",
+ "criterion",
  "derive_more 1.0.0",
  "lazy_static",
  "metrics",
