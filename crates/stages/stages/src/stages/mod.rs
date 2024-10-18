@@ -161,6 +161,7 @@ mod tests {
                 MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD,
                 prune_modes.clone(),
                 ExExManagerHandle::empty(),
+                false,
             );
 
             execution_stage.execute(&provider, input).unwrap();

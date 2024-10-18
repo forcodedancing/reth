@@ -108,6 +108,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> ImportCommand<C> {
                 self.no_state,
                 executor.clone(),
                 self.env.performance_optimization.skip_state_root_validation,
+                self.env.performance_optimization.enable_execution_cache,
             )?;
 
             // override the tip
@@ -169,6 +170,7 @@ pub fn build_import_pipeline<N, C, E>(
     disable_exec: bool,
     executor: E,
     skip_state_root_validation: bool,
+    enable_execution_cache: bool,
 ) -> eyre::Result<(Pipeline<N>, impl Stream<Item = NodeEvent>)>
 where
     N: NodeTypesWithDB<ChainSpec = ChainSpec>,
@@ -221,6 +223,7 @@ where
                 config.stages.clone(),
                 PruneModes::default(),
                 skip_state_root_validation,
+                enable_execution_cache,
             )
             .builder()
             .disable_all_if(&StageId::STATE_REQUIRED, || disable_exec),

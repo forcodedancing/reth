@@ -105,6 +105,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                     stage_conf.clone(),
                     prune_modes.clone(),
                     self.env.performance_optimization.skip_state_root_validation,
+                    self.env.performance_optimization.enable_execution_cache,
                 )
                 .set(ExecutionStage::new(
                     executor,
@@ -117,6 +118,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                     stage_conf.execution_external_clean_threshold(),
                     prune_modes,
                     ExExManagerHandle::empty(),
+                    self.env.performance_optimization.enable_execution_cache,
                 )),
             )
             .build(provider_factory, static_file_producer);

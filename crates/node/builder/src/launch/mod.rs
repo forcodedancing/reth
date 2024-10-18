@@ -264,6 +264,7 @@ where
                 ctx.components().block_executor().clone(),
                 pipeline_exex_handle,
                 ctx.node_config().skip_state_root_validation,
+                ctx.node_config().enable_execution_cache,
             )?;
 
             let pipeline_events = pipeline.events();
@@ -286,6 +287,7 @@ where
                 ctx.components().block_executor().clone(),
                 pipeline_exex_handle,
                 ctx.node_config().skip_state_root_validation,
+                ctx.node_config().enable_execution_cache,
             )?;
             #[cfg(feature = "bsc")]
             {

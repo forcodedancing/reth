@@ -102,6 +102,7 @@ fn unwind_and_copy<N: NodeTypesWithDB<ChainSpec = ChainSpec>>(
         MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD,
         PruneModes::all(),
         ExExManagerHandle::empty(),
+        false,
     );
 
     exec_stage.unwind(

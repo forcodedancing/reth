@@ -28,7 +28,13 @@
 //!     StaticFileProducer::new(provider_factory.clone(), PruneModes::default());
 //! // Build a pipeline with all offline stages.
 //! let pipeline = Pipeline::<MockNodeTypesWithDB>::builder()
-//!     .add_stages(OfflineStages::new(exec, StageConfig::default(), PruneModes::default(), false))
+//!     .add_stages(OfflineStages::new(
+//!         exec,
+//!         StageConfig::default(),
+//!         PruneModes::default(),
+//!         false,
+//!         false,
+//!     ))
 //!     .build(provider_factory, static_file_producer);
 //!
 //! # }
@@ -87,6 +93,8 @@ pub struct DefaultStages<Provider, H, B, EF> {
     prune_modes: PruneModes,
     /// Disable hashing stages(`Merkle`, `AccountHashing`, `StorageHashing`)
     skip_state_root_validation: bool,
+    /// Flag indicating whether the cache for execution is enabled.
+    enable_execution_cache: bool,
 }
 
 impl<Provider, H, B, E> DefaultStages<Provider, H, B, E> {
@@ -102,6 +110,7 @@ impl<Provider, H, B, E> DefaultStages<Provider, H, B, E> {
         stages_config: StageConfig,
         prune_modes: PruneModes,
         skip_state_root_validation: bool,
+        enable_execution_cache: bool,
     ) -> Self
     where
         E: BlockExecutorProvider,
@@ -119,6 +128,7 @@ impl<Provider, H, B, E> DefaultStages<Provider, H, B, E> {
             stages_config,
             prune_modes,
             skip_state_root_validation,
+            enable_execution_cache,
         }
     }
 }
@@ -134,6 +144,7 @@ where
         stages_config: StageConfig,
         prune_modes: PruneModes,
         skip_state_root_validation: bool,
+        enable_execution_cache: bool,
     ) -> StageSetBuilder<DB> {
         StageSetBuilder::default()
             .add_set(default_offline)
@@ -142,6 +153,7 @@ where
                 stages_config,
                 prune_modes,
                 skip_state_root_validation,
+                enable_execution_cache,
             ))
             .add_stage(FinishStage)
     }
@@ -162,6 +174,7 @@ where
             self.stages_config.clone(),
             self.prune_modes,
             self.skip_state_root_validation,
+            self.enable_execution_cache,
         )
     }
 }
@@ -275,6 +288,7 @@ pub struct OfflineStages<EF> {
     prune_modes: PruneModes,
     /// Disable hashing stages(`Merkle`, `AccountHashing`, `StorageHashing`)
     disable_hashing: bool,
+    enable_execution_cache: bool,
 }
 
 impl<EF> OfflineStages<EF> {
@@ -284,8 +298,15 @@ impl<EF> OfflineStages<EF> {
         stages_config: StageConfig,
         prune_modes: PruneModes,
         disable_hashing: bool,
+        enable_execution_cache: bool,
     ) -> Self {
-        Self { executor_factory, stages_config, prune_modes, disable_hashing }
+        Self {
+            executor_factory,
+            stages_config,
+            prune_modes,
+            disable_hashing,
+            enable_execution_cache,
+        }
     }
 }
 
@@ -299,6 +320,7 @@ where
             self.executor_factory,
             self.stages_config.clone(),
             self.prune_modes.clone(),
+            self.enable_execution_cache,
         )
         .builder()
         // If sender recovery prune mode is set, add the prune sender recovery stage.
@@ -333,6 +355,8 @@ pub struct ExecutionStages<E> {
     stages_config: StageConfig,
     /// Prune configuration for every segment that can be pruned
     prune_modes: PruneModes,
+    /// Enable cache or not.
+    enable_cache: bool,
 }
 
 impl<E> ExecutionStages<E> {
@@ -341,8 +365,9 @@ impl<E> ExecutionStages<E> {
         executor_factory: E,
         stages_config: StageConfig,
         prune_modes: PruneModes,
+        enable_cache: bool,
     ) -> Self {
-        Self { executor_factory, stages_config, prune_modes }
+        Self { executor_factory, stages_config, prune_modes, enable_cache }
     }
 }
 
@@ -359,6 +384,7 @@ where
                 self.stages_config.execution,
                 self.stages_config.execution_external_clean_threshold(),
                 self.prune_modes,
+                self.enable_cache,
             ))
     }
 }

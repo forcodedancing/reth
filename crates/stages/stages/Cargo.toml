@@ -52,6 +52,9 @@ rayon.workspace = true
 num-traits = "0.2.15"
 tempfile = { workspace = true, optional = true }
 
+lazy_static = "1.5.0"
+parking_lot = "0.12.3"
+
 [dev-dependencies]
 # reth
 reth-chainspec.workspace = true

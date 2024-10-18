@@ -155,6 +155,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> EnvironmentArgs<C> {
                     config.stages.clone(),
                     prune_modes.clone(),
                     self.performance_optimization.skip_state_root_validation,
+                    self.performance_optimization.enable_execution_cache,
                 ))
                 .build(factory.clone(), StaticFileProducer::new(factory.clone(), prune_modes));
 

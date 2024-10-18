@@ -18,7 +18,8 @@ use reth_provider::{
     },
     writer::UnifiedStorageWriter,
     BlockReader, DBProvider, DatabaseProviderRW, HeaderProvider, LatestStateProviderRef,
-    OriginalValuesKnown, ProviderError, StateWriter, StatsReader, TransactionVariant,
+    OriginalValuesKnown, ProviderError, StateProvider, StateWriter, StatsReader,
+    TransactionVariant,
 };
 use reth_prune_types::PruneModes;
 use reth_revm::database::StateProviderDatabase;
@@ -35,6 +36,25 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::*;
+
+use lazy_static::lazy_static;
+use parking_lot::RwLock;
+use std::sync::atomic::AtomicU64;
+
+lazy_static! {
+    static ref EXECUTION_TIME: RwLock<AtomicU64> = RwLock::new(AtomicU64::new(0));
+}
+
+pub(crate) fn update_execution_total(block: u64, inc: u128) {
+    let mut binding = EXECUTION_TIME.write();
+    let current = binding.get_mut();
+    let new = *current + inc as u64;
+    *current = new;
+
+    if block % 100 == 0 {
+        info!(target: "bt_pipeline_execution", execution = ?new, block = ?block, "Total execution time");
+    }
+}
 
 /// The execution stage executes all transactions and
 /// update history indexes.
@@ -90,6 +110,8 @@ pub struct ExecutionStage<E> {
     exex_manager_handle: ExExManagerHandle,
     /// Executor metrics.
     metrics: ExecutorMetrics,
+    /// Flag indicating whether the cache for execution is enabled.
+    enable_cache: bool,
 }
 
 impl<E> ExecutionStage<E> {
@@ -100,6 +122,7 @@ impl<E> ExecutionStage<E> {
         external_clean_threshold: u64,
         prune_modes: PruneModes,
         exex_manager_handle: ExExManagerHandle,
+        enable_execution_cache: bool,
     ) -> Self {
         Self {
             external_clean_threshold,
@@ -110,6 +133,7 @@ impl<E> ExecutionStage<E> {
             post_unwind_commit_input: None,
             exex_manager_handle,
             metrics: ExecutorMetrics::default(),
+            enable_cache: enable_execution_cache,
         }
     }
 
@@ -123,6 +147,7 @@ impl<E> ExecutionStage<E> {
             MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD,
             PruneModes::none(),
             ExExManagerHandle::empty(),
+            false,
         )
     }
 
@@ -132,6 +157,7 @@ impl<E> ExecutionStage<E> {
         config: ExecutionConfig,
         external_clean_threshold: u64,
         prune_modes: PruneModes,
+        enable_cache: bool,
     ) -> Self {
         Self::new(
             executor_provider,
@@ -139,6 +165,7 @@ impl<E> ExecutionStage<E> {
             external_clean_threshold,
             prune_modes,
             ExExManagerHandle::empty(),
+            enable_cache,
         )
     }
 
@@ -221,13 +248,10 @@ where
             None
         };
 
-        // let db = StateProviderDatabase(LatestStateProviderRef::new(
-        //     provider.tx_ref(),
-        //     provider.static_file_provider().clone(),
-        // ));
         let db = StateProviderDatabase(CachedStateProviderRef::new(
             provider.tx_ref(),
             provider.static_file_provider().clone(),
+            self.enable_cache,
         ));
         let mut executor = self.executor_provider.batch_executor(db);
         executor.set_tip(max_block);
@@ -289,6 +313,8 @@ where
             })?;
 
             execution_duration += execute_start.elapsed();
+
+            update_execution_total(block_number, execution_duration.as_millis());
 
             // Log execution throughput
             if last_log_instant.elapsed() >= log_duration {
@@ -705,6 +731,7 @@ mod tests {
             MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD,
             PruneModes::none(),
             ExExManagerHandle::empty(),
+            false,
         )
     }
 

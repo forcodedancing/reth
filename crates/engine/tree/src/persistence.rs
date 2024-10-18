@@ -56,6 +56,8 @@ pub struct PersistenceService<N: ProviderNodeTypes> {
     metrics: PersistenceMetrics,
     /// Sender for sync metrics - we only submit sync metrics for persisted blocks
     sync_metrics_tx: MetricEventsSender,
+    /// Flag indicating whether to enable the state cache for persisted blocks
+    enable_state_cache: bool,
 }
 
 impl<N: ProviderNodeTypes> PersistenceService<N> {
@@ -65,8 +67,16 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
         incoming: Receiver<PersistenceAction>,
         pruner: PrunerWithFactory<ProviderFactory<N>>,
         sync_metrics_tx: MetricEventsSender,
+        enable_state_cache: bool,
     ) -> Self {
-        Self { provider, incoming, pruner, metrics: PersistenceMetrics::default(), sync_metrics_tx }
+        Self {
+            provider,
+            incoming,
+            pruner,
+            metrics: PersistenceMetrics::default(),
+            sync_metrics_tx,
+            enable_state_cache,
+        }
     }
 
     /// Prunes block data before the given block hash according to the configured prune
@@ -131,8 +141,10 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
         UnifiedStorageWriter::from(&provider_rw, &sf_provider).remove_blocks_above(new_tip_num)?;
         UnifiedStorageWriter::commit_unwind(provider_rw, sf_provider)?;
 
-        cache_writer::clear_plain_state();
-        debug!(target: "tree::persistence", "Finish to clear state cache");
+        if self.enable_state_cache {
+            cache_writer::clear_plain_state();
+            debug!(target: "tree::persistence", "Finish to clear state cache");
+        }
 
         debug!(target: "engine::persistence", ?new_tip_num, ?new_tip_hash, "Removed blocks from disk");
         self.metrics.remove_blocks_above_duration_seconds.record(start_time.elapsed());
@@ -154,13 +166,18 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             let static_file_provider = self.provider.static_file_provider();
 
             // update plain state cache
-            let exec_time = Instant::now();
-            let provider_ro = self.provider.database_provider_ro()?;
-            let mut cache_writer = cache_writer::PlainCacheWriter::new(provider_ro.tx_ref());
-            cache_writer.write_executed_blocks(blocks.clone());
-            let exec_elapsed = exec_time.elapsed();
-            update_write_cache_total(last_block_hash_num.unwrap().number, exec_elapsed.as_millis());
-            debug!(target: "tree::persistence", "Finish to write state cache");
+            if self.enable_state_cache {
+                let exec_time = Instant::now();
+                let provider_ro = self.provider.database_provider_ro()?;
+                let mut cache_writer = cache_writer::PlainCacheWriter::new(provider_ro.tx_ref());
+                cache_writer.write_executed_blocks(blocks.clone());
+                let exec_elapsed = exec_time.elapsed();
+                update_write_cache_total(
+                    last_block_hash_num.unwrap().number,
+                    exec_elapsed.as_millis(),
+                );
+                debug!(target: "tree::persistence", "Finish to write state cache");
+            }
 
             UnifiedStorageWriter::from(&provider_rw, &static_file_provider).save_blocks(&blocks)?;
             UnifiedStorageWriter::commit(provider_rw, static_file_provider)?;
@@ -221,6 +238,7 @@ impl PersistenceHandle {
         provider_factory: ProviderFactory<N>,
         pruner: PrunerWithFactory<ProviderFactory<N>>,
         sync_metrics_tx: MetricEventsSender,
+        enable_state_cache: bool,
     ) -> Self {
         // create the initial channels
         let (db_service_tx, db_service_rx) = std::sync::mpsc::channel();
@@ -229,8 +247,13 @@ impl PersistenceHandle {
         let persistence_handle = Self::new(db_service_tx);
 
         // spawn the persistence service
-        let db_service =
-            PersistenceService::new(provider_factory, db_service_rx, pruner, sync_metrics_tx);
+        let db_service = PersistenceService::new(
+            provider_factory,
+            db_service_rx,
+            pruner,
+            sync_metrics_tx,
+            enable_state_cache,
+        );
         std::thread::Builder::new()
             .name("Persistence Service".to_string())
             .spawn(|| {

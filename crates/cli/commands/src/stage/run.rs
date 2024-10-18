@@ -257,6 +257,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                         config.stages.merkle.clean_threshold,
                         prune_modes,
                         ExExManagerHandle::empty(),
+                        self.env.performance_optimization.enable_execution_cache,
                     )),
                     None,
                 ),

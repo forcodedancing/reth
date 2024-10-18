@@ -25,18 +25,27 @@ pub struct CachedStateProviderRef<'b, TX: DbTx> {
     tx: &'b TX,
     /// Static File provider
     static_file_provider: StaticFileProvider,
+    cache_enabled: bool,
 }
 
 impl<'b, TX: DbTx> CachedStateProviderRef<'b, TX> {
     /// Create new state provider
-    pub const fn new(tx: &'b TX, static_file_provider: StaticFileProvider) -> Self {
-        Self { tx, static_file_provider }
+    pub const fn new(
+        tx: &'b TX,
+        static_file_provider: StaticFileProvider,
+        cache_enabled: bool,
+    ) -> Self {
+        Self { tx, static_file_provider, cache_enabled }
     }
 }
 
 impl<'b, TX: DbTx> AccountReader for CachedStateProviderRef<'b, TX> {
     /// Get basic account information.
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
+        if !self.cache_enabled {
+            return self.tx.get::<tables::PlainAccountState>(address).map_err(Into::into)
+        }
+
         if let Some(v) = crate::providers::state::cache::plain_state::get_account(&address) {
             return Ok(Some(v))
         }
@@ -158,6 +167,16 @@ impl<'b, TX: DbTx> StateProvider for CachedStateProviderRef<'b, TX> {
         account: Address,
         storage_key: StorageKey,
     ) -> ProviderResult<Option<StorageValue>> {
+        if !self.cache_enabled {
+            let mut cursor = self.tx.cursor_dup_read::<tables::PlainStorageState>()?;
+            if let Some(entry) = cursor.seek_by_key_subkey(account, storage_key)? {
+                if entry.key == storage_key {
+                    return Ok(Some(entry.value))
+                }
+            }
+            return Ok(None)
+        }
+
         let key = (account, storage_key);
         if let Some(v) = crate::providers::state::cache::plain_state::get_storage(&key) {
             return Ok(Some(v))
@@ -175,6 +194,10 @@ impl<'b, TX: DbTx> StateProvider for CachedStateProviderRef<'b, TX> {
 
     /// Get account code by its hash
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
+        if !self.cache_enabled {
+            return self.tx.get::<tables::Bytecodes>(code_hash).map_err(Into::into)
+        }
+
         if let Some(v) = crate::providers::state::cache::plain_state::get_code(&code_hash) {
             return Ok(Some(v))
         }

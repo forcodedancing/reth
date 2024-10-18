@@ -441,6 +441,7 @@ where
                     self.toml_config().stages.clone(),
                     self.prune_modes(),
                     self.node_config().skip_state_root_validation,
+                    self.node_config().enable_execution_cache,
                 ))
                 .build(
                     factory.clone(),
