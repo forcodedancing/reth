@@ -17,7 +17,7 @@ use crate::BscChainSpec;
 pub static BSC_MAINNET: Lazy<Arc<BscChainSpec>> = Lazy::new(|| {
     BscChainSpec {
         inner: ChainSpec {
-            chain: Chain::from_named(NamedChain::BNBSmartChain),
+            chain: Chain::from_named(NamedChain::BinanceSmartChain),
             genesis: serde_json::from_str(include_str!("../res/genesis/bsc.json"))
                 .expect("Can't deserialize BSC Mainnet genesis json"),
             genesis_hash: once_cell_set(b256!(
