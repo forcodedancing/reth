@@ -76,7 +76,16 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
             Ok(mut cursor) => {
                 for block in blocks {
                     if block.block.number % 100 == 0 {
-                        info!("CACHE_SZ {}", PLAIN_STORAGES.len());
+                        info!(
+                            "ACCOUNT_CACHE_SZ {}, block number {}",
+                            PLAIN_ACCOUNTS.len(),
+                            block.block.number
+                        );
+                        info!(
+                            "STORAGE_CACHE_SZ {}, block number {}",
+                            PLAIN_STORAGES.len(),
+                            block.block.number
+                        );
                     };
                     PLAIN_STORAGES.len();
                     let bundle_state = block.execution_outcome().clone().bundle;
@@ -89,14 +98,22 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                                 PLAIN_ACCOUNTS.remove(address);
                             }
                             Some(acc) => {
-                                let _ = PLAIN_ACCOUNTS.replace(
+                                // let _ = PLAIN_ACCOUNTS.replace(
+                                //     *address,
+                                //     Account {
+                                //         nonce: acc.nonce,
+                                //         balance: acc.balance,
+                                //         bytecode_hash: Some(acc.code_hash),
+                                //     },
+                                //     true,
+                                // );
+                                PLAIN_ACCOUNTS.insert(
                                     *address,
                                     Account {
                                         nonce: acc.nonce,
                                         balance: acc.balance,
                                         bytecode_hash: Some(acc.code_hash),
                                     },
-                                    true,
                                 );
                             }
                         }
@@ -105,6 +122,7 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                     // Update storage cache
                     for storage in &change_set.storage {
                         if storage.wipe_storage {
+                            info!("WIPE_STORAGE, block number {}", block.block.number);
                             let walker = cursor.walk_dup(Some(storage.address), None).unwrap();
                             for kv in walker {
                                 match kv {
@@ -120,11 +138,12 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                         }
 
                         for (k, v) in storage.storage.clone() {
-                            let _ = PLAIN_STORAGES.replace(
-                                (storage.address, StorageKey::from(k)),
-                                v,
-                                true,
-                            );
+                            // let _ = PLAIN_STORAGES.replace(
+                            //     (storage.address, StorageKey::from(k)),
+                            //     v,
+                            //     true,
+                            // );
+                            PLAIN_STORAGES.insert((storage.address, StorageKey::from(k)), v);
                         }
                     }
                 }
