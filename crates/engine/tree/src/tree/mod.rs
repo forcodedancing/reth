@@ -69,6 +69,7 @@ pub use invalid_block_hook::{InvalidBlockHooks, NoopInvalidBlockHook};
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
 pub use reth_engine_primitives::InvalidBlockHook;
+use reth_provider::providers::{cache_writer, ProviderNodeTypes};
 use std::sync::atomic::AtomicU64;
 
 lazy_static! {
@@ -1311,7 +1312,7 @@ where
         self.canonical_in_memory_state.clear_state();
 
         // clear finalized state/hashed/trie caches
-        reth_chain_state::cache::clear_cache();
+        cache_writer::clear_plain_state();
 
         if let Ok(Some(new_head)) = self.provider.sealed_header(backfill_height) {
             // update the tracked chain height, after backfill sync both the canonical height and

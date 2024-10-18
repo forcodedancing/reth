@@ -64,6 +64,11 @@ reth-ethereum-engine-primitives = { workspace = true, optional = true }
 # parallel utils
 rayon.workspace = true
 
+# cache
+lazy_static = "1.5.0"
+quick_cache = "0.6.6"
+criterion = "0.5.1"
+
 [dev-dependencies]
 reth-db = { workspace = true, features = ["test-utils"] }
 reth-primitives = { workspace = true, features = ["arbitrary", "test-utils"] }

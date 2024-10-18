@@ -12,10 +12,13 @@ use reth_exex::{ExExManagerHandle, ExExNotification};
 use reth_primitives::{BlockNumber, Header, StaticFileSegment};
 use reth_primitives_traits::format_gas_throughput;
 use reth_provider::{
-    providers::{StaticFileProvider, StaticFileProviderRWRefMut, StaticFileWriter},
+    providers::{
+        cache_writer, cache_writer::PlainCacheWriter, CachedStateProviderRef, StaticFileProvider,
+        StaticFileProviderRWRefMut, StaticFileWriter,
+    },
     writer::UnifiedStorageWriter,
-    BlockReader, DatabaseProviderRW, HeaderProvider, LatestStateProviderRef, OriginalValuesKnown,
-    ProviderError, StateWriter, StatsReader, TransactionVariant,
+    BlockReader, DBProvider, DatabaseProviderRW, HeaderProvider, LatestStateProviderRef,
+    OriginalValuesKnown, ProviderError, StateWriter, StatsReader, TransactionVariant,
 };
 use reth_prune_types::PruneModes;
 use reth_revm::database::StateProviderDatabase;
@@ -218,7 +221,11 @@ where
             None
         };
 
-        let db = StateProviderDatabase(LatestStateProviderRef::new(
+        // let db = StateProviderDatabase(LatestStateProviderRef::new(
+        //     provider.tx_ref(),
+        //     provider.static_file_provider().clone(),
+        // ));
+        let db = StateProviderDatabase(CachedStateProviderRef::new(
             provider.tx_ref(),
             provider.static_file_provider().clone(),
         ));
@@ -365,6 +372,11 @@ where
         let time = Instant::now();
 
         // write output
+        let (plain_state, _) =
+            state.bundle.clone().into_plain_state_and_reverts(OriginalValuesKnown::Yes);
+        let mut cache_writer = PlainCacheWriter::new(provider.tx_ref());
+        cache_writer.write_change_set(&plain_state);
+
         let mut writer = UnifiedStorageWriter::new(&provider, static_file_producer);
         writer.write_to_storage(state, OriginalValuesKnown::Yes)?;
 
@@ -405,6 +417,8 @@ where
         provider: &DatabaseProviderRW<DB>,
         input: UnwindInput,
     ) -> Result<UnwindOutput, StageError> {
+        cache_writer::clear_plain_state();
+
         let (range, unwind_to, _) =
             input.unwind_block_range_with_threshold(self.thresholds.max_blocks.unwrap_or(u64::MAX));
         if range.is_empty() {

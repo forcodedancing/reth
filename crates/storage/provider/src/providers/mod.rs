@@ -49,6 +49,10 @@ pub use static_file::{
 
 mod state;
 pub use state::{
+    cache::{
+        cache_writer, cached_provider::CachedStateProvider,
+        cached_provider_ref::CachedStateProviderRef,
+    },
     historical::{HistoricalStateProvider, HistoricalStateProviderRef},
     latest::{LatestStateProvider, LatestStateProviderRef},
 };

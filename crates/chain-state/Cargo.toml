@@ -67,11 +67,3 @@ test-utils = [
     "rand",
     "revm"
 ]
-
-[[bench]]
-name = "storage_cache"
-harness = false
-
-[[bench]]
-name = "account_cache"
-harness = false

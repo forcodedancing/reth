@@ -23,12 +23,6 @@ pub use notifications::{
 
 mod memory_overlay;
 pub use memory_overlay::MemoryOverlayStateProvider;
-
-pub use cache::cached_provider::CachedStateProvider;
-
-/// Cache layer for plain states.
-pub mod cache;
-
 #[cfg(any(test, feature = "test-utils"))]
 /// Common test helpers
 pub mod test_utils;

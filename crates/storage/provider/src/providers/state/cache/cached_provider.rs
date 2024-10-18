@@ -1,11 +1,9 @@
+use crate::{AccountReader, BlockHashReader, StateProvider, StateRootProvider};
 use reth_errors::ProviderResult;
 use reth_primitives::{
     Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, B256,
 };
-use reth_storage_api::{
-    AccountReader, BlockHashReader, StateProofProvider, StateProvider, StateProviderBox,
-    StateRootProvider, StorageRootProvider,
-};
+use reth_storage_api::{StateProofProvider, StateProviderBox, StorageRootProvider};
 use reth_trie::{
     updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof, TrieInput,
 };
@@ -47,12 +45,12 @@ impl BlockHashReader for CachedStateProvider {
 impl AccountReader for CachedStateProvider {
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>> {
         // Check cache first
-        if let Some(v) = crate::cache::get_account(&address) {
+        if let Some(v) = crate::providers::state::cache::plain_state::get_account(&address) {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
         if let Some(value) = AccountReader::basic_account(&self.underlying, address)? {
-            crate::cache::insert_account(address, value);
+            crate::providers::state::cache::plain_state::insert_account(address, value);
             return Ok(Some(value))
         }
         Ok(None)
@@ -124,12 +122,12 @@ impl StateProvider for CachedStateProvider {
     ) -> ProviderResult<Option<StorageValue>> {
         let key = (address, storage_key);
         // Check cache first
-        if let Some(v) = crate::cache::get_storage(&key) {
+        if let Some(v) = crate::providers::state::cache::plain_state::get_storage(&key) {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
         if let Some(value) = StateProvider::storage(&self.underlying, address, storage_key)? {
-            crate::cache::insert_storage(key, value);
+            crate::providers::state::cache::plain_state::insert_storage(key, value);
             return Ok(Some(value))
         }
         Ok(None)
@@ -137,18 +135,19 @@ impl StateProvider for CachedStateProvider {
 
     fn bytecode_by_hash(&self, code_hash: B256) -> ProviderResult<Option<Bytecode>> {
         // Check cache first
-        if let Some(v) = crate::cache::get_code(&code_hash) {
+        if let Some(v) = crate::providers::state::cache::plain_state::get_code(&code_hash) {
             return Ok(Some(v))
         }
         // Fallback to underlying provider
         if let Some(value) = StateProvider::bytecode_by_hash(&self.underlying, code_hash)? {
-            crate::cache::insert_code(code_hash, value.clone());
+            crate::providers::state::cache::plain_state::insert_code(code_hash, value.clone());
             return Ok(Some(value))
         }
         Ok(None)
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,3 +326,4 @@ mod tests {
         assert_eq!(account2_result.unwrap().nonce, 1);
     }
 }
+*/

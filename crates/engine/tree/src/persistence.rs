@@ -5,8 +5,9 @@ use reth_chain_state::ExecutedBlock;
 use reth_errors::ProviderError;
 use reth_primitives::BlockNumHash;
 use reth_provider::{
-    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader,
-    DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory,
+    providers::{cache_writer, ProviderNodeTypes},
+    writer::UnifiedStorageWriter,
+    BlockHashReader, DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory,
 };
 use reth_prune::{PrunerError, PrunerOutput, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
@@ -130,7 +131,7 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
         UnifiedStorageWriter::from(&provider_rw, &sf_provider).remove_blocks_above(new_tip_num)?;
         UnifiedStorageWriter::commit_unwind(provider_rw, sf_provider)?;
 
-        reth_chain_state::cache::clear_cache();
+        cache_writer::clear_plain_state();
         debug!(target: "tree::persistence", "Finish to clear state cache");
 
         debug!(target: "engine::persistence", ?new_tip_num, ?new_tip_hash, "Removed blocks from disk");
@@ -155,9 +156,8 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
             // update plain state cache
             let exec_time = Instant::now();
             let provider_ro = self.provider.database_provider_ro()?;
-            let mut cache_writer =
-                reth_chain_state::cache::plain_state::PlainCacheWriter::new(provider_ro.tx_ref());
-            cache_writer.write_plain_state(blocks.clone());
+            let mut cache_writer = cache_writer::PlainCacheWriter::new(provider_ro.tx_ref());
+            cache_writer.write_executed_blocks(blocks.clone());
             let exec_elapsed = exec_time.elapsed();
             update_write_cache_total(last_block_hash_num.unwrap().number, exec_elapsed.as_millis());
             debug!(target: "tree::persistence", "Finish to write state cache");

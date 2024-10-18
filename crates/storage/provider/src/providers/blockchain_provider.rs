@@ -1,17 +1,19 @@
+use super::{DatabaseProvider, ProviderNodeTypes};
 use crate::{
-    providers::StaticFileProvider, AccountReader, BlockHashReader, BlockIdReader, BlockNumReader,
-    BlockReader, BlockReaderIdExt, BlockSource, CanonChainTracker, CanonStateNotifications,
-    CanonStateSubscriptions, ChainSpecProvider, ChangeSetReader, DatabaseProviderFactory,
-    DatabaseProviderRO, EvmEnvProvider, FinalizedBlockReader, HeaderProvider, ParliaSnapshotReader,
-    ProviderError, ProviderFactory, PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt,
+    providers::{state::cache::cached_provider::CachedStateProvider, StaticFileProvider},
+    AccountReader, BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt,
+    BlockSource, CanonChainTracker, CanonStateNotifications, CanonStateSubscriptions,
+    ChainSpecProvider, ChangeSetReader, DatabaseProviderFactory, DatabaseProviderRO,
+    EvmEnvProvider, FinalizedBlockReader, HeaderProvider, ParliaSnapshotReader, ProviderError,
+    ProviderFactory, PruneCheckpointReader, ReceiptProvider, ReceiptProviderIdExt,
     RequestsProvider, StageCheckpointReader, StateProviderBox, StateProviderFactory, StateReader,
     StaticFileProviderFactory, TransactionVariant, TransactionsProvider, WithdrawalsProvider,
 };
 use alloy_primitives::{Address, BlockHash, BlockNumber, TxHash, TxNumber, B256, U256};
 use alloy_rpc_types_engine::ForkchoiceState;
 use reth_chain_state::{
-    BlockState, CachedStateProvider, CanonicalInMemoryState, ForkChoiceNotifications,
-    ForkChoiceSubscriptions, MemoryOverlayStateProvider,
+    BlockState, CanonicalInMemoryState, ForkChoiceNotifications, ForkChoiceSubscriptions,
+    MemoryOverlayStateProvider,
 };
 use reth_chainspec::ChainInfo;
 use reth_db::Database;
@@ -36,8 +38,6 @@ use std::{
     time::Instant,
 };
 use tracing::trace;
-
-use super::{DatabaseProvider, ProviderNodeTypes};
 
 /// The main type for interacting with the blockchain.
 ///
