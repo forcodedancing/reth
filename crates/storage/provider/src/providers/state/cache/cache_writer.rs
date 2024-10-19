@@ -41,7 +41,7 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
 
                     let bundle_state = block.execution_outcome().clone().bundle;
                     let change_set = bundle_state.into_plain_state(OriginalValuesKnown::Yes);
-                    self.write_change_set(&change_set);
+                    self.write_change_set(0, &change_set);
                 }
             }
             Err(_) => {
@@ -51,10 +51,22 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
         }
     }
 
-    pub fn write_change_set(&mut self, change_set: &StateChangeset)
+    pub fn write_change_set(&mut self, last_block: u64, change_set: &StateChangeset)
     where
         TX: DbTx,
     {
+        if last_block > 0 {
+            info!(
+                "P_ACCOUNT_CACHE_SZ {}, block number {}",
+                super::plain_state::PLAIN_ACCOUNTS.len(),
+                last_block
+            );
+            info!(
+                "P_STORAGE_CACHE_SZ {}, block number {}",
+                super::plain_state::PLAIN_STORAGES.len(),
+                last_block
+            );
+        }
         let cursor = self.0.cursor_dup_read::<tables::PlainStorageState>();
         match cursor {
             Ok(mut cursor) => {

@@ -401,7 +401,7 @@ where
         let (plain_state, _) =
             state.bundle.clone().into_plain_state_and_reverts(OriginalValuesKnown::Yes);
         let mut cache_writer = PlainCacheWriter::new(provider.tx_ref());
-        cache_writer.write_change_set(&plain_state);
+        cache_writer.write_change_set(stage_progress, &plain_state);
 
         let mut writer = UnifiedStorageWriter::new(&provider, static_file_producer);
         writer.write_to_storage(state, OriginalValuesKnown::Yes)?;
