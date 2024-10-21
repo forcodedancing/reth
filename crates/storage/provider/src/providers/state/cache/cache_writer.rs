@@ -22,32 +22,23 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
     where
         TX: DbTx,
     {
-        let cursor = self.0.cursor_dup_read::<tables::PlainStorageState>();
-        match cursor {
-            Ok(mut cursor) => {
-                for block in blocks {
-                    if block.block.number % 100 == 0 {
-                        info!(
-                            "ACCOUNT_CACHE_SZ {}, block number {}",
-                            super::plain_state::PLAIN_ACCOUNTS.len(),
-                            block.block.number
-                        );
-                        info!(
-                            "STORAGE_CACHE_SZ {}, block number {}",
-                            super::plain_state::PLAIN_STORAGES.len(),
-                            block.block.number
-                        );
-                    };
+        for block in blocks {
+            if block.block.number % 100 == 0 {
+                info!(
+                    "ACCOUNT_CACHE_SZ {}, block number {}",
+                    super::plain_state::PLAIN_ACCOUNTS.len(),
+                    block.block.number
+                );
+                info!(
+                    "STORAGE_CACHE_SZ {}, block number {}",
+                    super::plain_state::PLAIN_STORAGES.len(),
+                    block.block.number
+                );
+            };
 
-                    let bundle_state = block.execution_outcome().clone().bundle;
-                    let change_set = bundle_state.into_plain_state(OriginalValuesKnown::Yes);
-                    self.write_change_set(0, &change_set);
-                }
-            }
-            Err(_) => {
-                super::plain_state::PLAIN_ACCOUNTS.clear();
-                super::plain_state::PLAIN_STORAGES.clear();
-            }
+            let bundle_state = block.execution_outcome().clone().bundle;
+            let change_set = bundle_state.into_plain_state(OriginalValuesKnown::Yes);
+            self.write_change_set(0, &change_set);
         }
     }
 
@@ -67,28 +58,28 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                 last_block
             );
         }
+        // Update account cache
+        for (address, account_info) in &change_set.accounts {
+            match account_info {
+                None => {
+                    super::plain_state::PLAIN_ACCOUNTS.remove(address);
+                }
+                Some(acc) => {
+                    super::plain_state::PLAIN_ACCOUNTS.insert(
+                        *address,
+                        Account {
+                            nonce: acc.nonce,
+                            balance: acc.balance,
+                            bytecode_hash: Some(acc.code_hash),
+                        },
+                    );
+                }
+            }
+        }
+
         let cursor = self.0.cursor_dup_read::<tables::PlainStorageState>();
         match cursor {
             Ok(mut cursor) => {
-                // Update account cache
-                for (address, account_info) in &change_set.accounts {
-                    match account_info {
-                        None => {
-                            super::plain_state::PLAIN_ACCOUNTS.remove(address);
-                        }
-                        Some(acc) => {
-                            super::plain_state::PLAIN_ACCOUNTS.insert(
-                                *address,
-                                Account {
-                                    nonce: acc.nonce,
-                                    balance: acc.balance,
-                                    bytecode_hash: Some(acc.code_hash),
-                                },
-                            );
-                        }
-                    }
-                }
-
                 // Update storage cache
                 for storage in &change_set.storage {
                     if storage.wipe_storage {
@@ -121,7 +112,6 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                 }
             }
             Err(_) => {
-                super::plain_state::PLAIN_ACCOUNTS.clear();
                 super::plain_state::PLAIN_STORAGES.clear();
             }
         }
