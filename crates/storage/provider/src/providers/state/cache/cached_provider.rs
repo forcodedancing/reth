@@ -122,12 +122,12 @@ impl StateProvider for CachedStateProvider {
     ) -> ProviderResult<Option<StorageValue>> {
         let key = (address, storage_key);
         // Check cache first
-        if let Some(v) = crate::providers::state::cache::plain_state::get_storage(&key) {
-            return Ok(Some(v))
-        }
+        // if let Some(v) = crate::providers::state::cache::plain_state::get_storage(&key) {
+        //     return Ok(Some(v))
+        // }
         // Fallback to underlying provider
         if let Some(value) = StateProvider::storage(&self.underlying, address, storage_key)? {
-            crate::providers::state::cache::plain_state::insert_storage(key, value);
+            //crate::providers::state::cache::plain_state::insert_storage(key, value);
             return Ok(Some(value))
         }
         Ok(None)

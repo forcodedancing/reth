@@ -19,7 +19,7 @@ lazy_static! {
     pub static ref PLAIN_ACCOUNTS: Cache<Address, Account> = Cache::new(ACCOUNT_CACHE_SIZE);
 
     /// Storage cache
-     pub static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
+     ///pub static ref PLAIN_STORAGES: Cache<AddressStorageKey, StorageValue> = Cache::new(STORAGE_CACHE_SIZE);
 
     /// Contract cache
     /// The size of contract is large and the hot contracts should be limited.
@@ -31,9 +31,9 @@ pub(crate) fn insert_account(k: Address, v: Account) {
 }
 
 /// Insert storage into the cache
-pub(crate) fn insert_storage(k: AddressStorageKey, v: U256) {
-    PLAIN_STORAGES.insert(k, v);
-}
+///pub(crate) fn insert_storage(k: AddressStorageKey, v: U256) {
+//     PLAIN_STORAGES.insert(k, v);
+// }
 
 // Get account from cache
 pub(crate) fn get_account(k: &Address) -> Option<Account> {
@@ -41,9 +41,9 @@ pub(crate) fn get_account(k: &Address) -> Option<Account> {
 }
 
 // Get storage from cache
-pub(crate) fn get_storage(k: &AddressStorageKey) -> Option<StorageValue> {
-    PLAIN_STORAGES.get(k)
-}
+// pub(crate) fn get_storage(k: &AddressStorageKey) -> Option<StorageValue> {
+//     PLAIN_STORAGES.get(k)
+// }
 
 // Get code from cache
 pub(crate) fn get_code(k: &B256) -> Option<Bytecode> {

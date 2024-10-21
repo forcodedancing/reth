@@ -1,4 +1,4 @@
-use crate::providers::state::cache::plain_state::{PLAIN_ACCOUNTS, PLAIN_STORAGES};
+use crate::providers::state::cache::plain_state::PLAIN_ACCOUNTS;
 use alloy_primitives::StorageKey;
 use quick_cache::sync::Cache;
 use reth_chain_state::ExecutedBlock;
@@ -29,11 +29,11 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                     super::plain_state::PLAIN_ACCOUNTS.len(),
                     block.block.number
                 );
-                info!(
-                    "STORAGE_CACHE_SZ {}, block number {}",
-                    super::plain_state::PLAIN_STORAGES.len(),
-                    block.block.number
-                );
+                // info!(
+                //     "STORAGE_CACHE_SZ {}, block number {}",
+                //     super::plain_state::PLAIN_STORAGES.len(),
+                //     block.block.number
+                // );
             };
 
             let bundle_state = block.execution_outcome().clone().bundle;
@@ -52,11 +52,11 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                 last_block,
                 super::plain_state::PLAIN_ACCOUNTS.len(),
             );
-            info!(
-                "block number {}, P_STORAGE_CACHE_SZ {}",
-                last_block,
-                super::plain_state::PLAIN_STORAGES.len(),
-            );
+            // info!(
+            //     "block number {}, P_STORAGE_CACHE_SZ {}",
+            //     last_block,
+            //     super::plain_state::PLAIN_STORAGES.len(),
+            // );
         }
         // Update account cache
         for (address, account_info) in &change_set.accounts {
@@ -77,26 +77,26 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
             }
         }
 
-        let mut should_wipe = false;
-        for storage in &change_set.storage {
-            if storage.wipe_storage {
-                should_wipe = true;
-                break;
-            }
-
-            for (k, v) in storage.storage.clone() {
-                super::plain_state::PLAIN_STORAGES
-                    .insert((storage.address, StorageKey::from(k)), v);
-            }
-        }
-        if should_wipe {
-            super::plain_state::PLAIN_STORAGES.clear();
-        }
+        // let mut should_wipe = false;
+        // for storage in &change_set.storage {
+        //     if storage.wipe_storage {
+        //         should_wipe = true;
+        //         break;
+        //     }
+        //
+        //     for (k, v) in storage.storage.clone() {
+        //         super::plain_state::PLAIN_STORAGES
+        //             .insert((storage.address, StorageKey::from(k)), v);
+        //     }
+        // }
+        // if should_wipe {
+        //     super::plain_state::PLAIN_STORAGES.clear();
+        // }
     }
 }
 
 /// Clear cached accounts and storages.
 pub fn clear_plain_state() {
     PLAIN_ACCOUNTS.clear();
-    PLAIN_STORAGES.clear();
+    //PLAIN_STORAGES.clear();
 }

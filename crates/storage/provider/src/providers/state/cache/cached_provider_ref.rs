@@ -167,29 +167,13 @@ impl<'b, TX: DbTx> StateProvider for CachedStateProviderRef<'b, TX> {
         account: Address,
         storage_key: StorageKey,
     ) -> ProviderResult<Option<StorageValue>> {
-        if !self.cache_enabled {
-            let mut cursor = self.tx.cursor_dup_read::<tables::PlainStorageState>()?;
-            if let Some(entry) = cursor.seek_by_key_subkey(account, storage_key)? {
-                if entry.key == storage_key {
-                    return Ok(Some(entry.value))
-                }
-            }
-            return Ok(None)
-        }
-
-        let key = (account, storage_key);
-        if let Some(v) = crate::providers::state::cache::plain_state::get_storage(&key) {
-            return Ok(Some(v))
-        }
-
         let mut cursor = self.tx.cursor_dup_read::<tables::PlainStorageState>()?;
         if let Some(entry) = cursor.seek_by_key_subkey(account, storage_key)? {
             if entry.key == storage_key {
-                crate::providers::state::cache::plain_state::insert_storage(key, entry.value);
                 return Ok(Some(entry.value))
             }
         }
-        Ok(None)
+        return Ok(None)
     }
 
     /// Get account code by its hash
