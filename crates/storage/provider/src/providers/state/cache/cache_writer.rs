@@ -92,16 +92,24 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
                 // Update storage cache
                 for storage in &change_set.storage {
                     if storage.wipe_storage {
-                        let walker = cursor.walk_dup(Some(storage.address), None).unwrap();
-                        for kv in walker {
-                            match kv {
-                                Ok((k, v)) => {
-                                    super::plain_state::PLAIN_STORAGES.remove(&(k, v.key));
+                        let walker = cursor.walk_dup(Some(storage.address), None);
+                        match walker {
+                            Ok(walker) => {
+                                for kv in walker {
+                                    match kv {
+                                        Ok((k, v)) => {
+                                            super::plain_state::PLAIN_STORAGES.remove(&(k, v.key));
+                                        }
+                                        Err(_) => {
+                                            super::plain_state::PLAIN_STORAGES.clear();
+                                            break;
+                                        }
+                                    }
                                 }
-                                Err(_) => {
-                                    super::plain_state::PLAIN_STORAGES.clear();
-                                    break;
-                                }
+                            }
+                            Err(_) => {
+                                super::plain_state::PLAIN_STORAGES.clear();
+                                break;
                             }
                         }
                     }
