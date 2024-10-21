@@ -7,8 +7,8 @@ use std::sync::atomic::AtomicU64;
 use tracing::info;
 
 // Cache sizes
-const ACCOUNT_CACHE_SIZE: usize = 500000;
-const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 2;
+const ACCOUNT_CACHE_SIZE: usize = 1000000;
+const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 10;
 const CONTRACT_CACHE_SIZE: usize = 10000;
 
 // Type alias for address and storage key tuple
