@@ -48,14 +48,14 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
     {
         if last_block > 0 {
             info!(
-                "P_ACCOUNT_CACHE_SZ {}, block number {}",
+                "block number {}, P_ACCOUNT_CACHE_SZ {}",
+                last_block,
                 super::plain_state::PLAIN_ACCOUNTS.len(),
-                last_block
             );
             info!(
-                "P_STORAGE_CACHE_SZ {}, block number {}",
+                "block number {}, P_STORAGE_CACHE_SZ {}",
+                last_block,
                 super::plain_state::PLAIN_STORAGES.len(),
-                last_block
             );
         }
         // Update account cache

@@ -51,8 +51,8 @@ pub(crate) fn update_execution_total(block: u64, inc: u128) {
     let new = *current + inc as u64;
     *current = new;
 
-    if block % 100 == 0 {
-        info!(target: "bt_pipeline_execution", execution = ?new, block = ?block, "Total execution time");
+    if block % 1000 == 0 {
+        info!(target: "bt_pipeline_execution", block = ?block, execution = ?new, "Total execution time");
     }
 }
 
