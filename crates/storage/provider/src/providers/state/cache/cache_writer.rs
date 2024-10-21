@@ -77,43 +77,20 @@ impl<'a, TX> PlainCacheWriter<'a, TX> {
             }
         }
 
-        let cursor = self.0.cursor_dup_read::<tables::PlainStorageState>();
-        match cursor {
-            Ok(mut cursor) => {
-                // Update storage cache
-                for storage in &change_set.storage {
-                    if storage.wipe_storage {
-                        let walker = cursor.walk_dup(Some(storage.address), None);
-                        match walker {
-                            Ok(walker) => {
-                                for kv in walker {
-                                    match kv {
-                                        Ok((k, v)) => {
-                                            super::plain_state::PLAIN_STORAGES.remove(&(k, v.key));
-                                        }
-                                        Err(_) => {
-                                            super::plain_state::PLAIN_STORAGES.clear();
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                super::plain_state::PLAIN_STORAGES.clear();
-                                break;
-                            }
-                        }
-                    }
+        let mut should_wipe = false;
+        for storage in &change_set.storage {
+            if storage.wipe_storage {
+                should_wipe = true;
+                break;
+            }
 
-                    for (k, v) in storage.storage.clone() {
-                        super::plain_state::PLAIN_STORAGES
-                            .insert((storage.address, StorageKey::from(k)), v);
-                    }
-                }
+            for (k, v) in storage.storage.clone() {
+                super::plain_state::PLAIN_STORAGES
+                    .insert((storage.address, StorageKey::from(k)), v);
             }
-            Err(_) => {
-                super::plain_state::PLAIN_STORAGES.clear();
-            }
+        }
+        if should_wipe {
+            super::plain_state::PLAIN_STORAGES.clear();
         }
     }
 }
