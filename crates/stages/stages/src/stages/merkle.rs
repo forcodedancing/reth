@@ -149,7 +149,6 @@ impl<DB: Database> Stage<DB> for MerkleStage {
         provider: &DatabaseProviderRW<DB>,
         input: ExecInput,
     ) -> Result<ExecOutput, StageError> {
-        panic!("stop for testing");
         let threshold = match self {
             Self::Unwind => {
                 info!(target: "sync::stages::merkle::unwind", "Stage is always skipped");
@@ -290,6 +289,7 @@ impl<DB: Database> Stage<DB> for MerkleStage {
         provider: &DatabaseProviderRW<DB>,
         input: UnwindInput,
     ) -> Result<UnwindOutput, StageError> {
+        return Ok(UnwindOutput { checkpoint: StageCheckpoint::new(input.unwind_to) });
         let tx = provider.tx_ref();
         let range = input.unwind_block_range();
         if matches!(self, Self::Execution { .. }) {
