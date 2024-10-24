@@ -161,17 +161,14 @@ impl StateProvider for CachedStateProvider {
 mod tests {
     use super::*;
     use crate::cache::plain_state::{clear_plain_state, write_plain_state, PLAIN_ACCOUNTS};
+    use alloy_primitives::{map::HashMap, U256};
     use reth_primitives::revm_primitives::{AccountInfo, KECCAK_EMPTY};
     use reth_provider::{
         providers::ConsistentDbView, test_utils, test_utils::create_test_provider_factory,
     };
-    use reth_revm::{
-        db::{AccountStatus, BundleState},
-        primitives::U256,
-    };
+    use reth_revm::db::{AccountStatus, BundleState};
     use reth_storage_api::TryIntoHistoricalStateProvider;
     use serial_test::serial;
-    use std::collections::HashMap;
 
     #[test]
     #[serial]
@@ -233,7 +230,7 @@ mod tests {
                         code_hash: KECCAK_EMPTY,
                         code: None,
                     }),
-                    HashMap::from([
+                    HashMap::from_iter([
                         (U256::from(2), (U256::from(0), U256::from(10))),
                         (U256::from(5), (U256::from(0), U256::from(15))),
                     ]),
@@ -247,7 +244,7 @@ mod tests {
                         code_hash: KECCAK_EMPTY,
                         code: None,
                     }),
-                    HashMap::from([]),
+                    HashMap::from_iter([]),
                 ),
             ],
             vec![vec![
@@ -298,7 +295,7 @@ mod tests {
                     code: None,
                 }),
                 None,
-                HashMap::from([
+                HashMap::from_iter([
                     (U256::from(2), (U256::from(0), U256::from(10))),
                     (U256::from(5), (U256::from(0), U256::from(15))),
                 ]),
