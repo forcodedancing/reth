@@ -170,9 +170,11 @@ mod tests {
         primitives::U256,
     };
     use reth_storage_api::TryIntoHistoricalStateProvider;
+    use serial_test::serial;
     use std::collections::HashMap;
 
     #[test]
+    #[serial]
     fn test_basic_account_and_clear() {
         let factory = create_test_provider_factory();
 
@@ -206,6 +208,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_apply_bundle_state() {
         let factory = test_utils::create_test_provider_factory();
         let consistent_view = ConsistentDbView::new_with_latest_tip(factory.clone()).unwrap();

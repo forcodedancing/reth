@@ -7601,6 +7601,7 @@ dependencies = [
  "reth-storage-api",
  "reth-trie",
  "revm",
+ "serial_test",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -11118,6 +11119,8 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b4b487fe2acf240a021cf57c6b2b4903b1e78ca0ecd862a71b71d2a51fed77d"
 dependencies = [
+ "futures",
+ "log",
  "once_cell",
  "parking_lot 0.12.3",
  "scc",
