@@ -1,11 +1,12 @@
+use alloy_primitives::{Address, StorageKey, StorageValue, B256, U256};
 use lazy_static::lazy_static;
 use quick_cache::sync::Cache;
-use reth_primitives::{Account, Address, Bytecode, StorageKey, StorageValue, B256, U256};
+use reth_primitives::{Account, Bytecode};
 use reth_revm::db::{BundleState, OriginalValuesKnown};
 
 // Cache sizes
 const ACCOUNT_CACHE_SIZE: usize = 1000000;
-const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE * 10;
+const STORAGE_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE;
 const CONTRACT_CACHE_SIZE: usize = ACCOUNT_CACHE_SIZE / 100;
 
 // Type alias for address and storage key tuple

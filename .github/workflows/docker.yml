@@ -18,6 +18,8 @@ env:
   OP_DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/op-reth
   BSC_DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/bsc-reth
   DOCKER_USERNAME: ${{ github.actor }}
+  TOOL_CHAIN: "1.81"
+  TOOL_CHAIN_NIGHTLY: "nightly-2024-09-09"
 
 jobs:
   build:
@@ -29,6 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }}
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true

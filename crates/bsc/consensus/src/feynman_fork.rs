@@ -1,5 +1,6 @@
-use reth_primitives::{Address, U256};
 use std::{cmp::Ordering, collections::BinaryHeap};
+
+use alloy_primitives::{Address, U256};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ValidatorElectionInfo {
@@ -69,8 +70,9 @@ pub fn get_top_validators_by_voting_power(
 
 #[cfg(test)]
 mod tests {
+    use alloy_primitives::hex;
+
     use super::*;
-    use reth_primitives::hex;
 
     #[test]
     fn validator_heap() {

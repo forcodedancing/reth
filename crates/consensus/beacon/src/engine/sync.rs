@@ -1,19 +1,15 @@
 //! Sync management for the engine implementation.
 
-#[cfg(not(feature = "bsc"))]
-use crate::EthBeaconConsensus;
 use crate::{
-    engine::metrics::EngineSyncMetrics, BeaconConsensusEngineEvent, ConsensusEngineLiveSyncProgress,
+    engine::metrics::EngineSyncMetrics, BeaconConsensusEngineEvent,
+    ConsensusEngineLiveSyncProgress, EthBeaconConsensus,
 };
 use alloy_primitives::{BlockNumber, B256};
 use futures::FutureExt;
-#[cfg(feature = "bsc")]
-use reth_bsc_consensus::Parlia;
 use reth_network_p2p::{
     full_block::{FetchFullBlockFuture, FetchFullBlockRangeFuture, FullBlockClient},
     BlockClient,
 };
-use reth_node_types::NodeTypesWithDB;
 use reth_primitives::SealedBlock;
 use reth_provider::providers::ProviderNodeTypes;
 use reth_stages_api::{ControlFlow, Pipeline, PipelineError, PipelineTarget, PipelineWithResult};
@@ -38,7 +34,7 @@ use tracing::trace;
 /// database while the pipeline is still active.
 pub(crate) struct EngineSyncController<N, Client>
 where
-    N: NodeTypesWithDB,
+    N: ProviderNodeTypes,
     Client: BlockClient,
 {
     /// A downloader that can download full blocks from the network.
@@ -80,12 +76,8 @@ where
         chain_spec: Arc<N::ChainSpec>,
         event_sender: EventSender<BeaconConsensusEngineEvent>,
     ) -> Self {
-        #[cfg(not(feature = "bsc"))]
         let full_block_client =
             FullBlockClient::new(client, Arc::new(EthBeaconConsensus::new(chain_spec)));
-        #[cfg(feature = "bsc")]
-        let full_block_client =
-            FullBlockClient::new(client, Arc::new(Parlia::new(chain_spec, Default::default())));
 
         Self {
             full_block_client,
@@ -402,14 +394,14 @@ pub(crate) enum EngineSyncEvent {
 /// running, it acquires the write lock over the database. This means that we cannot forward to the
 /// blockchain tree any messages that would result in database writes, since it would result in a
 /// deadlock.
-enum PipelineState<N: NodeTypesWithDB> {
+enum PipelineState<N: ProviderNodeTypes> {
     /// Pipeline is idle.
     Idle(Option<Pipeline<N>>),
     /// Pipeline is running and waiting for a response
     Running(oneshot::Receiver<PipelineWithResult<N>>),
 }
 
-impl<N: NodeTypesWithDB> PipelineState<N> {
+impl<N: ProviderNodeTypes> PipelineState<N> {
     /// Returns `true` if the state matches idle.
     const fn is_idle(&self) -> bool {
         matches!(self, Self::Idle(_))
@@ -419,6 +411,7 @@ impl<N: NodeTypesWithDB> PipelineState<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::Sealable;
     use assert_matches::assert_matches;
     use futures::poll;
     use reth_chainspec::{ChainSpec, ChainSpecBuilder, MAINNET};
@@ -526,7 +519,7 @@ mod tests {
         fn build<N>(
             self,
             pipeline: Pipeline<N>,
-            chain_spec: Arc<ChainSpec>,
+            chain_spec: Arc<N::ChainSpec>,
         ) -> EngineSyncController<N, Either<Client, TestFullBlockClient>>
         where
             N: ProviderNodeTypes,
@@ -607,7 +600,9 @@ mod tests {
             header.parent_hash = hash;
             header.number += 1;
             header.timestamp += 1;
-            sealed_header = header.seal_slow();
+            let sealed = header.seal_slow();
+            let (header, seal) = sealed.into_parts();
+            sealed_header = SealedHeader::new(header, seal);
             client.insert(sealed_header.clone(), body.clone());
         }
     }
@@ -623,12 +618,14 @@ mod tests {
         );
 
         let client = TestFullBlockClient::default();
-        let header = Header {
+        let sealed = Header {
             base_fee_per_gas: Some(7),
             gas_limit: chain_spec.max_gas_limit,
             ..Default::default()
         }
         .seal_slow();
+        let (header, seal) = sealed.into_parts();
+        let header = SealedHeader::new(header, seal);
         insert_headers_into_client(&client, header, 0..10);
 
         // set up a pipeline

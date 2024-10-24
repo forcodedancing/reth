@@ -6,7 +6,10 @@
 // The `bsc` feature must be enabled to use this crate.
 #![cfg(feature = "bsc")]
 
-use reth_chainspec::ChainSpec;
+use std::sync::Arc;
+
+use alloy_primitives::{Address, Bytes, U256};
+use reth_bsc_chainspec::BscChainSpec;
 use reth_ethereum_forks::EthereumHardfork;
 use reth_evm::{ConfigureEvm, ConfigureEvmEnv, NextBlockEnvAttributes};
 use reth_primitives::{
@@ -15,11 +18,10 @@ use reth_primitives::{
         AnalysisKind, BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, SpecId, TxEnv,
     },
     transaction::FillTxEnv,
-    Address, Bytes, Head, Header, TransactionSigned, U256,
+    Head, Header, TransactionSigned,
 };
 use reth_revm::{inspector_handle_register, Database, Evm, EvmBuilder, GetInspector};
 use revm_primitives::Env;
-use std::sync::Arc;
 
 mod config;
 pub use config::{revm_spec, revm_spec_by_timestamp_after_shanghai};
@@ -32,20 +34,20 @@ mod post_execution;
 mod pre_execution;
 
 /// Bsc-related EVM configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct BscEvmConfig {
-    chain_spec: Arc<ChainSpec>,
+    chain_spec: Arc<BscChainSpec>,
 }
 
 impl BscEvmConfig {
     /// Creates a new Ethereum EVM configuration with the given chain spec.
-    pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
+    pub const fn new(chain_spec: Arc<BscChainSpec>) -> Self {
         Self { chain_spec }
     }
 
     /// Returns the chain spec associated with this configuration.
-    pub fn chain_spec(&self) -> &ChainSpec {
+    pub fn chain_spec(&self) -> &BscChainSpec {
         &self.chain_spec
     }
 }
@@ -183,13 +185,12 @@ impl ConfigureEvm for BscEvmConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reth_chainspec::Chain;
-    use reth_primitives::{
-        revm_primitives::{BlockEnv, CfgEnv},
-        Genesis,
-    };
+    use alloy_genesis::Genesis;
+    use reth_chainspec::{Chain, ChainSpec};
+    use reth_primitives::revm_primitives::{BlockEnv, CfgEnv};
     use revm_primitives::SpecId;
+
+    use super::*;
 
     #[test]
     #[ignore]
@@ -207,12 +208,8 @@ mod tests {
             .shanghai_activated()
             .build();
 
-        BscEvmConfig::default().fill_cfg_and_block_env(
-            &mut cfg_env,
-            &mut block_env,
-            &header,
-            total_difficulty,
-        );
+        BscEvmConfig::new(Arc::new(BscChainSpec { inner: chain_spec.clone() }))
+            .fill_cfg_and_block_env(&mut cfg_env, &mut block_env, &header, total_difficulty);
 
         assert_eq!(cfg_env.chain_id, chain_spec.chain().id());
     }

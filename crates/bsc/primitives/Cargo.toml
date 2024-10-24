@@ -1,0 +1,29 @@
+[package]
+name = "reth-bsc-primitives"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "BSC primitive types"
+
+[lints]
+workspace = true
+
+[dependencies]
+reth-chainspec.workspace = true
+reth-ethereum-forks.workspace = true
+reth-primitives.workspace = true
+reth-primitives-traits.workspace = true
+revm-primitives.workspace = true
+
+alloy-chains.workspace = true
+alloy-primitives.workspace = true
+
+reth-bsc-chainspec.workspace = true
+reth-bsc-forks.workspace = true
+
+include_dir = { version = "0.7.4" }
+lazy_static = { version = "1.4.0" }
+thiserror.workspace = true

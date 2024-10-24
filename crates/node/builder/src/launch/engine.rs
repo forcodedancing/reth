@@ -1,5 +1,6 @@
 //! Engine node related functionality.
 
+use alloy_rpc_types::engine::ClientVersionV1;
 use futures::{future::Either, stream, stream_select, StreamExt};
 use reth_beacon_consensus::{
     hooks::{EngineHooks, StaticFileHook},
@@ -8,7 +9,7 @@ use reth_beacon_consensus::{
 use reth_blockchain_tree::BlockchainTreeConfig;
 #[cfg(feature = "bsc")]
 use reth_bsc_engine::ParliaEngineBuilder;
-use reth_chainspec::ChainSpec;
+use reth_chainspec::EthChainSpec;
 use reth_consensus_debug_client::{DebugConsensusClient, EtherscanBlockProvider};
 use reth_engine_service::service::{ChainEvent, EngineService};
 use reth_engine_tree::{
@@ -21,33 +22,30 @@ use reth_network::{NetworkSyncUpdater, SyncState};
 #[cfg(feature = "bsc")]
 use reth_network_api::EngineRxProvider;
 use reth_network_api::{BlockDownloaderProvider, NetworkEventListenerProvider};
-use reth_node_api::{
-    BuiltPayload, FullNodeTypes, NodeAddOns, NodeTypesWithDB, NodeTypesWithEngine,
-};
+use reth_node_api::{BuiltPayload, FullNodeTypes, NodeAddOns, NodeTypesWithEngine};
 use reth_node_core::{
     dirs::{ChainPath, DataDirPath},
     exit::NodeExitFuture,
     primitives::Head,
-    rpc::{
-        eth::{helpers::AddDevSigners, FullEthApiServer},
-        types::AnyTransactionReceipt,
-    },
+    rpc::eth::{helpers::AddDevSigners, FullEthApiServer},
     version::{CARGO_PKG_VERSION, CLIENT_CODE, NAME_CLIENT, VERGEN_GIT_SHA},
 };
 use reth_node_events::{cl::ConsensusLayerHealthEvents, node};
-#[cfg(feature = "bsc")]
-use reth_primitives::parlia::ParliaConfig;
-use reth_provider::providers::BlockchainProvider2;
+use reth_payload_primitives::PayloadBuilder;
+use reth_primitives::EthereumHardforks;
+use reth_provider::providers::{BlockchainProvider2, ProviderNodeTypes};
 use reth_rpc_engine_api::{capabilities::EngineCapabilities, EngineApi};
-use reth_rpc_types::{engine::ClientVersionV1, WithOtherFields};
 use reth_tasks::TaskExecutor;
 use reth_tokio_util::EventSender;
 use reth_tracing::tracing::{debug, error, info};
+#[cfg(feature = "bsc")]
+use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::{
+    common::{Attached, LaunchContextWith, WithConfigs},
     hooks::NodeHooks,
     rpc::{launch_rpc_servers, EthApiBuilderProvider},
     setup::build_networked_pipeline,
@@ -79,18 +77,14 @@ impl EngineNodeLauncher {
 
 impl<Types, T, CB, AO> LaunchNode<NodeBuilderWithComponents<T, CB, AO>> for EngineNodeLauncher
 where
-    Types: NodeTypesWithDB<ChainSpec = ChainSpec> + NodeTypesWithEngine,
+    Types: ProviderNodeTypes + NodeTypesWithEngine,
     T: FullNodeTypes<Types = Types, Provider = BlockchainProvider2<Types>>,
     CB: NodeComponentsBuilder<T>,
     AO: NodeAddOns<
         NodeAdapter<T, CB::Components>,
         EthApi: EthApiBuilderProvider<NodeAdapter<T, CB::Components>>
-                    + FullEthApiServer<
-            NetworkTypes: alloy_network::Network<
-                TransactionResponse = WithOtherFields<reth_rpc_types::Transaction>,
-                ReceiptResponse = AnyTransactionReceipt,
-            >,
-        > + AddDevSigners,
+                    + FullEthApiServer
+                    + AddDevSigners,
     >,
 {
     type Node = NodeHandle<NodeAdapter<T, CB::Components>, AO>;
@@ -103,7 +97,7 @@ where
         let NodeBuilderWithComponents {
             adapter: NodeTypesAdapter { database },
             components_builder,
-            add_ons: AddOns { hooks, rpc, exexs: installed_exex },
+            add_ons: AddOns { hooks, rpc, exexs: installed_exex, .. },
             config,
         } = target;
         let NodeHooks { on_component_initialized, on_node_started, .. } = hooks;
@@ -138,7 +132,7 @@ where
                 debug!(target: "reth::cli", chain=%this.chain_id(), genesis=?this.genesis_hash(), "Initializing genesis");
             })
             .with_genesis()?
-            .inspect(|this| {
+            .inspect(|this: &LaunchContextWith<Attached<WithConfigs<Types::ChainSpec>, _>>| {
                 info!(target: "reth::cli", "\n{}", this.chain_spec().display_hardforks());
             })
             .with_metrics_task()
@@ -157,7 +151,7 @@ where
             ctx.configs().clone(),
         )
         .launch()
-        .await;
+        .await?;
 
         // create pipeline
         let network_client = ctx.components().network().fetch_client().await?;
@@ -252,12 +246,14 @@ where
                 let engine_rx = ctx.node_adapter().components.network().get_to_engine_rx();
                 let client = ParliaEngineBuilder::new(
                     ctx.chain_spec(),
-                    ParliaConfig::default(),
                     ctx.blockchain_db().clone(),
                     ctx.blockchain_db().clone(),
+                    ctx.components().parlia().clone(),
                     consensus_engine_tx.clone(),
                     engine_rx,
                     network_client.clone(),
+                    ctx.toml_config().stages.merkle.clean_threshold,
+                    PhantomData::<Types>,
                 )
                 .build(ctx.node_config().debug.tip.is_none());
                 let eth_service = EngineService::new(
@@ -328,6 +324,7 @@ where
             Box::new(ctx.task_executor().clone()),
             client,
             EngineCapabilities::default(),
+            ctx.components().engine_validator().clone(),
         );
         info!(target: "reth::cli", "Engine API handler initialized");
 
@@ -348,7 +345,7 @@ where
         if let Some(maybe_custom_etherscan_url) = ctx.node_config().debug.etherscan.clone() {
             info!(target: "reth::cli", "Using etherscan as consensus client");
 
-            let chain = ctx.node_config().chain.chain;
+            let chain = ctx.node_config().chain.chain();
             let etherscan_url = maybe_custom_etherscan_url.map(Ok).unwrap_or_else(|| {
                 // If URL isn't provided, use default Etherscan URL for the chain if it is known
                 chain
@@ -401,13 +398,13 @@ where
                 tokio::select! {
                     payload = built_payloads.select_next_some() => {
                         if let Some(executed_block) = payload.executed_block() {
-                            debug!(target: "reth::cli", hash=%executed_block.block().hash(),  "inserting built payload");
+                            debug!(target: "reth::cli", block=?executed_block.block().num_hash(),  "inserting built payload");
                             eth_service.orchestrator_mut().handler_mut().handler_mut().on_event(EngineApiRequest::InsertExecutedBlock(executed_block).into());
                         }
                     }
                     event =  eth_service.next() => {
                         let Some(event) = event else { break };
-                        debug!(target: "reth::cli", "Event: {event:?}");
+                        debug!(target: "reth::cli", "Event: {event}");
                         match event {
                             ChainEvent::BackfillSyncFinished => {
                                 network_handle.update_sync_state(SyncState::Idle);

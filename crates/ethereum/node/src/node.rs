@@ -5,17 +5,18 @@ use std::sync::Arc;
 use reth_auto_seal_consensus::AutoSealConsensus;
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
 use reth_beacon_consensus::EthBeaconConsensus;
+use reth_bsc_consensus::Parlia;
 use reth_chainspec::ChainSpec;
 use reth_ethereum_engine_primitives::{
-    EthBuiltPayload, EthPayloadAttributes, EthPayloadBuilderAttributes,
+    EthBuiltPayload, EthPayloadAttributes, EthPayloadBuilderAttributes, EthereumEngineValidator,
 };
 use reth_evm_ethereum::execute::EthExecutorProvider;
 use reth_network::NetworkHandle;
-use reth_node_api::{ConfigureEvm, FullNodeComponents, NodeAddOns};
+use reth_node_api::{ConfigureEvm, EngineValidator, FullNodeComponents, NodeAddOns};
 use reth_node_builder::{
     components::{
-        ComponentsBuilder, ConsensusBuilder, ExecutorBuilder, NetworkBuilder,
-        PayloadServiceBuilder, PoolBuilder,
+        ComponentsBuilder, ConsensusBuilder, EngineValidatorBuilder, ExecutorBuilder,
+        NetworkBuilder, ParliaBuilder, PayloadServiceBuilder, PoolBuilder,
     },
     node::{FullNodeTypes, NodeTypes, NodeTypesWithEngine},
     BuilderContext, Node, PayloadBuilderConfig, PayloadTypes,
@@ -46,6 +47,8 @@ impl EthereumNode {
         EthereumNetworkBuilder,
         EthereumExecutorBuilder,
         EthereumConsensusBuilder,
+        EthereumEngineValidatorBuilder,
+        EthereumParliaBuilder,
     >
     where
         Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
@@ -62,6 +65,8 @@ impl EthereumNode {
             .network(EthereumNetworkBuilder::default())
             .executor(EthereumExecutorBuilder::default())
             .consensus(EthereumConsensusBuilder::default())
+            .engine_validator(EthereumEngineValidatorBuilder::default())
+            .parlia(EthereumParliaBuilder::default())
     }
 }
 
@@ -75,7 +80,8 @@ impl NodeTypesWithEngine for EthereumNode {
 }
 
 /// Add-ons w.r.t. l1 ethereum.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct EthereumAddOns;
 
 impl<N: FullNodeComponents> NodeAddOns<N> for EthereumAddOns {
@@ -94,12 +100,18 @@ where
         EthereumNetworkBuilder,
         EthereumExecutorBuilder,
         EthereumConsensusBuilder,
+        EthereumEngineValidatorBuilder,
+        EthereumParliaBuilder,
     >;
 
     type AddOns = EthereumAddOns;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
         Self::components()
+    }
+
+    fn add_ons(&self) -> Self::AddOns {
+        EthereumAddOns::default()
     }
 }
 
@@ -241,7 +253,6 @@ impl EthereumPayloadBuilder {
             pool,
             ctx.task_executor().clone(),
             payload_job_config,
-            ctx.chain_spec(),
             payload_builder,
         );
         let (payload_service, payload_builder) =
@@ -281,7 +292,7 @@ pub struct EthereumNetworkBuilder {
 
 impl<Node, Pool> NetworkBuilder<Node, Pool> for EthereumNetworkBuilder
 where
-    Node: FullNodeTypes,
+    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
     Pool: TransactionPool + Unpin + 'static,
 {
     async fn build_network(
@@ -314,5 +325,37 @@ where
         } else {
             Ok(Arc::new(EthBeaconConsensus::new(ctx.chain_spec())))
         }
+    }
+}
+
+/// Builder for [`EthereumEngineValidator`].
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct EthereumEngineValidatorBuilder;
+
+impl<Node, Types> EngineValidatorBuilder<Node> for EthereumEngineValidatorBuilder
+where
+    Types: NodeTypesWithEngine<ChainSpec = ChainSpec>,
+    Node: FullNodeTypes<Types = Types>,
+    EthereumEngineValidator: EngineValidator<Types::Engine>,
+{
+    type Validator = EthereumEngineValidator;
+
+    async fn build_validator(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::Validator> {
+        Ok(EthereumEngineValidator::new(ctx.chain_spec()))
+    }
+}
+
+/// A dummy bsc parlia builder.
+#[derive(Debug, Default, Clone)]
+#[non_exhaustive]
+pub struct EthereumParliaBuilder;
+
+impl<Node> ParliaBuilder<Node> for EthereumParliaBuilder
+where
+    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
+{
+    async fn build_parlia(self, _ctx: &BuilderContext<Node>) -> eyre::Result<Parlia> {
+        Ok(Default::default())
     }
 }

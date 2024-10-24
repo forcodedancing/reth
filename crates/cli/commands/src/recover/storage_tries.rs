@@ -1,6 +1,6 @@
 use crate::common::{AccessRights, Environment, EnvironmentArgs};
 use clap::Parser;
-use reth_chainspec::ChainSpec;
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
 use reth_db::tables;
@@ -9,7 +9,7 @@ use reth_db_api::{
     transaction::DbTx,
 };
 use reth_node_builder::NodeTypesWithEngine;
-use reth_provider::{BlockNumReader, HeaderProvider, ProviderError};
+use reth_provider::{BlockNumReader, ChainSpecHardforks, HeaderProvider, ProviderError};
 use reth_trie::StateRoot;
 use reth_trie_db::DatabaseStateRoot;
 use tracing::*;
@@ -21,7 +21,7 @@ pub struct Command<C: ChainSpecParser> {
     env: EnvironmentArgs<C>,
 }
 
-impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
+impl<C: ChainSpecParser<ChainSpec: EthChainSpec + ChainSpecHardforks>> Command<C> {
     /// Execute `storage-tries` recovery command
     pub async fn execute<N: NodeTypesWithEngine<ChainSpec = C::ChainSpec>>(
         self,
@@ -33,7 +33,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
         let best_block = provider.best_block_number()?;
         let best_header = provider
             .sealed_header(best_block)?
-            .ok_or(ProviderError::HeaderNotFound(best_block.into()))?;
+            .ok_or_else(|| ProviderError::HeaderNotFound(best_block.into()))?;
 
         let mut deleted_tries = 0;
         let tx_mut = provider.tx_mut();

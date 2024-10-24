@@ -1,5 +1,9 @@
 //! Command for debugging block building.
+use alloy_consensus::TxEip4844;
+use alloy_eips::eip2718::Encodable2718;
+use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_rlp::Decodable;
+use alloy_rpc_types::engine::{BlobsBundleV1, PayloadAttributes};
 use clap::Parser;
 use eyre::Context;
 use reth_basic_payload_builder::{
@@ -16,25 +20,20 @@ use reth_cli_runner::CliContext;
 use reth_consensus::Consensus;
 use reth_errors::RethResult;
 use reth_evm::execute::{BlockExecutorProvider, Executor};
-#[cfg(feature = "bsc")]
-use reth_evm_bsc::{BscEvmConfig, BscExecutorProvider};
 use reth_execution_types::ExecutionOutcome;
 use reth_fs_util as fs;
 use reth_node_api::{NodeTypesWithDB, NodeTypesWithEngine, PayloadBuilderAttributes};
-#[cfg(not(feature = "bsc"))]
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
 use reth_payload_builder::database::CachedReads;
 use reth_primitives::{
-    revm_primitives::KzgSettings, Address, BlobTransaction, BlobTransactionSidecar, Bytes,
+    revm_primitives::KzgSettings, BlobTransaction, BlobTransactionSidecar,
     PooledTransactionsElement, SealedBlock, SealedBlockWithSenders, Transaction, TransactionSigned,
-    TxEip4844, B256, U256,
 };
 use reth_provider::{
     providers::BlockchainProvider, BlockHashReader, BlockReader, BlockWriter, ChainSpecProvider,
     ProviderFactory, StageCheckpointReader, StateProviderFactory,
 };
 use reth_revm::{database::StateProviderDatabase, primitives::EnvKzgSettings};
-use reth_rpc_types::engine::{BlobsBundleV1, PayloadAttributes};
 use reth_stages::StageId;
 use reth_transaction_pool::{
     blobstore::InMemoryBlobStore, BlobStore, EthPooledTransaction, PoolConfig, TransactionOrigin,
@@ -128,11 +127,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
         let consensus: Arc<dyn Consensus> =
             Arc::new(EthBeaconConsensus::new(provider_factory.chain_spec()));
 
-        #[cfg(not(feature = "bsc"))]
         let executor = EthExecutorProvider::ethereum(provider_factory.chain_spec());
-        #[cfg(feature = "bsc")]
-        let executor =
-            BscExecutorProvider::bsc(provider_factory.chain_spec(), provider_factory.clone());
 
         // configure blockchain tree
         let tree_externals =
@@ -199,14 +194,14 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                     )
                     .expect("should not fail to convert blob tx if it is already eip4844");
                     let pooled = PooledTransactionsElement::BlobTransaction(tx);
-                    let encoded_length = pooled.length_without_header();
+                    let encoded_length = pooled.encode_2718_len();
 
                     // insert the blob into the store
                     blob_store.insert(transaction.hash, sidecar)?;
 
                     encoded_length
                 }
-                _ => transaction.length_without_header(),
+                _ => transaction.encode_2718_len(),
             };
 
             debug!(target: "reth::cli", ?transaction, "Adding transaction to the pool");
@@ -233,7 +228,6 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                 best_block.hash(),
                 payload_attrs,
             )?,
-            provider_factory.chain_spec(),
         );
 
         let args = BuildArguments::new(
@@ -245,13 +239,8 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
             None,
         );
 
-        #[cfg(not(feature = "bsc"))]
         let payload_builder = reth_ethereum_payload_builder::EthereumPayloadBuilder::new(
             EthEvmConfig::new(provider_factory.chain_spec()),
-        );
-        #[cfg(feature = "bsc")]
-        let payload_builder = reth_ethereum_payload_builder::EthereumPayloadBuilder::new(
-            BscEvmConfig::new(provider_factory.chain_spec()),
         );
 
         match payload_builder.try_build(args)? {
@@ -268,15 +257,8 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                     SealedBlockWithSenders::new(block.clone(), senders).unwrap();
 
                 let db = StateProviderDatabase::new(blockchain_db.latest()?);
-                #[cfg(not(feature = "bsc"))]
                 let executor =
                     EthExecutorProvider::ethereum(provider_factory.chain_spec()).executor(db, None);
-                #[cfg(feature = "bsc")]
-                let executor = BscExecutorProvider::bsc(
-                    provider_factory.chain_spec(),
-                    provider_factory.clone(),
-                )
-                .executor(db, None);
 
                 let block_execution_output = executor
                     .execute((&block_with_senders.clone().unseal(), U256::MAX, None).into())?;

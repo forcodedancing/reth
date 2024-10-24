@@ -1,24 +1,26 @@
-use crate::{client::ParliaClient, Storage};
-use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus, MIN_BLOCKS_FOR_PIPELINE_RUN};
-use reth_bsc_consensus::Parlia;
-use reth_chainspec::ChainSpec;
-use reth_engine_primitives::EngineTypes;
-use reth_evm_bsc::SnapshotReader;
-use reth_network_api::events::EngineMessage;
-use reth_network_p2p::{
-    headers::client::{HeadersClient, HeadersDirection, HeadersRequest},
-    priority::Priority,
-    BlockClient,
-};
-use reth_primitives::{Block, BlockBody, BlockHashOrNumber, SealedHeader, B256};
-use reth_provider::{BlockReaderIdExt, CanonChainTracker, ParliaProvider};
-use reth_rpc_types::{engine::ForkchoiceState, BlockId, RpcBlockHash};
 use std::{
     clone::Clone,
     fmt,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use alloy_primitives::{Sealable, B256};
+use alloy_rpc_types::{engine::ForkchoiceState, BlockId, RpcBlockHash};
+use reth_beacon_consensus::{
+    BeaconEngineMessage, EngineNodeTypes, ForkchoiceStatus, MIN_BLOCKS_FOR_PIPELINE_RUN,
+};
+use reth_bsc_consensus::Parlia;
+use reth_bsc_evm::SnapshotReader;
+use reth_chainspec::EthChainSpec;
+use reth_network_api::events::EngineMessage;
+use reth_network_p2p::{
+    headers::client::{HeadersClient, HeadersDirection, HeadersRequest},
+    priority::Priority,
+    BlockClient,
+};
+use reth_primitives::{Block, BlockBody, BlockHashOrNumber, SealedHeader};
+use reth_provider::{BlockReaderIdExt, CanonChainTracker, ParliaProvider};
 use tokio::{
     signal,
     sync::{
@@ -28,6 +30,13 @@ use tokio::{
     time::{interval, timeout, Duration},
 };
 use tracing::{debug, error, info, trace};
+
+use crate::{client::ParliaClient, Storage};
+
+// Minimum number of blocks for rebuilding the merkle tree
+// When the number of blocks between the trusted header and the new header is less than this value,
+// executing stage sync in batch can save time by avoiding merkle tree rebuilding.
+const MIN_BLOCKS_FOR_MERKLE_REBUILD: u64 = 100_000;
 
 /// All message variants that can be sent to beacon engine.
 #[derive(Debug)]
@@ -53,19 +62,19 @@ struct BlockInfo {
 
 /// A Future that listens for new headers and puts into storage
 pub(crate) struct ParliaEngineTask<
-    Engine: EngineTypes,
+    N: EngineNodeTypes,
     Provider: BlockReaderIdExt + CanonChainTracker,
-    P: ParliaProvider,
+    SnapshotProvider: ParliaProvider,
     Client: BlockClient,
 > {
     /// The configured chain spec
-    chain_spec: Arc<ChainSpec>,
+    chain_spec: Arc<N::ChainSpec>,
     /// The consensus instance
     consensus: Parlia,
     /// The provider used to read the block and header from the inserted chain
     provider: Provider,
     /// The snapshot reader used to read the snapshot
-    snapshot_reader: Arc<SnapshotReader<P>>,
+    snapshot_reader: Arc<SnapshotReader<SnapshotProvider>>,
     /// The client used to fetch headers
     block_fetcher: ParliaClient<Client>,
     /// The interval of the block producing
@@ -73,7 +82,7 @@ pub(crate) struct ParliaEngineTask<
     /// Shared storage to insert new headers
     storage: Storage,
     /// The engine to send messages to the beacon engine
-    to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
+    to_engine: UnboundedSender<BeaconEngineMessage<N::Engine>>,
     /// The watch for the network block event receiver
     network_block_event_rx: Arc<Mutex<UnboundedReceiver<EngineMessage>>>,
     /// The channel to send fork choice messages
@@ -84,28 +93,32 @@ pub(crate) struct ParliaEngineTask<
     chain_tracker_tx: UnboundedSender<ForkChoiceMessage>,
     /// The channel to receive chain tracker messages
     chain_tracker_rx: Arc<Mutex<UnboundedReceiver<ForkChoiceMessage>>>,
+    /// The threshold (in number of blocks) for switching from incremental trie building of changes
+    /// to whole rebuild.
+    merkle_clean_threshold: u64,
 }
 
 // === impl ParliaEngineTask ===
 impl<
-        Engine: EngineTypes + 'static,
+        N: EngineNodeTypes + 'static,
         Provider: BlockReaderIdExt + CanonChainTracker + Clone + 'static,
-        P: ParliaProvider + 'static,
+        SnapshotProvider: ParliaProvider + 'static,
         Client: BlockClient + 'static,
-    > ParliaEngineTask<Engine, Provider, P, Client>
+    > ParliaEngineTask<N, Provider, SnapshotProvider, Client>
 {
     /// Creates a new instance of the task
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
-        chain_spec: Arc<ChainSpec>,
+        chain_spec: Arc<N::ChainSpec>,
         consensus: Parlia,
         provider: Provider,
-        snapshot_reader: SnapshotReader<P>,
-        to_engine: UnboundedSender<BeaconEngineMessage<Engine>>,
+        snapshot_reader: SnapshotReader<SnapshotProvider>,
+        to_engine: UnboundedSender<BeaconEngineMessage<N::Engine>>,
         network_block_event_rx: Arc<Mutex<UnboundedReceiver<EngineMessage>>>,
         storage: Storage,
         block_fetcher: ParliaClient<Client>,
         block_interval: u64,
+        merkle_clean_threshold: u64,
     ) {
         let (fork_choice_tx, fork_choice_rx) = mpsc::unbounded_channel();
         let (chain_tracker_tx, chain_tracker_rx) = mpsc::unbounded_channel();
@@ -123,6 +136,7 @@ impl<
             fork_choice_rx: Arc::new(Mutex::new(fork_choice_rx)),
             chain_tracker_tx,
             chain_tracker_rx: Arc::new(Mutex::new(chain_tracker_rx)),
+            merkle_clean_threshold,
         };
 
         this.start_block_event_listening();
@@ -143,6 +157,7 @@ impl<
         let fork_choice_tx = self.fork_choice_tx.clone();
         let chain_tracker_tx = self.chain_tracker_tx.clone();
         let fetch_header_timeout_duration = Duration::from_secs(block_interval);
+        let merkle_clean_threshold = self.merkle_clean_threshold;
 
         tokio::spawn(async move {
             loop {
@@ -237,19 +252,28 @@ impl<
                     .sealed_header_by_id(BlockId::Hash(RpcBlockHash::from(finalized_hash)))
                     .ok()
                     .flatten()
-                    .unwrap_or_else(|| chain_spec.sealed_genesis_header());
+                    .unwrap_or_else(|| {
+                        SealedHeader::new(
+                            chain_spec.genesis_header().clone(),
+                            chain_spec.genesis_hash(),
+                        )
+                    });
                 debug!(target: "consensus::parlia", { finalized_header_number = ?finalized_header.number, finalized_header_hash = ?finalized_header.hash() }, "Latest finalized header");
-                let latest_unsafe_header = client
-                    .latest_header()
-                    .ok()
-                    .flatten()
-                    .unwrap_or_else(|| chain_spec.sealed_genesis_header());
+                let latest_unsafe_header =
+                    client.latest_header().ok().flatten().unwrap_or_else(|| {
+                        SealedHeader::new(
+                            chain_spec.genesis_header().clone(),
+                            chain_spec.genesis_hash(),
+                        )
+                    });
                 debug!(target: "consensus::parlia", { latest_unsafe_header_number = ?latest_unsafe_header.number, latest_unsafe_header_hash = ?latest_unsafe_header.hash() }, "Latest unsafe header");
 
                 let mut trusted_header = latest_unsafe_header.clone();
                 // if parent hash is not equal to latest unsafe hash
                 // may be a fork chain detected, we need to trust the finalized header
-                if latest_header.parent_hash != latest_unsafe_header.hash() {
+                if latest_header.number - 1 == latest_unsafe_header.number &&
+                    latest_header.parent_hash != latest_unsafe_header.hash()
+                {
                     trusted_header = finalized_header.clone();
                 }
 
@@ -260,7 +284,9 @@ impl<
                 // than the predicted timestamp and less than the current timestamp.
                 let predicted_timestamp = trusted_header.timestamp +
                     block_interval * (latest_header.number - 1 - trusted_header.number);
-                let sealed_header = latest_header.clone().seal_slow();
+                let sealed = latest_header.clone().seal_slow();
+                let (header, seal) = sealed.into_parts();
+                let mut sealed_header = SealedHeader::new(header, seal);
                 let is_valid_header = match consensus
                     .validate_header_with_predicted_timestamp(&sealed_header, predicted_timestamp)
                 {
@@ -283,10 +309,10 @@ impl<
                         if number != sealed_header.number {
                             continue;
                         }
-                        sealed_header.hash()
+                        sealed_header.hash_slow()
                     }
                 };
-                if sealed_header.hash() != block_hash {
+                if sealed_header.hash_slow() != block_hash {
                     continue;
                 }
 
@@ -321,8 +347,10 @@ impl<
                     }
                     let mut parent_hash = sealed_header.parent_hash;
                     for (i, _) in headers.iter().enumerate() {
-                        let sealed_header = headers[i].clone().seal_slow();
-                        if sealed_header.hash() != parent_hash {
+                        let sealed = headers[i].clone().seal_slow();
+                        let (header, seal) = sealed.into_parts();
+                        let sealed_header = SealedHeader::new(header, seal);
+                        if sealed_header.hash_slow() != parent_hash {
                             break;
                         }
                         parent_hash = sealed_header.parent_hash;
@@ -341,6 +369,44 @@ impl<
                     {
                         continue;
                     }
+                };
+
+                // if the target header is not far enough from the trusted header, make sure not to
+                // rebuild the merkle tree
+                if pipeline_sync &&
+                    (sealed_header.number - trusted_header.number > merkle_clean_threshold &&
+                        sealed_header.number - trusted_header.number <
+                            MIN_BLOCKS_FOR_MERKLE_REBUILD)
+                {
+                    let fetch_headers_result = match timeout(
+                        fetch_header_timeout_duration,
+                        block_fetcher.get_headers(HeadersRequest {
+                            start: (trusted_header.number + merkle_clean_threshold - 1).into(),
+                            limit: 1,
+                            direction: HeadersDirection::Falling,
+                        }),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => {
+                            trace!(target: "consensus::parlia", "Fetch header timeout");
+                            continue
+                        }
+                    };
+                    if fetch_headers_result.is_err() {
+                        trace!(target: "consensus::parlia", "Failed to fetch header");
+                        continue
+                    }
+
+                    let headers = fetch_headers_result.unwrap().into_data();
+                    if headers.is_empty() {
+                        continue
+                    }
+
+                    let sealed = headers[0].clone().seal_slow();
+                    let (header, seal) = sealed.into_parts();
+                    sealed_header = SealedHeader::new(header, seal);
                 };
 
                 disconnected_headers.insert(0, sealed_header.clone());
@@ -539,11 +605,11 @@ impl<
 }
 
 impl<
-        Engine: EngineTypes,
+        N: EngineNodeTypes,
         Provider: BlockReaderIdExt + CanonChainTracker,
-        P: ParliaProvider,
+        SnapshotProvider: ParliaProvider,
         Client: BlockClient,
-    > fmt::Debug for ParliaEngineTask<Engine, Provider, P, Client>
+    > fmt::Debug for ParliaEngineTask<N, Provider, SnapshotProvider, Client>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("chain_spec")

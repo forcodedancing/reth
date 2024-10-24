@@ -42,10 +42,23 @@ mod tree_viewer;
 pub use tree_viewer::TreeViewer;
 
 mod finalized_block;
-pub use finalized_block::{FinalizedBlockReader, FinalizedBlockWriter};
+pub use finalized_block::{ChainStateBlockReader, ChainStateBlockWriter};
 
 mod parlia_provider;
 pub use parlia_provider::ParliaProvider;
 
 mod parlia_snapshot;
 pub use parlia_snapshot::ParliaSnapshotReader;
+
+#[cfg(feature = "bsc")]
+use reth_bsc_forks::BscHardforks;
+#[cfg(not(feature = "bsc"))]
+use reth_chainspec::EthereumHardforks;
+
+#[cfg(not(feature = "bsc"))]
+/// Use eth hardforks if bsc feature is not enabled
+pub trait ChainSpecHardforks = EthereumHardforks;
+
+#[cfg(feature = "bsc")]
+/// Use bsc hardforks if bsc feature is enabled
+pub trait ChainSpecHardforks = BscHardforks;

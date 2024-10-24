@@ -1,11 +1,12 @@
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use reth_beacon_consensus::{BeaconConsensusEngineEvent, BeaconEngineMessage, EngineNodeTypes};
+use reth_chainspec::EthChainSpec;
 use reth_consensus::Consensus;
 use reth_engine_tree::{
     backfill::PipelineSync,
     download::BasicBlockDownloader,
-    engine::{EngineApiRequest, EngineApiRequestHandler, EngineHandler},
+    engine::{EngineApiKind, EngineApiRequest, EngineApiRequestHandler, EngineHandler},
     persistence::PersistenceHandle,
     tree::{EngineApiTreeHandler, InvalidBlockHook, TreeConfig},
 };
@@ -81,6 +82,9 @@ where
         skip_state_root_validation: bool,
         enable_execution_cache: bool,
     ) -> Self {
+        let engine_kind =
+            if chain_spec.is_optimism() { EngineApiKind::OpStack } else { EngineApiKind::Ethereum };
+
         let downloader = BasicBlockDownloader::new(client, consensus.clone());
 
         let persistence_handle = PersistenceHandle::spawn_service(
@@ -103,6 +107,7 @@ where
             canonical_in_memory_state,
             tree_config,
             invalid_block_hook,
+            engine_kind,
             skip_state_root_validation,
             enable_execution_cache,
         );

@@ -1,29 +1,10 @@
 //! Bsc Consensus implementation.
 
-// TODO: doc
 #![allow(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
-// The `bsc` feature must be enabled to use this crate.
-#![cfg(feature = "bsc")]
+// // The `bsc` feature must be enabled to use this crate.
+// #![cfg(feature = "bsc")]
 
-use alloy_json_abi::JsonAbi;
-use alloy_rlp::Decodable;
-use lazy_static::lazy_static;
-use lru::LruCache;
-use parking_lot::RwLock;
-use reth_chainspec::{BscHardforks, ChainSpec, EthereumHardforks};
-use reth_consensus::{Consensus, ConsensusError, PostExecutionInput};
-use reth_primitives::{
-    constants::EMPTY_MIX_HASH,
-    parlia::{ParliaConfig, Snapshot, VoteAddress, VoteAttestation},
-    Address, BlockWithSenders, GotExpected, Header, SealedBlock, SealedHeader, B256,
-    EMPTY_OMMER_ROOT_HASH, U256,
-};
-use secp256k1::{
-    ecdsa::{RecoverableSignature, RecoveryId},
-    Message, SECP256K1,
-};
-use sha3::{Digest, Keccak256};
 use std::{
     clone::Clone,
     fmt::{Debug, Formatter},
@@ -31,6 +12,30 @@ use std::{
     sync::Arc,
     time::SystemTime,
 };
+
+use alloy_json_abi::JsonAbi;
+use alloy_primitives::{Address, B256, U256};
+use alloy_rlp::Decodable;
+use lazy_static::lazy_static;
+use lru::LruCache;
+use parking_lot::RwLock;
+use reth_bsc_forks::BscHardforks;
+use reth_chainspec::{ChainSpec, EthChainSpec, EthereumHardforks};
+use reth_consensus::{Consensus, ConsensusError, PostExecutionInput};
+use reth_consensus_common::validation::{
+    validate_against_parent_4844, validate_against_parent_hash_number,
+    validate_against_parent_timestamp, validate_header_base_fee, validate_header_gas,
+};
+use reth_primitives::{
+    constants::EMPTY_MIX_HASH,
+    parlia::{ParliaConfig, Snapshot, VoteAddress, VoteAttestation},
+    BlockWithSenders, GotExpected, Header, SealedBlock, SealedHeader, EMPTY_OMMER_ROOT_HASH,
+};
+use secp256k1::{
+    ecdsa::{RecoverableSignature, RecoveryId},
+    Message, SECP256K1,
+};
+use sha3::{Digest, Keccak256};
 use tracing::{log::debug, trace};
 
 mod util;
@@ -45,14 +50,14 @@ mod go_rng;
 pub use go_rng::{RngSource, Shuffle};
 mod abi;
 pub use abi::*;
-use reth_consensus_common::validation::{
-    validate_against_parent_4844, validate_against_parent_eip1559_base_fee,
-    validate_against_parent_hash_number, validate_against_parent_timestamp,
-    validate_header_base_fee, validate_header_gas,
-};
+use reth_bsc_chainspec::BscChainSpec;
 
 mod validation;
-pub use validation::{validate_4844_header_of_bsc, validate_block_post_execution};
+pub use validation::{
+    validate_4844_header_of_bsc, validate_against_parent_eip1559_base_fee_of_bsc,
+    validate_block_post_execution_of_bsc,
+};
+
 mod system_tx;
 
 const RECOVERED_PROPOSER_CACHE_NUM: usize = 4096;
@@ -63,9 +68,9 @@ lazy_static! {
 }
 
 /// BSC parlia consensus implementation
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Parlia {
-    chain_spec: Arc<ChainSpec>,
+    chain_spec: Arc<BscChainSpec>,
     epoch: u64,
     period: u64,
     validator_abi: JsonAbi,
@@ -81,14 +86,8 @@ pub struct ValidatorsInfo {
     pub vote_addrs: Option<Vec<VoteAddress>>,
 }
 
-impl Default for Parlia {
-    fn default() -> Self {
-        Self::new(Arc::new(ChainSpec::default()), ParliaConfig::default())
-    }
-}
-
 impl Parlia {
-    pub fn new(chain_spec: Arc<ChainSpec>, cfg: ParliaConfig) -> Self {
+    pub fn new(chain_spec: Arc<BscChainSpec>, cfg: ParliaConfig) -> Self {
         let validator_abi = serde_json::from_str(*VALIDATOR_SET_ABI).unwrap();
         let validator_abi_before_luban =
             serde_json::from_str(*VALIDATOR_SET_ABI_BEFORE_LUBAN).unwrap();
@@ -143,7 +142,7 @@ impl Parlia {
             .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
 
         let message = Message::from_digest_slice(
-            hash_with_chain_id(header, self.chain_spec.chain.id()).as_slice(),
+            hash_with_chain_id(header, self.chain_spec.chain().id()).as_slice(),
         )
         .map_err(|_| ParliaConsensusError::RecoverECDSAInnerError)?;
         let public = &SECP256K1
@@ -538,7 +537,7 @@ impl Parlia {
     ) -> Result<(), ConsensusError> {
         validate_against_parent_hash_number(header, parent)?;
         validate_against_parent_timestamp(header, parent)?;
-        validate_against_parent_eip1559_base_fee(header, parent, &self.chain_spec)?;
+        validate_against_parent_eip1559_base_fee_of_bsc(header, parent, &self.chain_spec)?;
 
         // ensure that the blob gas fields for this block
         if self.chain_spec.is_cancun_active_at_timestamp(header.timestamp) {
@@ -604,7 +603,7 @@ impl Consensus for Parlia {
         block: &BlockWithSenders,
         input: PostExecutionInput<'_>,
     ) -> Result<(), ConsensusError> {
-        validate_block_post_execution(block, &self.chain_spec, input.receipts)
+        validate_block_post_execution_of_bsc(block, &self.chain_spec, input.receipts)
     }
 }
 
@@ -615,18 +614,5 @@ impl Debug for Parlia {
             .field("epoch", &self.epoch)
             .field("period", &self.period)
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // To make sure the abi is correct
-    #[test]
-    fn test_new_parlia() {
-        let parlia = Parlia::new(Arc::new(ChainSpec::default()), ParliaConfig::default());
-        assert_eq!(parlia.epoch(), 200);
-        assert_eq!(parlia.period(), 3);
     }
 }

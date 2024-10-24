@@ -13,6 +13,7 @@ env:
   CARGO_TERM_COLOR: always
   SEED: rustethereumethereumrust
   TOOL_CHAIN: "1.81"
+  TOOL_CHAIN_NIGHTLY: "nightly-2024-09-09"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -33,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.TOOL_CHAIN }}
+          toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }}
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -51,7 +52,7 @@ jobs:
         run: |
           cargo nextest run \
             --locked --features "asm-keccak ${{ matrix.network }} opbnb" \
-            --workspace --exclude ef-tests --exclude reth-node-ethereum --exclude reth-bsc-chainspec \
+            --workspace --exclude ef-tests --exclude reth-node-ethereum \
             --partition hash:${{ matrix.partition }}/3 \
             -E "!kind(test)"
       - if: matrix.network == 'bsc'
@@ -61,7 +62,6 @@ jobs:
             --locked --features "asm-keccak ${{ matrix.network }}" \
             --workspace --exclude examples --exclude ef-tests --exclude reth-beacon-consensus \
             --exclude reth-blockchain-tree --exclude reth-node-ethereum --exclude reth-rpc-engine-api \
-            --exclude reth-optimism-chainspec \
             --partition hash:${{ matrix.partition }}/3 \
             -E "!kind(test)"
 
@@ -84,7 +84,7 @@ jobs:
           fetch-depth: 1
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.TOOL_CHAIN }}
+          toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }}
       - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
         with:
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.TOOL_CHAIN }}
+          toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }}
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true

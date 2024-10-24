@@ -1,5 +1,5 @@
 [package]
-name = "reth-evm-bsc"
+name = "reth-bsc-evm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,10 +20,18 @@ reth-primitives.workspace = true
 reth-prune-types.workspace = true
 reth-revm.workspace = true
 reth-provider.workspace = true
+
+# bsc
 reth-bsc-consensus.workspace = true
+reth-bsc-chainspec.workspace = true
+reth-bsc-forks.workspace = true
+reth-bsc-primitives.workspace = true
 
 # Revm
 revm-primitives.workspace = true
+
+alloy-genesis.workspace = true
+alloy-primitives.workspace = true
 
 # misc
 thiserror.workspace = true

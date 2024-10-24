@@ -1,15 +1,14 @@
+use alloy_primitives::{Address, BlockNumber, Bytes, StorageKey, StorageValue, B256};
 use reth_errors::ProviderResult;
-use reth_primitives::{
-    Account, Address, BlockNumber, Bytecode, Bytes, StorageKey, StorageValue, B256,
-};
+use reth_primitives::{Account, Bytecode};
 use reth_storage_api::{
     AccountReader, BlockHashReader, StateProofProvider, StateProvider, StateProviderBox,
     StateRootProvider, StorageRootProvider,
 };
 use reth_trie::{
-    updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof, TrieInput,
+    updates::TrieUpdates, AccountProof, HashedPostState, HashedStorage, MultiProof, StorageProof,
+    TrieInput,
 };
-use std::collections::{HashMap, HashSet};
 
 /// Cached state provider struct
 #[allow(missing_debug_implementations)]
@@ -87,6 +86,15 @@ impl StorageRootProvider for CachedStateProvider {
     fn storage_root(&self, address: Address, storage: HashedStorage) -> ProviderResult<B256> {
         self.underlying.storage_root(address, storage)
     }
+
+    fn storage_proof(
+        &self,
+        address: Address,
+        slot: B256,
+        hashed_storage: HashedStorage,
+    ) -> ProviderResult<StorageProof> {
+        self.underlying.storage_proof(address, slot, hashed_storage)
+    }
 }
 
 impl StateProofProvider for CachedStateProvider {
@@ -102,7 +110,7 @@ impl StateProofProvider for CachedStateProvider {
     fn multiproof(
         &self,
         input: TrieInput,
-        targets: HashMap<B256, HashSet<B256>>,
+        targets: alloy_primitives::map::HashMap<B256, alloy_primitives::map::HashSet<B256>>,
     ) -> ProviderResult<MultiProof> {
         self.underlying.multiproof(input, targets)
     }
@@ -111,7 +119,7 @@ impl StateProofProvider for CachedStateProvider {
         &self,
         input: TrieInput,
         target: HashedPostState,
-    ) -> ProviderResult<HashMap<B256, Bytes>> {
+    ) -> ProviderResult<alloy_primitives::map::HashMap<B256, Bytes>> {
         self.underlying.witness(input, target)
     }
 }

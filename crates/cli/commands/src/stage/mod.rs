@@ -3,11 +3,12 @@
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-use reth_chainspec::ChainSpec;
+use reth_chainspec::EthChainSpec;
 use reth_cli::chainspec::ChainSpecParser;
 use reth_cli_runner::CliContext;
 use reth_evm::execute::BlockExecutorProvider;
 use reth_node_builder::NodeTypesWithEngine;
+use reth_provider::ChainSpecHardforks;
 
 pub mod drop;
 pub mod dump;
@@ -39,13 +40,13 @@ pub enum Subcommands<C: ChainSpecParser> {
     Unwind(unwind::Command<C>),
 }
 
-impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
+impl<C: ChainSpecParser<ChainSpec: EthChainSpec + ChainSpecHardforks>> Command<C> {
     /// Execute `stage` command
     pub async fn execute<N, E, F>(self, ctx: CliContext, executor: F) -> eyre::Result<()>
     where
         N: NodeTypesWithEngine<ChainSpec = C::ChainSpec>,
         E: BlockExecutorProvider,
-        F: FnOnce(Arc<ChainSpec>) -> E,
+        F: FnOnce(Arc<C::ChainSpec>) -> E,
     {
         match self.command {
             Subcommands::Run(command) => command.execute::<N, _, _>(ctx, executor).await,

@@ -22,7 +22,8 @@ reth-storage-api.workspace = true
 reth-trie.workspace = true
 reth-revm.workspace = true
 
-# alloy
+# ethereum
+alloy-eips.workspace = true
 alloy-primitives.workspace = true
 
 # async
@@ -46,20 +47,23 @@ pin-project.workspace = true
 # optional deps for test-utils
 alloy-signer = { workspace = true, optional = true }
 alloy-signer-local = { workspace = true, optional = true }
+alloy-consensus = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 revm = { workspace = true, optional = true }
 
 [dev-dependencies]
 alloy-signer.workspace = true
 alloy-signer-local.workspace = true
+alloy-consensus.workspace = true
 rand.workspace = true
 revm.workspace = true
 reth-provider = { workspace = true, features = ["test-utils"] }
 
 [features]
 test-utils = [
-    "alloy-signer",
-    "alloy-signer-local",
-    "rand",
-    "revm"
+  "alloy-signer",
+  "alloy-signer-local",
+  "alloy-consensus",
+  "rand",
+  "revm"
 ]

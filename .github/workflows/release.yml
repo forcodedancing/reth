@@ -14,6 +14,7 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/bsc-reth
   CARGO_TERM_COLOR: always
   TOOL_CHAIN: "1.81"
+  TOOL_CHAIN_NIGHTLY: "nightly-2024-09-09"
 
 jobs:
   extract-version:
@@ -58,7 +59,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           target: ${{ matrix.configs.target }}
-          toolchain: ${{ env.TOOL_CHAIN }}
+          toolchain: ${{ env.TOOL_CHAIN_NIGHTLY }}
       - uses: taiki-e/install-action@cross
       - uses: Swatinem/rust-cache@v2
         with:

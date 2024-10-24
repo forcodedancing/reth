@@ -14,13 +14,10 @@ use reth_cli_util::get_secret_key;
 use reth_config::Config;
 use reth_errors::BlockValidationError;
 use reth_evm::execute::{BlockExecutorProvider, Executor};
-#[cfg(feature = "bsc")]
-use reth_evm_bsc::BscExecutorProvider;
 use reth_execution_types::ExecutionOutcome;
 use reth_network::NetworkHandle;
 use reth_network_api::NetworkInfo;
 use reth_node_api::{NodeTypesWithDB, NodeTypesWithEngine};
-#[cfg(not(feature = "bsc"))]
 use reth_node_ethereum::EthExecutorProvider;
 use reth_primitives::BlockHashOrNumber;
 use reth_provider::{
@@ -121,14 +118,14 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
         let header = (move || {
             get_single_header(client.clone(), BlockHashOrNumber::Number(target_block_number))
         })
-        .retry(&backoff)
+        .retry(backoff)
         .notify(|err, _| warn!(target: "reth::cli", "Error requesting header: {err}. Retrying..."))
         .await?;
 
         let client = fetch_client.clone();
         let chain = provider_factory.chain_spec();
         let block = (move || get_single_body(client.clone(), Arc::clone(&chain), header.clone()))
-            .retry(&backoff)
+            .retry(backoff)
             .notify(
                 |err, _| warn!(target: "reth::cli", "Error requesting body: {err}. Retrying..."),
             )
@@ -139,13 +136,8 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
             provider_factory.static_file_provider(),
         ));
 
-        #[cfg(not(feature = "bsc"))]
         let executor =
             EthExecutorProvider::ethereum(provider_factory.chain_spec()).executor(db, None);
-        #[cfg(feature = "bsc")]
-        let executor =
-            BscExecutorProvider::bsc(provider_factory.chain_spec(), provider_factory.clone())
-                .executor(db, None);
 
         let merkle_block_td =
             provider.header_td_by_number(merkle_block_number)?.unwrap_or_default();
@@ -183,7 +175,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
                 .try_seal_with_senders()
                 .map_err(|_| BlockValidationError::SenderRecoveryError)?,
         )?;
-        let mut storage_writer = UnifiedStorageWriter::from_database(&provider_rw);
+        let mut storage_writer = UnifiedStorageWriter::from_database(&provider_rw.0);
         storage_writer.write_to_storage(execution_outcome, OriginalValuesKnown::No)?;
         let storage_lists = provider_rw.changed_storages_with_range(block.number..=block.number)?;
         let storages = provider_rw.plain_state_storages(storage_lists)?;

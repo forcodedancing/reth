@@ -1,11 +1,12 @@
-use reth_chainspec::{ChainSpec, EthereumHardforks};
+use alloy_primitives::{Bloom, B256};
+use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_consensus::ConsensusError;
 use reth_primitives::{
     constants::eip4844::{DATA_GAS_PER_BLOB, MAX_DATA_GAS_PER_BLOCK},
-    gas_spent_by_transactions, BlockWithSenders, Bloom, GotExpected, Receipt, SealedHeader, B256,
+    gas_spent_by_transactions, BlockWithSenders, GotExpected, Header, Receipt, SealedHeader,
 };
 
-/// Validate the 4844 header of a BSC block.
+/// Validate the 4844 header of BSC block.
 /// Compared to Ethereum, BSC block doesn't have `parent_beacon_block_root`.
 pub fn validate_4844_header_of_bsc(header: &SealedHeader) -> Result<(), ConsensusError> {
     let blob_gas_used = header.blob_gas_used.ok_or(ConsensusError::BlobGasUsedMissing)?;
@@ -37,11 +38,38 @@ pub fn validate_4844_header_of_bsc(header: &SealedHeader) -> Result<(), Consensu
     Ok(())
 }
 
+/// Validates the base fee against the parent and EIP-1559 rules of BSC block.
+/// Compared to Ethereum, BSC base fee is always zero.
+#[inline]
+pub fn validate_against_parent_eip1559_base_fee_of_bsc<
+    ChainSpec: EthChainSpec + EthereumHardforks,
+>(
+    header: &Header,
+    _parent: &Header,
+    chain_spec: &ChainSpec,
+) -> Result<(), ConsensusError> {
+    if chain_spec.fork(EthereumHardfork::London).active_at_block(header.number) {
+        let base_fee = header.base_fee_per_gas.ok_or(ConsensusError::BaseFeeMissing)?;
+        let expected_base_fee = reth_primitives::constants::EIP1559_INITIAL_BASE_FEE;
+
+        if expected_base_fee != base_fee {
+            return Err(ConsensusError::BaseFeeDiff(GotExpected {
+                expected: expected_base_fee,
+                got: base_fee,
+            }))
+        }
+    }
+
+    Ok(())
+}
+
 /// Validate a block with regard to execution results:
 ///
 /// - Compares the receipts root in the block header to the block body
 /// - Compares the gas used in the block header to the actual gas usage after execution
-pub fn validate_block_post_execution(
+///
+/// Compared to Ethereum, BSC doesn't have to check `requests_root`.
+pub fn validate_block_post_execution_of_bsc<ChainSpec: EthereumHardforks>(
     block: &BlockWithSenders,
     chain_spec: &ChainSpec,
     receipts: &[Receipt],

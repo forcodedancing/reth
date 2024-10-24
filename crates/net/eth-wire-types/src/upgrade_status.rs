@@ -30,8 +30,8 @@ pub struct UpgradeStatusExtension {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::hex;
     use alloy_rlp::Encodable;
-    use reth_primitives::hex;
 
     #[test]
     fn test_encode_upgrade_status() {

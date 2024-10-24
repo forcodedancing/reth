@@ -1,10 +1,10 @@
 use crate::metrics::PersistenceMetrics;
+use alloy_eips::BlockNumHash;
 use reth_chain_state::ExecutedBlock;
 use reth_errors::ProviderError;
-use reth_primitives::BlockNumHash;
 use reth_provider::{
-    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader, ProviderFactory,
-    StaticFileProviderFactory,
+    providers::ProviderNodeTypes, writer::UnifiedStorageWriter, BlockHashReader,
+    ChainStateBlockWriter, DatabaseProviderFactory, ProviderFactory, StaticFileProviderFactory,
 };
 use reth_prune::{PrunerError, PrunerOutput, PrunerWithFactory};
 use reth_stages_api::{MetricEvent, MetricEventsSender};
@@ -102,6 +102,16 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
                     // we ignore the error because the caller may or may not care about the result
                     let _ = sender.send(res);
                 }
+                PersistenceAction::SaveFinalizedBlock(finalized_block) => {
+                    let provider = self.provider.database_provider_rw()?;
+                    provider.save_finalized_block_number(finalized_block)?;
+                    provider.commit()?;
+                }
+                PersistenceAction::SaveSafeBlock(safe_block) => {
+                    let provider = self.provider.database_provider_rw()?;
+                    provider.save_safe_block_number(safe_block)?;
+                    provider.commit()?;
+                }
             }
         }
         Ok(())
@@ -113,7 +123,7 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
     ) -> Result<Option<BlockNumHash>, PersistenceError> {
         debug!(target: "engine::persistence", ?new_tip_num, "Removing blocks");
         let start_time = Instant::now();
-        let provider_rw = self.provider.provider_rw()?;
+        let provider_rw = self.provider.database_provider_rw()?;
         let sf_provider = self.provider.static_file_provider();
 
         let new_tip_hash = provider_rw.block_hash(new_tip_num)?;
@@ -147,7 +157,7 @@ impl<N: ProviderNodeTypes> PersistenceService<N> {
                 debug!(target: "tree::persistence", "Finish to write state cache");
             }
 
-            let provider_rw = self.provider.provider_rw()?;
+            let provider_rw = self.provider.database_provider_rw()?;
             let static_file_provider = self.provider.static_file_provider();
 
             UnifiedStorageWriter::from(&provider_rw, &static_file_provider).save_blocks(&blocks)?;
@@ -189,6 +199,12 @@ pub enum PersistenceAction {
     /// Prune associated block data before the given block number, according to already-configured
     /// prune modes.
     PruneBefore(u64, oneshot::Sender<PrunerOutput>),
+
+    /// Update the persisted finalized block on disk
+    SaveFinalizedBlock(u64),
+
+    /// Update the persisted safe block on disk
+    SaveSafeBlock(u64),
 }
 
 /// A handle to the persistence service
@@ -262,6 +278,22 @@ impl PersistenceHandle {
         self.send_action(PersistenceAction::SaveBlocks(blocks, tx))
     }
 
+    /// Persists the finalized block number on disk.
+    pub fn save_finalized_block_number(
+        &self,
+        finalized_block: u64,
+    ) -> Result<(), SendError<PersistenceAction>> {
+        self.send_action(PersistenceAction::SaveFinalizedBlock(finalized_block))
+    }
+
+    /// Persists the finalized block number on disk.
+    pub fn save_safe_block_number(
+        &self,
+        safe_block: u64,
+    ) -> Result<(), SendError<PersistenceAction>> {
+        self.send_action(PersistenceAction::SaveSafeBlock(safe_block))
+    }
+
     /// Tells the persistence service to remove blocks above a certain block number. The removed
     /// blocks are returned by the service.
     ///
@@ -291,9 +323,9 @@ impl PersistenceHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::B256;
     use reth_chain_state::test_utils::TestBlockBuilder;
     use reth_exex_types::FinishedExExHeight;
-    use reth_primitives::B256;
     use reth_provider::test_utils::create_test_provider_factory;
     use reth_prune::Pruner;
     use tokio::sync::mpsc::unbounded_channel;

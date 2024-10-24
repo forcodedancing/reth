@@ -1,6 +1,7 @@
 //! Command for debugging execution.
 
 use crate::{args::NetworkArgs, utils::get_single_header};
+use alloy_primitives::{BlockNumber, B256};
 use clap::Parser;
 use futures::{stream::select as stream_select, StreamExt};
 use reth_beacon_consensus::EthBeaconConsensus;
@@ -22,11 +23,8 @@ use reth_network_api::NetworkInfo;
 use reth_network_p2p::{headers::client::HeadersClient, BlockClient};
 use reth_node_api::{NodeTypesWithDB, NodeTypesWithDBAdapter, NodeTypesWithEngine};
 
-#[cfg(feature = "bsc")]
-use reth_evm_bsc::BscExecutorProvider;
-#[cfg(not(feature = "bsc"))]
 use reth_node_ethereum::EthExecutorProvider;
-use reth_primitives::{BlockHashOrNumber, BlockNumber, B256};
+use reth_primitives::BlockHashOrNumber;
 use reth_provider::{
     BlockExecutionWriter, ChainSpecProvider, ProviderFactory, StageCheckpointReader,
 };
@@ -86,11 +84,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
         let prune_modes = config.prune.clone().map(|prune| prune.segments).unwrap_or_default();
 
         let (tip_tx, tip_rx) = watch::channel(B256::ZERO);
-        #[cfg(not(feature = "bsc"))]
         let executor = EthExecutorProvider::ethereum(provider_factory.chain_spec());
-        #[cfg(feature = "bsc")]
-        let executor =
-            BscExecutorProvider::bsc(provider_factory.chain_spec(), provider_factory.clone());
 
         let pipeline = Pipeline::<N>::builder()
             .with_tip_sender(tip_tx)
