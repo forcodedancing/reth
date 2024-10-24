@@ -88,6 +88,9 @@ pub(crate) fn write_plain_state(bundle: BundleState) {
             insert_storage((storage.address, StorageKey::from(k)), v);
         }
     }
+
+    // TODO: if there is a contract destruct, the entire storage cache will be cleared. Will try to
+    // find a better solution to handle the such case.
     if should_wipe {
         PLAIN_STORAGES.clear();
     }
