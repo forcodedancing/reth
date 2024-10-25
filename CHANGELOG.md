@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.0.6
+
+This release merges with upstream version v1.1.0, making the new engine as the default. It includes new features and
+several bug fixes.
+
+### NOTE
+
+**This version is compatible with the BSC mainnet, testnet, and opBNB mainnet, testnet.**
+
+### New Features
+
+1. The new engine will be the default engine for BSC, so the experiment flag `--engine.experimental` should be removed when
+   running a BSC node.
+2. Trie prefetch feature is enabled for the new engine to improve performance, please use `--enable-prefetch` to enable it.
+3. Introduced `--optimize.enable-execution-cache` flag to enable cache for the execution of live sync.
+
+### Features
+
+- [#163](https://github.com/bnb-chain/reth/pull/163): Merge with upstream v1.1.0.
+- [#164](https://github.com/bnb-chain/reth/pull/164): Enable prefetch on the new engine.
+- [#153](https://github.com/bnb-chain/reth/pull/153): Enable state cache for live-sync execution.
+- [#151](https://github.com/bnb-chain/reth/pull/151): Add step size check for BSC stage sync.
+
+### Bug Fixes
+
+- [#169](https://github.com/bnb-chain/reth/pull/169): Fix removing sidecars issue in `remove_blocks_above`.
+- [#171](https://github.com/bnb-chain/reth/pull/171): Fix typo in `Makefile`.
+
 ## v1.0.5
 This release merges with upstream version v1.0.7, adding support for the BSC mainnet, testnet, and opBNB mainnet, testnet. It includes new features and several bug fixes.
 
@@ -19,6 +47,7 @@ This release merges with upstream version v1.0.7, adding support for the BSC mai
 ### Bug Fixes
 - [#137](https://github.com/bnb-chain/reth/pull/137): Fixed `unwind_to` to ensure it is exclusive.
 - [#145](https://github.com/bnb-chain/reth/pull/145): Ensured sidecars are correctly written to static files when saving blocks.
+
 ## v1.0.4
 
 This release is for opBNB testnet and mainnet Fjord upgrade.
