@@ -8235,6 +8235,7 @@ dependencies = [
  "reth-tracing",
  "reth-trie",
  "reth-trie-parallel",
+ "reth-trie-prefetch",
  "thiserror",
  "tokio",
  "tracing",

@@ -80,6 +80,7 @@ where
         invalid_block_hook: Box<dyn InvalidBlockHook>,
         sync_metrics_tx: MetricEventsSender,
         skip_state_root_validation: bool,
+        enable_prefetch: bool,
         enable_execution_cache: bool,
     ) -> Self {
         let engine_kind =
@@ -109,6 +110,7 @@ where
             invalid_block_hook,
             engine_kind,
             skip_state_root_validation,
+            enable_prefetch,
             enable_execution_cache,
         );
 
