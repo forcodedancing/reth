@@ -226,6 +226,7 @@ mod tests {
             sync_metrics_tx,
             false,
             false,
+            false,
         );
     }
 }

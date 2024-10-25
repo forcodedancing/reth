@@ -2796,6 +2796,7 @@ mod tests {
                 EngineApiKind::Ethereum,
                 false,
                 false,
+                false,
             );
 
             let block_builder = TestBlockBuilder::default().with_chain_spec((*chain_spec).clone());
