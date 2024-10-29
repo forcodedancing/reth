@@ -18,6 +18,8 @@ several bug fixes.
 
 ### Features
 
+- [#175](https://github.com/bnb-chain/reth/pull/175): Update the default threshold of merkle rebuild to 50k.
+- [#170](https://github.com/bnb-chain/reth/pull/170): Remove `ChainSpecHardforks` to improve code quality.
 - [#163](https://github.com/bnb-chain/reth/pull/163): Merge with upstream v1.1.0.
 - [#164](https://github.com/bnb-chain/reth/pull/164): Enable prefetch on the new engine.
 - [#153](https://github.com/bnb-chain/reth/pull/153): Enable state cache for live-sync execution.
