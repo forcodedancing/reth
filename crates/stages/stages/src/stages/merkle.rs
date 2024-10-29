@@ -37,7 +37,7 @@ Once you have this information, please submit a github issue at https://github.c
 
 /// The default threshold (in number of blocks) for switching from incremental trie building
 /// of changes to whole rebuild.
-pub const MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD: u64 = 5_000;
+pub const MERKLE_STAGE_DEFAULT_CLEAN_THRESHOLD: u64 = 50_000;
 
 /// The merkle hashing stage uses input from
 /// [`AccountHashingStage`][crate::stages::AccountHashingStage] and
