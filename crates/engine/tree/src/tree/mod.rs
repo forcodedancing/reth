@@ -2243,6 +2243,12 @@ where
             .executor
             .execute_metered(executor, (&block, U256::MAX, Some(&ancestor_blocks)).into())?;
 
+        if block_number >= 44076955 && block_number <= 44076956 {
+            let receipts = output.receipts.clone();
+            info!(target: "engine::tree", ?block_number, ?receipts, "Executed_block_Receipt");
+            info!("Executed_block_Receipt, block: {:?}, receipts: {:?}", block_number, receipts);
+        }
+
         trace!(target: "engine::tree", elapsed=?exec_time.elapsed(), ?block_number, "Executed block");
         if let Err(err) = self.consensus.validate_block_post_execution(
             &block,
